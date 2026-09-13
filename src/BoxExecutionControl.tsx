@@ -284,6 +284,23 @@ export function BoxExecutionControl({
               : `${session.completed_trades}/${session.max_completed_trades} complete · ${session.consumed_cycles} consumed`}
           </dd>
         </div>
+        {/* ATTEMPT BUDGET, shown beside the cycle budget because they bound DIFFERENT things and the
+            difference is the whole point. SESSION LIMIT counts boxes that were ESTABLISHED, so an
+            attempt that submitted orders, partially filled and was then unwound spends none of it —
+            it took real exposure and paid real charges for free. This cell is the bound that stops a
+            run of such attempts. Rendered only when configured, so an unbounded deployment is not
+            given a reassuring-looking counter that means nothing. */}
+        {session.max_entry_attempts > 0 && (
+          <div className="box-exec-cell">
+            <dt>ATTEMPT BUDGET</dt>
+            <dd className={session.remaining_entry_attempts === 0 ? "warn" : undefined}>
+              {`${session.entry_attempts}/${session.max_entry_attempts} started`}
+              {session.remaining_entry_attempts === null
+                ? ""
+                : ` · ${session.remaining_entry_attempts} remaining`}
+            </dd>
+          </div>
+        )}
         <div className="box-exec-cell">
           <dt>MAX ₹ / BOX</dt>
           <dd title="Gross entry-order notional, NOT broker margin.">
