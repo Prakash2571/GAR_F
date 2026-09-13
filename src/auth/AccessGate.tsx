@@ -1,166 +1,153 @@
 /**
- * The StrikeEdge site passcode gate.
+ * The site-passcode session layer for GTS Algo Research.
  *
  * WHAT IT IS — AND IS NOT
  * -----------------------
- * This is a UX gate, not a security boundary. The real gate is the backend, which answers
- * 401 for every /api/box/* request without a valid session cookie. This component only
- * decides which surface to show:
- *   • unauthenticated → a minimal passcode screen, and NOTHING else;
- *   • authenticated   → the children (the Box dashboard) mount.
+ * This is session STATE and UX, not a security boundary. The real boundary is the backend,
+ * which answers 401 for every `/api/box/*` request without a valid session cookie. This
+ * provider only decides which surface the browser is allowed to MOUNT:
+ *   • anonymous     → the public landing page; the protected workspace is never mounted, so
+ *                     no Box SSE, broker, portfolio or history request is ever issued.
+ *   • authenticated → `<ProtectedRoute>` mounts the Box workspace.
+ *   • checking      → neither; a neutral loading surface, so protected content cannot flash
+ *                     on screen before the backend has confirmed the session.
  *
- * NON-NEGOTIABLES
+ * NON-NEGOTIABLES (unchanged from the proven implementation this refactor grew out of)
  *   • The session lives in an HttpOnly cookie the backend sets on a correct passcode. This
- *     component NEVER reads or writes any session token in localStorage. It holds one
- *     boolean in React state and nothing else.
- *   • On any 401 anywhere in the app (surfaced via `onUnauthorized` from the http wrapper),
- *     authenticated state is cleared and the gate returns — the SSE teardown is handled by
- *     the dashboard's own 401 subscription.
+ *     module NEVER reads or writes a session token in localStorage, sessionStorage or any
+ *     other client store. It holds one enum in React state and nothing else.
+ *   • The passcode itself is never persisted anywhere. It exists as a React input value for
+ *     the duration of one submit and is cleared the instant it is no longer needed.
+ *   • On any 401 anywhere in the app (surfaced via `onUnauthorized` from the http wrapper)
+ *     authenticated state is cleared. That UNMOUNTS the workspace, whose own cleanup tears
+ *     down the SSE stream and every timer, and `<ProtectedRoute>` then returns the browser
+ *     to the public landing page.
+ *
+ * WHY A PROVIDER RATHER THAN A WRAPPER COMPONENT
+ * Session state is now read in three places that are not in a parent/child relationship —
+ * the landing header ("Enter Box" must skip the passcode when a session already exists),
+ * the passcode modal, and the protected route — so it lives in context instead of being
+ * threaded through render props.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { accessStatus, logout, verifyPasscode } from "../api/access.ts";
 import { clearCsrfToken, onUnauthorized } from "../api/http.ts";
-import BrandMark from "../BrandMark.tsx";
-import ThemeToggle from "../ThemeToggle.tsx";
 
-type GateState = "checking" | "locked" | "unlocked";
+/**
+ * "checking" is a REAL state, not a cosmetic one: until the backend has answered
+ * `/api/access/status` we do not know whether this browser holds a session, and rendering
+ * either the protected workspace or a passcode prompt would be a guess. Protected content
+ * must never appear during it.
+ */
+export type AccessState = "checking" | "anonymous" | "authenticated";
 
-export interface AccessGateProps {
-  /** Rendered only once a valid session exists. */
-  children: (ctx: { onLock: () => void }) => React.ReactNode;
+export interface AccessContextValue {
+  state: AccessState;
+  /** Convenience for `state === "authenticated"`. */
+  authenticated: boolean;
+  /**
+   * Verify a passcode against the backend.
+   *
+   * Resolves `true` when a session was established. Resolves `false` — it does NOT throw —
+   * when the passcode was simply not accepted, because that is an expected outcome the UI
+   * renders as one generic message rather than an error condition. It rejects only on a
+   * genuine transport/server failure.
+   */
+  verify: (passcode: string) => Promise<boolean>;
+  /** Revoke the session server-side and drop authenticated state locally. */
+  lock: () => Promise<void>;
+  /** Re-ask the backend whether a session exists. Used after a manual reload path. */
+  refresh: () => Promise<void>;
 }
 
-export default function AccessGate({ children }: AccessGateProps) {
-  const [state, setState] = useState<GateState>("checking");
-  const [passcode, setPasscode] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+const AccessContext = createContext<AccessContextValue | null>(null);
+
+export function AccessProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<AccessState>("checking");
 
   // On mount, ask the backend whether the current cookie is already a valid session, so a
-  // returning user with a live session skips the gate.
+  // returning user with a live session is never asked for the passcode again. This also
+  // re-seeds the in-memory CSRF token after a page reload (see api/access.ts).
+  const refresh = useCallback(async () => {
+    try {
+      const status = await accessStatus();
+      setState(status.authenticated ? "authenticated" : "anonymous");
+    } catch {
+      // Any failure — including a 401 — means: treat this browser as anonymous. Failing
+      // closed is the only safe direction for an access decision.
+      setState("anonymous");
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    accessStatus()
-      .then((s) => {
-        if (!cancelled) setState(s.authenticated ? "unlocked" : "locked");
-      })
-      .catch(() => {
-        // Any failure (incl. a 401) means: show the gate.
-        if (!cancelled) setState("locked");
-      });
+    void (async () => {
+      try {
+        const status = await accessStatus();
+        if (!cancelled) setState(status.authenticated ? "authenticated" : "anonymous");
+      } catch {
+        if (!cancelled) setState("anonymous");
+      }
+    })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // A 401 ANYWHERE clears authenticated state and returns to the gate. The dashboard's own
-  // subscriber closes the SSE; this one flips the UI back to locked. `notifyUnauthorized`
-  // already dropped the in-memory CSRF token; clearing again here is a cheap belt-and-braces
-  // so a reset gate never holds a stale token.
-  useEffect(() => {
-    return onUnauthorized(() => {
-      clearCsrfToken();
-      setState("locked");
-      setPasscode("");
-    });
-  }, []);
-
-  useEffect(() => {
-    if (state === "locked") inputRef.current?.focus();
-  }, [state]);
-
-  const onSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (submitting || passcode.trim() === "") return;
-      setSubmitting(true);
-      setError(null);
-      try {
-        const result = await verifyPasscode(passcode);
-        if (result.authenticated) {
-          // Clear the passcode from memory the instant it is no longer needed. It is never
-          // persisted — the session is the HttpOnly cookie the backend just set.
-          setPasscode("");
-          setState("unlocked");
-        } else {
-          setError("That passcode was not accepted.");
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "That passcode was not accepted.");
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [passcode, submitting],
+  /**
+   * A 401 ANYWHERE clears authenticated state.
+   *
+   * That is what stops protected activity: dropping to "anonymous" unmounts the workspace,
+   * and the workspace's own effect cleanup closes the SSE stream and clears its timers.
+   * `notifyUnauthorized` has already dropped the in-memory CSRF token; clearing it again
+   * here is a cheap belt-and-braces so a reset session never holds a stale token.
+   */
+  useEffect(
+    () =>
+      onUnauthorized(() => {
+        clearCsrfToken();
+        setState("anonymous");
+      }),
+    [],
   );
 
-  const onLock = useCallback(() => {
-    void logout().finally(() => {
-      setState("locked");
-      setPasscode("");
-    });
+  const verify = useCallback(async (passcode: string): Promise<boolean> => {
+    const result = await verifyPasscode(passcode);
+    if (result.authenticated) {
+      setState("authenticated");
+      return true;
+    }
+    return false;
   }, []);
 
-  if (state === "checking") {
-    return (
-      <div className="gate">
-        <div className="gate-card" aria-busy="true">
-          <span className="spinner" />
-          <span className="gate-checking">Checking session…</span>
-        </div>
-      </div>
-    );
-  }
+  const lock = useCallback(async (): Promise<void> => {
+    // `logout()` never rejects: it revokes the server session, clears the cookies and the
+    // in-memory CSRF token, and logs rather than surfaces a network failure — pressing Lock
+    // must always end the local session even if the request could not be delivered.
+    await logout();
+    setState("anonymous");
+  }, []);
 
-  if (state === "unlocked") {
-    return <>{children({ onLock })}</>;
-  }
-
-  return (
-    <div className="gate">
-      <div className="gate-topbar">
-        <ThemeToggle />
-      </div>
-      <form className="gate-card" onSubmit={(e) => void onSubmit(e)}>
-        <div className="gate-brand">
-          <BrandMark />
-          <h1>StrikeEdge</h1>
-        </div>
-        <p className="gate-sub">Enter the site passcode to continue.</p>
-        <label className="gate-field">
-          <span className="sr-only">Site passcode</span>
-          <input
-            ref={inputRef}
-            type="password"
-            className="gate-input"
-            value={passcode}
-            onChange={(e) => setPasscode(e.target.value)}
-            placeholder="Passcode"
-            autoComplete="current-password"
-            disabled={submitting}
-            aria-invalid={error !== null}
-            aria-label="Site passcode"
-          />
-        </label>
-        <button
-          type="submit"
-          className="btn btn--primary btn--full gate-submit"
-          disabled={submitting || passcode.trim() === ""}
-        >
-          {submitting ? "Verifying…" : "Unlock"}
-        </button>
-        {error && (
-          <p className="gate-error" role="alert">
-            {error}
-          </p>
-        )}
-        <p className="gate-note">
-          StrikeEdge is protected by a site passcode. Access is granted by the StrikeEdge
-          backend — this screen does not store anything on your device.
-        </p>
-      </form>
-    </div>
+  const value = useMemo<AccessContextValue>(
+    () => ({
+      state,
+      authenticated: state === "authenticated",
+      verify,
+      lock,
+      refresh,
+    }),
+    [state, verify, lock, refresh],
   );
+
+  return <AccessContext.Provider value={value}>{children}</AccessContext.Provider>;
+}
+
+/** Read the session state. Throws if used outside the provider — a wiring bug, not a runtime case. */
+export function useAccess(): AccessContextValue {
+  const ctx = useContext(AccessContext);
+  if (ctx === null) {
+    throw new Error("useAccess must be used inside <AccessProvider>.");
+  }
+  return ctx;
 }

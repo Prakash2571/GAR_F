@@ -1,9 +1,9 @@
 /**
  * The site-passcode access API.
  *
- * StrikeEdge is gated by a single site passcode. Verifying it establishes an HttpOnly
- * session cookie server-side; the browser never sees, stores or forwards a SESSION token.
- * These three calls are the entire surface the AccessGate needs.
+ * GTS Box is gated by a single site passcode. Verifying it establishes an HttpOnly session
+ * cookie server-side; the browser never sees, stores or forwards a SESSION token. These
+ * three calls are the entire surface the access layer needs.
  *
  * CSRF token lifecycle lives here too: `verify` and an authenticated `status` return a
  * `csrf_token` in their JSON body; this module hands it to the in-memory store in `http.ts`
@@ -13,7 +13,7 @@
  * only in process memory.
  */
 
-import { clearCsrfToken, request, setCsrfToken } from "./http.ts";
+import { ApiError, clearCsrfToken, request, setCsrfToken } from "./http.ts";
 
 /** Whether a valid session currently exists, per the backend. */
 export interface AccessStatus {
@@ -34,12 +34,30 @@ export interface AccessStatus {
 }
 
 /**
+ * The passcode was not accepted.
+ *
+ * A DISTINCT type so the UI can render ONE fixed, uninformative string ("Invalid passcode")
+ * for this case while still surfacing the backend's own generic message for an operational
+ * failure (rate limited, access temporarily unavailable). The backend answers an identical
+ * 401 body whether the passcode was wrong or no secret is configured at all, so this type
+ * carries no information about which — and neither does anything rendered from it.
+ */
+export class PasscodeRejectedError extends Error {
+  constructor() {
+    super("Invalid passcode");
+    this.name = "PasscodeRejectedError";
+  }
+}
+
+/**
  * Verify the site passcode.
  *
  * On success the backend sets the HttpOnly session cookie and returns a `csrf_token` in the
- * body, which is captured into the in-memory store so subsequent mutations can echo it. On a
- * wrong passcode the backend answers a non-2xx and the promise rejects with the backend's
- * message — the gate shows it and stays closed, and the stale token (if any) is cleared.
+ * body, which is captured into the in-memory store so subsequent mutations can echo it.
+ *
+ * On a rejected passcode the backend answers 401 and this rejects with
+ * `PasscodeRejectedError`; on any other failure it rejects with the backend's own generic
+ * message. Either way the stale token (if any) is cleared.
  *
  * This is a `csrfExempt` mutation: it is the ONLY public mutation and there is no token to
  * send yet — it MINTS one.
@@ -57,8 +75,8 @@ export async function verifyPasscode(passcode: string): Promise<AccessStatus> {
         // The login call is the sole public mutation and mints the CSRF token — it carries
         // no CSRF header itself.
         csrfExempt: true,
-        // A 401 here means "wrong passcode", NOT "session expired": surface the backend's
-        // message and keep the gate closed, rather than firing the session-expiry teardown.
+        // A 401 here means "wrong passcode", NOT "session expired": it must not fire the
+        // session-expiry teardown, and there is no session to tear down yet.
         suppressUnauthorized: true,
       },
     );
@@ -72,6 +90,10 @@ export async function verifyPasscode(passcode: string): Promise<AccessStatus> {
   } catch (err) {
     // Failed authentication clears any token held from a previous session.
     clearCsrfToken();
+    // 401 is the ONE outcome that means "that passcode was not accepted". Everything else
+    // (429 rate limited, 503 access unavailable, a transport failure) is an operational
+    // problem and must not be disguised as a wrong passcode.
+    if (err instanceof ApiError && err.status === 401) throw new PasscodeRejectedError();
     throw err;
   }
 }
@@ -98,22 +120,26 @@ export async function accessStatus(): Promise<AccessStatus> {
  * End the session.
  *
  * Never rejects and never claims success on an error status: pressing "Lock" must always
- * return the UI to the gate locally, even if the network call fails, so a failure is logged
- * rather than surfaced. The in-memory CSRF token is cleared regardless of the network
+ * return the UI to the public site locally, even if the network call fails, so a failure is
+ * logged rather than surfaced. The in-memory CSRF token is cleared regardless of the network
  * outcome.
  *
- * Logout is `csrfExempt`: the backend requires the CSRF header only for a LIVE session, and
- * a logout must also succeed when the session is already dead (no token to echo), so the
- * header is omitted rather than blocking on a possibly-missing token.
+ * CSRF: `csrfBestEffort`, NOT `csrfExempt`. The backend's logout route requires the
+ * `x-csrf-token` header when the session is LIVE (revoking a live session is a real state
+ * change) and accepts the call without one when the session is already dead (there is
+ * nothing left to protect, and a browser holding a stale cookie must still be able to clear
+ * it). Best-effort sends the header whenever a token is held and omits it otherwise, so BOTH
+ * halves of that route work — an unconditional exemption would earn a 403 on the live path
+ * and leave the server-side session un-revoked until it expired.
  */
 export async function logout(): Promise<void> {
   try {
     await request<{ ok?: boolean }>("/api/access/logout", "Failed to log out", {
       method: "POST",
-      csrfExempt: true,
+      csrfBestEffort: true,
     });
   } catch (err) {
-    // The gate closes locally regardless; a failed logout must not trap the user inside.
+    // The session ends locally regardless; a failed logout must not trap the user inside.
     console.warn("[access] logout request failed; clearing locally anyway.", err);
   } finally {
     // The token is dead once the user logs out — drop it no matter what the network did.

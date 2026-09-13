@@ -1,13 +1,15 @@
 /**
- * The one HTTP transport for the whole StrikeEdge frontend.
+ * The one HTTP transport for the whole GTS Algo Research frontend.
  *
- * WHAT THIS REPLACES
- * ------------------
- * The CalSpread source carried a 2,623-line `api.ts` whose transport read and wrote a
- * bearer token in `localStorage` and appended it to the SSE query string. StrikeEdge's
- * session is an HttpOnly cookie the browser attaches automatically, so NONE of that
- * exists here. There is no token to read, store, log or leak — the wrapper simply sends
- * `credentials: "include"` on every request and lets the same-origin cookie do its job.
+ * NO CLIENT-SIDE CREDENTIAL STORE
+ * -------------------------------
+ * An earlier generation of this transport read and wrote a bearer token in `localStorage`
+ * and appended it to the SSE query string. The session is now an HttpOnly cookie the
+ * browser attaches automatically, so NONE of that exists here. There is no token to read,
+ * store, log or leak — the wrapper simply sends `credentials: "include"` on every request
+ * and lets the same-origin cookie do its job. That property is enforced by CI, which scans
+ * the built bundle and fails on any localStorage key outside a two-entry UI-preference
+ * allow-list.
  *
  * THE FOUR THINGS THIS WRAPPER GUARANTEES
  *   1. Same-origin credentials: the session cookie rides on every call, incl. the SSE.
@@ -261,18 +263,32 @@ export interface RequestOptions {
   suppressUnauthorized?: boolean;
   /**
    * When true, a MUTATING request is sent WITHOUT a CSRF header and WITHOUT requiring an
-   * in-memory token. Use this ONLY for the two calls the backend accepts without one:
+   * in-memory token. Use this ONLY for the one call the backend accepts without one:
    *
    *   • `POST /api/access/verify` — the login call itself MINTS the token (there is none to
    *     send yet), and the backend treats it as the sole public mutation.
-   *   • `POST /api/access/logout` — logout must succeed even when the session is already
-   *     dead (no live token to echo); the backend requires the header only for a LIVE
-   *     session, so logout opts out and simply omits it.
    *
    * Every other mutating request MUST carry the token: if none is held the wrapper throws a
    * `MissingCsrfTokenError` rather than firing a request the backend will 403.
    */
   csrfExempt?: boolean;
+  /**
+   * Send the CSRF header WHEN a token is held, and omit it (without throwing) when none is.
+   *
+   * This exists for exactly one call: `POST /api/access/logout`.
+   *
+   * The backend's logout route is deliberately asymmetric. With a LIVE session, revoking it
+   * is a real state change and the route REQUIRES an allowed Origin plus a matching
+   * `x-csrf-token` header. With no live session there is nothing to protect, so it clears
+   * the cookies and returns 200 without a header.
+   *
+   * Logout therefore cannot be `csrfExempt`: omitting the header while the session is live
+   * earns a 403, the server session is never revoked, and the UI "logs out" locally while a
+   * valid session keeps sitting in the database until it expires. It also cannot be a normal
+   * mutation, because that would throw `MissingCsrfTokenError` and strand a browser holding
+   * a dead cookie it can no longer clear. Best-effort satisfies both halves of the route.
+   */
+  csrfBestEffort?: boolean;
 }
 
 /**
@@ -290,9 +306,29 @@ async function readJson<T>(res: Response, what: string): Promise<T> {
   } catch {
     // Not JSON — fall through to the status-based message below.
   }
-  if (!res.ok) throw new Error(body?.error ?? `${what} (HTTP ${res.status}).`);
+  if (!res.ok) throw new ApiError(body?.error ?? `${what} (HTTP ${res.status}).`, res.status);
   if (body === null) throw new Error(`${what}: the server sent an unreadable reply.`);
   return body;
+}
+
+/**
+ * A non-2xx response, carrying the HTTP status alongside the backend's own message.
+ *
+ * It extends `Error` and keeps `message` byte-identical to what the previous plain `Error`
+ * carried, so every existing `err instanceof Error ? err.message : …` call site is
+ * unaffected. The added `status` exists so a caller can distinguish outcomes that must be
+ * PRESENTED differently without parsing prose — specifically, the passcode screen showing
+ * one fixed "Invalid passcode" for a 401 while still surfacing the backend's own generic
+ * message for a 429 (rate limited) or a 503 (access temporarily unavailable).
+ */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
 }
 
 /**
@@ -324,10 +360,14 @@ export async function request<T>(
 
   if (MUTATING.has(method) && !options.csrfExempt) {
     const csrf = getCsrfToken();
-    // Never send an empty header. If no token is held, fail loudly and locally rather than
-    // firing a request the backend will 403 with an opaque message.
-    if (!csrf) throw new MissingCsrfTokenError(what);
-    headers[CSRF_HEADER] = csrf;
+    if (csrf) {
+      headers[CSRF_HEADER] = csrf;
+    } else if (!options.csrfBestEffort) {
+      // Never send an empty header. If no token is held, fail loudly and locally rather than
+      // firing a request the backend will 403 with an opaque message. A `csrfBestEffort`
+      // call (logout) deliberately proceeds without one — see RequestOptions.
+      throw new MissingCsrfTokenError(what);
+    }
   }
 
   const res = await fetch(apiUrl(path), {
