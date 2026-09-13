@@ -1,11 +1,17 @@
+<!--
+  The GTS Algo Research mark as a favicon: the same market-structure lattice as
+  src/components/brand/GTSMark.tsx.
+
+  A favicon cannot read `currentColor` or the page theme, so unlike the in-app component this
+  copy carries explicit colours. It uses the DARK-surface palette with a light mark, which
+  keeps the glyph legible on both light and dark browser tab strips (a transparent-background
+  mark would disappear into one of them).
+-->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <rect width="32" height="32" rx="7" fill="#2f6fed" />
-  <g transform="translate(4 4) scale(1)">
-    <g transform="scale(1)" fill="none" stroke="#f7f9fc" stroke-width="2.4"
-       stroke-linecap="round" stroke-linejoin="round">
-      <path d="M7 2.5v19M17 2.5v19" />
-    </g>
-    <rect x="3.4" y="7" width="6.2" height="9" rx="1.3" fill="#f7f9fc" />
-    <rect x="14.4" y="5" width="6.2" height="8" rx="1.3" fill="#f7f9fc" />
+  <rect width="32" height="32" rx="7" fill="#0b0d0f" />
+  <g fill="none" stroke="#f4f5f6">
+    <rect x="7" y="7" width="18" height="18" rx="2.5" stroke-width="1.7" stroke-linejoin="round" />
+    <path d="M7 13.5h18M7 18.5h18M13.5 7v18M18.5 7v18" stroke-width="1.1" opacity="0.42" />
   </g>
+  <rect x="13.5" y="13.5" width="5" height="5" fill="#f4f5f6" />
 </svg>

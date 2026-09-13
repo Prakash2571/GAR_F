@@ -77,62 +77,12 @@ export function BrokerHistoryFilter({
   );
 }
 
-/**
- * The active broker, its session and its feed — the header strip on the Box page.
- *
- * Deliberately reports SESSION and FEED separately, and neither is derived from
- * admin authentication. "Connected" must mean the broker session is usable; showing
- * it because an operator typed the admin password would be the most misleading thing
- * this panel could do.
+/*
+ * A second, single-broker `BrokerStatusPanel` used to live here. It was dead code — nothing
+ * imported it — and it shared its name with the LIVE dual-broker panel in
+ * `BrokerStatusPanel.tsx`, which is the one the workspace renders. Two exported components
+ * with the same name, one of them unreachable, is how the wrong panel eventually gets edited.
+ * It was removed with the workspace redesign; the dual-broker panel is the only broker status
+ * surface, and it reports each broker's session, market-data health and order channel
+ * separately rather than collapsing them.
  */
-export function BrokerStatusPanel({
-  broker,
-  sessionOk,
-  feedLive,
-  tradingReady,
-  problems,
-}: {
-  broker?: BrokerId | null;
-  /** The BROKER session is authenticated — not the admin password. */
-  sessionOk: boolean;
-  feedLive: boolean;
-  /** Whether live order placement is currently possible. */
-  tradingReady?: boolean | null;
-  /** Operator-facing failures, e.g. "Static IP not configured". */
-  problems?: string[];
-}) {
-  return (
-    <div className="box-broker-status">
-      <div className="box-broker-status-row">
-        <span className="box-dim">Broker</span>
-        <BrokerBadge broker={broker} />
-      </div>
-      <div className="box-broker-status-row">
-        <span className="box-dim">Session</span>
-        <span className={sessionOk ? "box-ok" : "box-bad"}>
-          {sessionOk ? "Connected" : "Not connected"}
-        </span>
-      </div>
-      <div className="box-broker-status-row">
-        <span className="box-dim">Feed</span>
-        {/* A feed cannot be live without a session, so this never contradicts the row above. */}
-        <span className={feedLive ? "box-ok" : "box-bad"}>{feedLive ? "Live" : "Down"}</span>
-      </div>
-      {tradingReady !== undefined && tradingReady !== null && (
-        <div className="box-broker-status-row">
-          <span className="box-dim">Trading</span>
-          <span className={tradingReady ? "box-ok" : "box-bad"}>
-            {tradingReady ? "Ready" : "Blocked"}
-          </span>
-        </div>
-      )}
-      {problems && problems.length > 0 && (
-        <ul className="box-broker-problems">
-          {problems.map((p) => (
-            <li key={p}>{p}</li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}

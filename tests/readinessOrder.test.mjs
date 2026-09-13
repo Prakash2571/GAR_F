@@ -269,7 +269,13 @@ test("the contract version and the backend pin move TOGETHER", () => {
   // Pinned to the CURRENT contract version, deliberately as a literal: this assertion exists to fail
   // when the contract moves without the pin and the generated types moving with it, so reading it from
   // the file it is checking would defeat the purpose.
-  assert.equal(version.contract_version, "1.8.0");
+  //
+  // 1.8.0 -> 1.9.0: the GTS Algo Research rebrand changed `session_cookie_default` in
+  // protocol.json (strikedge_session -> gts_session). protocol.json is hashed by digest.mjs
+  // alongside the schemas, so a protocol-constant change moves schemas_sha256 exactly as a
+  // schema edit would — hence a version bump, a re-vendor and a re-pin. Updating this literal
+  // is the deliberate acknowledgement that step is complete.
+  assert.equal(version.contract_version, "1.9.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,

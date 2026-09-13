@@ -189,15 +189,19 @@ jobs:
 
       # ── No session token in localStorage ──────────────────────────────────────────────────
       #
-      # StrikeEdge's session lives ONLY in an HttpOnly, same-origin cookie; the front end never
-      # reads or writes a session token in localStorage (see src/api/http.ts, src/auth/AccessGate.tsx).
+      # The session lives ONLY in an HttpOnly, same-origin cookie; the front end never reads or
+      # writes a session token in localStorage (see src/api/http.ts, src/auth/AccessGate.tsx).
       # A `localStorage.setItem` of a session/token key in the built bundle would be a real security
-      # regression — exactly the pattern the old CalSpread front end used and StrikeEdge removed.
+      # regression — exactly the pattern an earlier generation of this front end used, and which was
+      # deliberately removed.
       #
       # The bundle DOES use localStorage, but only for two benign UI preferences whose exact keys are
       # read from source:
-      #     strikedge_theme               (src/ThemeToggle.tsx  — light/dark theme)
-      #     calspread:box:sound-enabled   (src/lib/boxSounds.ts — Box sound on/off)
+      #     gts_theme                     (src/lib/theme.ts     — light/dark theme)
+      #     calspread:box:sound-enabled   (src/lib/boxSounds.ts — Box sound on/off; the key predates
+      #                                    the rebrand and is intentionally unchanged, so a stored
+      #                                    sound preference is not silently reset. It is invisible in
+      #                                    the UI and pinned by tests/boxSoundPref.test.mjs.)
       # These are the ONLY allowed keys. The check resolves every key passed to localStorage
       # get/setItem (whether an inline string literal or a minified variable holding one) and fails
       # if any resolved key is not one of the two above — so it cannot false-positive on the theme /
@@ -210,7 +214,7 @@ jobs:
           import { readFileSync, readdirSync } from "node:fs";
           import path from "node:path";
 
-          const ALLOWED = new Set(["strikedge_theme", "calspread:box:sound-enabled"]);
+          const ALLOWED = new Set(["gts_theme", "calspread:box:sound-enabled"]);
           const dir = "dist/assets";
           const files = readdirSync(dir).filter((f) => f.endsWith(".js"));
           let failed = false;

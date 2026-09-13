@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LockKeyIcon } from "@phosphor-icons/react";
 import {
   boxStreamUrl,
   closeBoxTrade,
@@ -48,8 +47,7 @@ import {
 } from "./lib/readinessOrder.ts";
 import { explainScannerStop, modeLabel } from "./lib/honestLabels.ts";
 import { fmt, formatExpiry } from "./format.ts";
-import ThemeToggle from "./ThemeToggle.tsx";
-import BrandMark from "./BrandMark.tsx";
+import BoxHeader from "./components/layout/BoxHeader.tsx";
 import { DirectionBadge } from "./BoxDirection.tsx";
 import { BrokerBadge, BrokerHistoryFilter, type BrokerFilter } from "./BoxBroker.tsx";
 import BoxDeleteModal from "./BoxDeleteModal.tsx";
@@ -62,8 +60,6 @@ import { BoxGates } from "./BoxGates.tsx";
 import { BoxExecutionControl } from "./BoxExecutionControl.tsx";
 import { BoxRiskControl } from "./BoxRiskControl.tsx";
 import { BoxSessionControl } from "./BoxSessionControl.tsx";
-import { BoxHelp } from "./BoxHelp.tsx";
-import BoxSoundToggle from "./BoxSoundToggle.tsx";
 import { useBoxSounds } from "./useBoxSounds.ts";
 import { BrokerStatusPanel } from "./BrokerStatusPanel.tsx";
 import { RuntimeStatusBanners } from "./RuntimeStatusBanners.tsx";
@@ -196,10 +192,11 @@ function duration(fromIso: string, toIso: string | null): string {
 }
 
 export default function Box({ onLock }: Props) {
-  // In StrikeEdge the passcode gate is the single access boundary. Once the dashboard has
-  // mounted, the session cookie authenticates every call and the backend enforces access
-  // per-request (any 401 returns the whole app to the gate). So these three flags — which in
-  // CalSpread distinguished anonymous / trade-admin / full-admin — are all true here.
+  // The site passcode is the single access boundary. This component is mounted only behind
+  // <ProtectedRoute>, so a backend-confirmed session already exists; the session cookie then
+  // authenticates every call and the backend enforces access per-request (any 401 clears
+  // session state and returns the browser to the public page). These three flags are the
+  // remains of a multi-tier admin model that no longer exists — all three are true here.
   const authenticated = true;
   const canTrade = true;
   const isFullAdmin = true;
@@ -903,97 +900,26 @@ export default function Box({ onLock }: Props) {
   /* --------------------------------- render ------------------------------- */
 
   return (
-    <div className="app an-page">
-      <header className="topbar">
-        <div className="brand">
-          <BrandMark />
-          <div className="card-title">
-            <h1>StrikeEdge</h1>
-            {/* SECTION 7: the subtitle is DERIVED from the backend's own execution_mode. It was a
-                literal "paper trading", which kept claiming paper under BOX_EXECUTION_MODE=live —
-                the single most dangerous label a trading UI can get wrong, because it invites an
-                operator to press a button they would not press if it said LIVE. */}
-            <span className={`an-underline ${headerMode.live ? "is-bad" : ""}`} title={headerMode.detail}>
-              {headerMode.subtitle}
-            </span>
-          </div>
-        </div>
-
-        <div className="toolbar">
-          {/* The panel is given the live mode and config so it explains what this
-              server is ACTUALLY running — a help page quoting stale defaults is worse
-              than none, and its lead paragraph must not promise "paper" under live. */}
-          <BoxHelp mode={status?.execution_mode} cfg={cfg} />
-          <BoxSoundToggle enabled={soundEnabled} onToggle={toggleSound} onTest={testSound} />
-          <ThemeToggle />
-          <button
-            type="button"
-            className="btn"
-            onClick={onLock}
-            title="Lock StrikeEdge and return to the passcode screen"
-            aria-label="Lock"
-          >
-            <LockKeyIcon size={16} weight="regular" aria-hidden="true" />
-            <span>Lock</span>
-          </button>
-          <span
-            className="box-mode"
-            title={
-              status?.execution_mode === "live"
-                ? "The execution model the backend is actually running. LIVE: fills are real broker orders, gated by the fail-closed durable order manager."
-                : "The execution model the backend is actually running. Fills are simulated from observed executable books — never real orders."
-            }
-          >
-            {(status?.execution_mode ?? "paper").replace(/_/g, " ").toUpperCase()}
-          </span>
-          <span
-            className={`status status--${
-              running ? (!marketOpen ? "wait" : live ? "live" : "wait") : "idle"
-            }`}
-          >
-            <span className="status-dot" />
-            {running
-              ? !marketOpen
-                ? "Market closed"
-                : live
-                  ? "Scanning"
-                  : "Starting…"
-              : "Stopped"}
-          </span>
-          <div
-            className="box-strike-level"
-            role="group"
-            aria-label="Strikes each side of ATM"
-            title="How many strikes up/down from ATM are monitored and traded. Narrowing this only limits NEW boxes — positions already open are unaffected."
-          >
-            <span className="box-strike-level-label">ATM ±</span>
-            {([1, 2, 3] as const).map((lvl) => (
-              <button
-                key={lvl}
-                type="button"
-                className={`btn btn--sm${status?.strike_level === lvl ? " btn--primary" : ""}`}
-                aria-pressed={status?.strike_level === lvl}
-                disabled={busy || !canTrade}
-                onClick={() => void handleStrikeLevel(lvl)}
-              >
-                {lvl}
-              </button>
-            ))}
-          </div>
-          <button
-            className={`btn ${running ? "btn--danger" : "btn--primary"}`}
-            onClick={() => void toggleScanner()}
-            disabled={busy}
-            title={
-              running
-                ? "Stop opening new boxes (open positions stay monitored)"
-                : "Start discovering and auto-opening paper boxes"
-            }
-          >
-            {running ? "STOP" : "RUN"}
-          </button>
-        </div>
-      </header>
+    <div className="gts-workspace">
+      {/* The top bar. Identity, backend-derived state, session utilities and the one command
+          control, in that order. Every value it renders is passed in from here — it derives no
+          readiness, no mode and no tradability of its own. */}
+      <BoxHeader
+        status={status}
+        cfg={cfg}
+        headerMode={headerMode}
+        running={running}
+        live={live}
+        marketOpen={marketOpen}
+        busy={busy}
+        canTrade={canTrade}
+        soundEnabled={soundEnabled}
+        onToggleSound={toggleSound}
+        onTestSound={testSound}
+        onToggleScanner={() => void toggleScanner()}
+        onStrikeLevel={(level) => void handleStrikeLevel(level)}
+        onLock={onLock}
+      />
 
       {/* Broker status for BOTH stored sessions — active + standby — with guarded
           selection and switch-blocker display. */}
@@ -1281,38 +1207,57 @@ export default function Box({ onLock }: Props) {
           without knowing HOW a fill is even observed. Separate panel, separate signal. */}
       <BoxOrderStreamStatus orderStream={status?.order_stream} />
 
+      {/* The three jobs, as a real underlined tab strip rather than three pill buttons. Counts
+          and attention markers stay ON the tabs, so a position that needs a look is visible
+          from whichever tab is open. */}
       <nav className="box-views" role="tablist" aria-label="Box view">
         <button
           type="button"
           role="tab"
           aria-selected={view === "opportunities"}
-          className={`btn${view === "opportunities" ? " btn--primary" : ""}`}
+          className="box-view-tab"
           onClick={() => setView("opportunities")}
         >
-          Opportunities <span className="pill-count">{opportunities.length}</span>
+          <span className="box-view-tab-label">Opportunities</span>
+          <span className="pill-count">{opportunities.length}</span>
           {eligibleCount > 0 && (
-            <span className="box-badge box-badge--eligible">{eligibleCount}</span>
+            <span className="box-badge box-badge--eligible" title={`${eligibleCount} eligible`}>
+              {eligibleCount}
+            </span>
           )}
         </button>
         <button
           type="button"
           role="tab"
           aria-selected={view === "open"}
-          className={`btn${view === "open" ? " btn--primary" : ""}`}
+          className="box-view-tab"
           onClick={() => setView("open")}
         >
-          Open trades <span className="pill-count">{open.length}</span>
+          <span className="box-view-tab-label">Positions</span>
+          <span className="pill-count">{open.length}</span>
           {/* Attention markers, so a position needing a look is visible from any tab. */}
           {exitEligibleCount > 0 && (
-            <span className="box-badge box-badge--exit">{exitEligibleCount}</span>
+            <span
+              className="box-badge box-badge--exit"
+              title={`${exitEligibleCount} position(s) eligible for auto exit`}
+            >
+              {exitEligibleCount}
+            </span>
           )}
-          {blockedCount > 0 && <span className="box-badge box-badge--warn">{blockedCount}</span>}
+          {blockedCount > 0 && (
+            <span
+              className="box-badge box-badge--warn"
+              title={`${blockedCount} position(s) with a blocked exit`}
+            >
+              {blockedCount}
+            </span>
+          )}
         </button>
         <button
           type="button"
           role="tab"
           aria-selected={view === "history"}
-          className={`btn${view === "history" ? " btn--primary" : ""}`}
+          className="box-view-tab"
           onClick={() => {
             setView("history");
             // Today first (instant), then reconcile the full book behind it.
@@ -1320,7 +1265,8 @@ export default function Box({ onLock }: Props) {
             void fetchBoxExecutionAttempts(100).then(setAttempts).catch(() => {});
           }}
         >
-          Closed trades <span className="pill-count">{history.length}</span>
+          <span className="box-view-tab-label">History</span>
+          <span className="pill-count">{history.length}</span>
         </button>
         {view === "history" && history.length > 0 && (
           <span className="box-views-total">
@@ -1372,24 +1318,57 @@ export default function Box({ onLock }: Props) {
           <div className="box-table-wrap">
             <table className="box-table">
               <thead>
+                {/* COLUMN ORDER IS THE DECISION ORDER.
+                    Expected NET comes third — right after what and which way — because it is
+                    the figure the entry gate actually tests. The four components it is derived
+                    from (gross edge, entry fees, estimated exit fees, execution cost) and the
+                    safety buffer deducted inside it follow immediately, grouped, so the net is
+                    prioritised WITHOUT hiding its derivation. Structure (strikes, width, box
+                    value, expiry) and executability (broker, liquidity, freshness, status) come
+                    after. No figure was removed. */}
                 <tr>
-                  <th>Underlying</th>
-                  <th>Direction</th>
-                  <th>Expiry</th>
-                  <th className="num">K1</th>
-                  <th className="num">K2</th>
-                  <th className="num">Width</th>
-                  <th className="num">{marketOpen ? "Box value" : "Close cost"}</th>
-                  <th className="num">Gross edge</th>
-                  <th className="num">Entry fees</th>
-                  <th className="num">Est. exit fees</th>
-                  <th className="num">Exec. cost</th>
-                  <th className="num">Safety</th>
-                  <th className="num">Expected net</th>
-                  <th>Liquidity</th>
-                  <th>Fresh</th>
-                  <th>Status</th>
-                  <th />
+                  <th scope="col">Underlying</th>
+                  <th scope="col">Direction</th>
+                  <th scope="col" className="num box-col--lead">
+                    Net edge
+                  </th>
+                  <th scope="col" className="num box-col--group">
+                    Gross edge
+                  </th>
+                  <th scope="col" className="num">
+                    Entry fees
+                  </th>
+                  <th scope="col" className="num">
+                    Est. exit fees
+                  </th>
+                  <th scope="col" className="num">
+                    Exec. cost
+                  </th>
+                  <th scope="col" className="num">
+                    Safety
+                  </th>
+                  <th scope="col" className="num box-col--group">
+                    K1
+                  </th>
+                  <th scope="col" className="num">
+                    K2
+                  </th>
+                  <th scope="col" className="num">
+                    Width
+                  </th>
+                  <th scope="col" className="num">
+                    {marketOpen ? "Box value" : "Close cost"}
+                  </th>
+                  <th scope="col">Expiry</th>
+                  <th scope="col" className="box-col--group">
+                    Broker
+                  </th>
+                  <th scope="col">Liquidity</th>
+                  <th scope="col">Book</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1411,21 +1390,31 @@ export default function Box({ onLock }: Props) {
                         {o.is_index && <span className="badge-index">INDEX</span>}
                       </td>
                       <td><DirectionBadge direction={o.direction} /></td>
-                      <td className="box-dim">{formatExpiry(o.expiry)}</td>
-                      <td className="num">{o.lower_strike}</td>
-                      <td className="num">{o.upper_strike}</td>
-                      <td className="num">{o.box_width}</td>
-                      <td className="num">{rupees(o.entry_box_cost)}</td>
-                      <td className={`num ${pnlClass(o.gross_edge)}`}>{rupees(o.gross_edge)}</td>
+                      <td
+                        className={`num box-net box-col--lead ${pnlClass(o.expected_net_profit)}`}
+                        title={`The entry gate is expected net ≥ ${rupees(o.min_expected_net_profit)} after every cost`}
+                      >
+                        {o.expected_net_profit === null ? "unpriced" : rupees(o.expected_net_profit)}
+                      </td>
+                      <td className={`num box-col--group ${pnlClass(o.gross_edge)}`}>
+                        {rupees(o.gross_edge)}
+                      </td>
                       <td className="num box-dim">{rupees(o.entry_charges)}</td>
                       <td className="num box-dim">{rupees(o.estimated_exit_charges)}</td>
                       <td className="num box-dim">{rupees(o.execution_cost)}</td>
                       <td className="num box-dim">{rupees(o.safety_buffer)}</td>
-                      <td
-                        className={`num box-net ${pnlClass(o.expected_net_profit)}`}
-                        title={`The entry gate is expected net ≥ ${rupees(o.min_expected_net_profit)} after every cost`}
-                      >
-                        {o.expected_net_profit === null ? "unpriced" : rupees(o.expected_net_profit)}
+                      <td className="num box-col--group">{o.lower_strike}</td>
+                      <td className="num">{o.upper_strike}</td>
+                      <td className="num box-dim">{o.box_width}</td>
+                      <td className="num">{rupees(o.entry_box_cost)}</td>
+                      <td className="box-dim">{formatExpiry(o.expiry)}</td>
+                      <td className="box-col--group">
+                        {/* The broker that WOULD execute this box: the scanner runs on exactly
+                            one active broker at a time, and this is the backend's own
+                            `status.broker`. It is not a per-opportunity field on the wire and is
+                            not presented as one — it is the venue this whole scan belongs to,
+                            repeated per row so a row can be read on its own. */}
+                        <BrokerBadge broker={status?.broker} />
                       </td>
                       <td>
                         {/* Depth ONLY. Staleness has its own column, so a
@@ -1466,7 +1455,7 @@ export default function Box({ onLock }: Props) {
                           className={`box-status box-status--${o.status.toLowerCase()}`}
                           title={
                             o.status === "UNPRICED"
-                              ? "Zerodha could not price the eight box orders, so this box is shown but never auto-traded"
+                              ? "The active broker could not price the eight box orders, so this box is shown but never auto-traded"
                               : o.status === "INDICATIVE"
                                 ? "Derived from last traded prices while the market is shut — not executable, so it cannot be entered"
                                 : o.reject
@@ -1479,7 +1468,8 @@ export default function Box({ onLock }: Props) {
                       </td>
                       <td>
                         <button
-                          className="btn btn--sm"
+                          type="button"
+                          className="btn btn--sm btn--quiet"
                           onClick={() => {
                             const same =
                               expanded === o.underlying &&
@@ -1625,7 +1615,7 @@ export default function Box({ onLock }: Props) {
       {view === "open" && (
       <section className="box-section">
         <h2 className="box-section-title">
-          Open box trades <span className="pill-count">{open.length}</span>
+          Open positions <span className="pill-count">{open.length}</span>
           <span className="box-chain-meta">
             Monitored by the backend — this continues with the scanner stopped and the browser
             closed.
@@ -1633,7 +1623,7 @@ export default function Box({ onLock }: Props) {
         </h2>
         {open.length === 0 ? (
           <p className="box-empty">
-            No open paper boxes. Qualifying boxes are opened automatically while the scanner is
+            No open boxes. Qualifying boxes are opened automatically while the scanner is
             running.
           </p>
         ) : (
@@ -1671,7 +1661,7 @@ export default function Box({ onLock }: Props) {
       {view === "history" && (
       <section className="box-section">
         <h2 className="box-section-title">
-          Closed box trades <span className="pill-count">{history.length}</span>
+          Execution history <span className="pill-count">{history.length}</span>
           {historyLoading && (
             <span className="box-chain-meta">
               <span className="spinner" /> loading earlier days…
@@ -1703,10 +1693,10 @@ export default function Box({ onLock }: Props) {
             {historyError
               ? "The closed-trade log could not be loaded — see the message above."
               : historyLoading
-                ? "Loading closed paper boxes…"
+                ? "Loading closed boxes…"
                 : dayPnlClosedCount > 0
                   ? `The day summary reports ${dayPnlClosedCount} box(es) closed today, but none could be listed. This is a load failure, not an empty log — try reloading.`
-                  : "No closed paper boxes yet."}
+                  : "No closed boxes yet."}
           </p>
         ) : (
           <div className="box-history-days">
@@ -1953,37 +1943,49 @@ function OpenBoxCard({
           </span>
         </div>
         <div className="box-card-actions">
+          {/* Attention markers first — state before controls. */}
           {p.exit_eligible && <span className="box-badge box-badge--exit">AUTO EXIT ELIGIBLE</span>}
           {p.expiry_safety && <span className="box-badge box-badge--warn">EXPIRY SAFETY</span>}
-          <button
-            className="btn btn--sm"
-            onClick={onClose}
-            disabled={closing || deleting}
-            title="Close now at the current executable touch"
-          >
-            {closing ? "Closing…" : "Close now"}
-          </button>
-          {isLive ? (
-            // Stated rather than hidden, so the restriction is understood instead of
-            // looking like a missing feature.
-            <span
-              className="box-dim box-delete-blocked"
-              title="A live position's record is the only link to real broker exposure. Deleting it would orphan that exposure."
+
+          {/* CRITICAL ZONE. Everything that changes exposure or destroys a record lives inside
+              this separated group, set apart from the read-mostly card body by its own rule and
+              inset. The affordances themselves are UNCHANGED — the same single click with the
+              same backend confirmation behaviour as before. This makes them easier to FIND and
+              no easier to hit by accident, which is the correct direction for a control that
+              flattens a real four-leg position. */}
+          <div className="box-card-critical" role="group" aria-label="Position controls">
+            <button
+              type="button"
+              className="btn btn--sm btn--critical"
+              onClick={onClose}
+              disabled={closing || deleting}
+              title="Close now at the current executable touch. The backend refuses if a whole-lot market is not available on all four reversed legs."
             >
-              Close/flatten this live position before removing records.
-            </span>
-          ) : (
-            onDelete && (
-              <button
-                className="btn btn--sm btn--danger"
-                onClick={onDelete}
-                disabled={deleting || closing}
-                title="Permanently delete this PAPER trade and recalculate all Box statistics"
+              {closing ? "Closing…" : "Close now"}
+            </button>
+            {isLive ? (
+              // Stated rather than hidden, so the restriction is understood instead of
+              // looking like a missing feature.
+              <span
+                className="box-dim box-delete-blocked"
+                title="A live position's record is the only link to real broker exposure. Deleting it would orphan that exposure."
               >
-                {deleting ? "Deleting…" : "Delete"}
-              </button>
-            )
-          )}
+                Close/flatten this live position before removing records.
+              </span>
+            ) : (
+              onDelete && (
+                <button
+                  type="button"
+                  className="btn btn--sm btn--danger"
+                  onClick={onDelete}
+                  disabled={deleting || closing}
+                  title="Permanently delete this PAPER trade and recalculate all Box statistics"
+                >
+                  {deleting ? "Deleting…" : "Delete"}
+                </button>
+              )
+            )}
+          </div>
         </div>
       </div>
 

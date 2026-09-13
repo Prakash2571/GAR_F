@@ -1,49 +1,35 @@
+/**
+ * The theme toggle control.
+ *
+ * The selection/persistence logic lives in `lib/theme.ts` (and is unit-tested there); this
+ * component is only the button. It is re-exported from here as well, because `main.tsx` and
+ * several existing modules import `applyTheme` / `readStoredTheme` from this path.
+ */
+
 import { useEffect, useState } from "react";
 import { MoonIcon, SunIcon } from "@phosphor-icons/react";
+import { applyTheme, readStoredTheme, storeTheme, type Theme } from "./lib/theme.ts";
 
-export type Theme = "dark" | "light";
-
-const THEME_STORAGE_KEY = "strikedge_theme";
-
-export function readStoredTheme(): Theme {
-  try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored === "light" || stored === "dark") return stored;
-    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-  } catch {
-    return "dark";
-  }
-}
-
-export function applyTheme(theme: Theme) {
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
-  document
-    .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", theme === "light" ? "#f7f9fc" : "#0f1216");
-}
+export { applyTheme, readStoredTheme, storeTheme };
+export type { Theme };
 
 export default function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>(readStoredTheme);
   const isLight = theme === "light";
-  const nextTheme = isLight ? "dark" : "light";
-  // One string for both the tooltip and the accessible name. The control always
-  // announces the action it will perform next.
+  const nextTheme: Theme = isLight ? "dark" : "light";
+  // One string for both the tooltip and the accessible name. The control always announces the
+  // ACTION it will perform next, not the state it is in — `aria-pressed` carries the state.
   const label = `Switch to ${nextTheme} mode`;
 
   useEffect(() => {
     applyTheme(theme);
-    try {
-      localStorage.setItem(THEME_STORAGE_KEY, theme);
-    } catch {
-      // The active theme still works when storage is unavailable.
-    }
+    storeTheme(theme);
   }, [theme]);
 
   return (
     <button
       type="button"
-      className="btn theme-toggle"
+      className="btn btn--quiet theme-toggle"
       aria-label={label}
       aria-pressed={isLight}
       title={label}
@@ -54,7 +40,7 @@ export default function ThemeToggle() {
       ) : (
         <MoonIcon size={16} weight="regular" aria-hidden="true" />
       )}
-      <span>{isLight ? "Light" : "Dark"}</span>
+      <span className="theme-toggle-label">{isLight ? "Light" : "Dark"}</span>
     </button>
   );
 }

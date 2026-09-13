@@ -3,10 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0f1216" />
+    <!--
+      Kept in step with `--bg` in src/styles.css and with THEME_COLOR in src/ThemeToggle.tsx,
+      which rewrites this attribute whenever the theme changes. The static value is the DARK
+      page colour, because dark is the default identity and this is what the browser chrome
+      uses before any script has run.
+    -->
+    <meta name="theme-color" content="#060708" />
+    <meta
+      name="description"
+      content="Algorithmic trading research and execution systems from Ghatsila."
+    />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
-    <title>StrikeEdge</title>
+    <title>GTS Algo Research</title>
   </head>
   <body>
     <div id="root"></div>

@@ -13,7 +13,7 @@
 /** Protocol constants from contract/protocol.json (single source of truth — do not hardcode copies). */
 export const CSRF_COOKIE_SUFFIX = "_csrf" as const;
 export const CSRF_HEADER = "x-csrf-token" as const;
-export const SESSION_COOKIE_DEFAULT = "strikedge_session" as const;
+export const SESSION_COOKIE_DEFAULT = "gts_session" as const;
 
 /** GET /api/access/status (200) (from contract/schemas/access-status.schema.json) */
 export type AccessStatusContract = { authenticated: false; } | ({ authenticated: true; role: "full" | "trade"; expires_at: string; csrf_token?: string; });

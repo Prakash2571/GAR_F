@@ -1,22 +1,29 @@
 /**
- * The access gate's data contract and its single hardest invariant.
+ * The access layer's data contract and its single hardest invariant.
  *
- * The gate is UX; the backend is the boundary. What the FRONTEND must guarantee is:
- *   • an UNSET session reads as not-authenticated (the gate shows);
- *   • an INVALID passcode rejects and the gate stays closed (never "authenticated");
- *   • a VALID passcode reports authenticated (the dashboard mounts);
+ * The frontend gate is UX; the backend is the boundary. What the FRONTEND must guarantee is:
+ *   • an UNSET session reads as not-authenticated (the public page shows);
+ *   • an INVALID passcode rejects, with a rejection that reveals NOTHING about the server;
+ *   • a NON-401 failure is not disguised as a wrong passcode;
+ *   • a VALID passcode reports authenticated (the protected workspace may mount);
+ *   • logout revokes SERVER-SIDE when it can, and still always ends the session locally;
  *   • and, non-negotiably, NONE of these paths writes a session token to localStorage — the
  *     session lives only in the HttpOnly cookie the backend sets.
  *
- * AccessGate is a React component that needs a DOM to render, so these tests exercise the
- * access API it is built on and assert the localStorage invariant directly with a spy. The
- * passcode is only ever sent in the request body, never persisted.
+ * The provider and the passcode dialog are React components that need a DOM to render, so
+ * these tests exercise the access API they are built on and assert the localStorage invariant
+ * directly with a spy. The passcode is only ever sent in the request body, never persisted.
  */
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { verifyPasscode, accessStatus, logout } from "../src/api/access.ts";
+import {
+  verifyPasscode,
+  accessStatus,
+  logout,
+  PasscodeRejectedError,
+} from "../src/api/access.ts";
 
 /** Spy on localStorage so we can prove NOTHING is ever written during an access flow. */
 function installLocalStorageSpy() {
@@ -59,11 +66,56 @@ test("UNSET session: accessStatus reports not authenticated, writes no localStor
   assert.equal(writes.length, 0, "no token written to localStorage");
 });
 
-test("INVALID passcode: verify rejects, gate stays closed, no localStorage write", async () => {
+test("INVALID passcode: verify rejects with PasscodeRejectedError, no localStorage write", async () => {
   const writes = installLocalStorageSpy();
-  stubFetch(() => jsonResponse(401, { error: "That passcode was not accepted." }));
-  await assert.rejects(() => verifyPasscode("wrong"), /not accepted/);
+  stubFetch(() => jsonResponse(401, { error: "Invalid passcode." }));
+  await assert.rejects(
+    () => verifyPasscode("wrong"),
+    (err) => {
+      // A DISTINCT error type, so the UI can render one fixed, uninformative string for a
+      // rejected passcode without pattern-matching the backend's prose.
+      assert.ok(err instanceof PasscodeRejectedError, "a 401 is a passcode rejection");
+      assert.equal(err.message, "Invalid passcode");
+      return true;
+    },
+  );
   assert.equal(writes.length, 0, "a rejected passcode never persists anything");
+});
+
+test("INVALID passcode: the rejection carries NOTHING about the server or the secret", async () => {
+  installLocalStorageSpy();
+  // Even if a future backend leaked detail in the body, a 401 collapses to the fixed string:
+  // the UI must never be able to tell "wrong passcode" from "no secret configured", and must
+  // never surface an attempt count, a database hint or any server internal.
+  stubFetch(() =>
+    jsonResponse(401, { error: "SITE_ACCESS_SECRET is unset; attempt 4 of 10 from 10.0.0.1" }),
+  );
+  await assert.rejects(
+    () => verifyPasscode("wrong"),
+    (err) => {
+      assert.equal(err.message, "Invalid passcode");
+      assert.doesNotMatch(err.message, /SECRET|attempt|10\.0\.0\.1/i);
+      return true;
+    },
+  );
+});
+
+test("a NON-401 verify failure is NOT disguised as a wrong passcode", async () => {
+  installLocalStorageSpy();
+  // Rate limiting and "access temporarily unavailable" are operational problems. Reporting
+  // them as "Invalid passcode" would send the operator hunting for a typo that does not
+  // exist, so they keep the backend's own (already generic) message.
+  stubFetch(() =>
+    jsonResponse(429, { error: "Too many attempts. Please wait a few minutes and try again." }),
+  );
+  await assert.rejects(
+    () => verifyPasscode("x"),
+    (err) => {
+      assert.ok(!(err instanceof PasscodeRejectedError), "429 is not a passcode rejection");
+      assert.match(err.message, /Too many attempts/);
+      return true;
+    },
+  );
 });
 
 test("VALID passcode: verify reports authenticated, and STILL writes no localStorage", async () => {
