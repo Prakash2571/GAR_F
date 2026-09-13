@@ -1,14 +1,13 @@
 /**
- * The StrikeEdge broker status panel.
+ * The broker status panel.
  *
- * Replaces CalSpread's 464-line BrokerPanel with a focused, read-mostly status surface for
- * the DUAL-BROKER world: exactly one broker is active at a time, but BOTH stored sessions
- * are always shown so the operator can see standby readiness and every reason a switch is
- * refused.
+ * A focused, read-mostly status surface for the DUAL-BROKER world: exactly one broker is
+ * active at a time, but BOTH stored sessions are always shown so the operator can see
+ * standby readiness and every reason a switch is refused.
  *
  * WHY THIS FILE WAS REWRITTEN
- * It was written against a CalSpread-shaped `GET /api/broker/status` that StrikeEdge's
- * backend does not produce. Verified against a running backend, the real response is
+ * An earlier version was written against a `GET /api/broker/status` shape the backend does
+ * not produce. Verified against a running backend, the real response is
  *   { active_broker, generation, brokers: [{ broker, session, health }, …] }
  * whereas this component read `status.broker`, `status.session`, `status.health`,
  * `status.feed`, `status.dhan_configured`, `status.dhan_instruments`,
@@ -39,6 +38,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchBrokerStatus, fetchBrokerSwitchBlockers, selectBroker } from "./api/box.ts";
+import StatusBadge from "./components/ui/StatusBadge.tsx";
 import type {
   BrokerHealthView,
   BrokerId,
@@ -302,6 +302,11 @@ function BrokerCard({
         </span>
       </header>
 
+      {/* SIX SEPARATE FACTS, PER BROKER. Session/token, account identity, market-data feed,
+          data readiness and trading permission are reported independently and are never
+          reduced to one indicator: an authenticated session with a dead feed, or a healthy
+          feed with trading blocked, are ordinary states that a single green light would
+          misreport. Every value here is the backend's own — nothing is inferred locally. */}
       <dl className="box-broker-card-dl">
         <dt>Token</dt>
         <dd>{tokenState}</dd>
@@ -311,10 +316,21 @@ function BrokerCard({
         <dd>{identity}</dd>
         <dt>Feed</dt>
         <dd>{feed}</dd>
-        <dt>Data</dt>
-        <dd>{dataReady ? "ready" : "not ready"}</dd>
-        <dt>Trading</dt>
-        <dd>{tradingReady ? "permitted" : "blocked"}</dd>
+        <dt>Market data</dt>
+        <dd>
+          <StatusBadge tone={dataReady ? "positive" : "warning"}>
+            {dataReady ? "Ready" : "Not ready"}
+          </StatusBadge>
+        </dd>
+        <dt>Order channel</dt>
+        <dd>
+          {/* Trading permission is the ORDER-side signal and is deliberately reported apart
+              from market data above: a live quote socket is not evidence that orders can be
+              placed or that fills are observed. */}
+          <StatusBadge tone={tradingReady ? "positive" : "negative"}>
+            {tradingReady ? "Permitted" : "Blocked"}
+          </StatusBadge>
+        </dd>
       </dl>
 
       {problems.length > 0 && (
