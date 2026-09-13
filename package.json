@@ -1,6 +1,7 @@
 {
-  "name": "strikedge_frontend",
+  "name": "gts-algo-research-frontend",
   "private": true,
+  "description": "GTS Algo Research — public site and the protected GTS Box arbitrage workspace",
   "version": "0.1.0",
   "type": "module",
   "scripts": {

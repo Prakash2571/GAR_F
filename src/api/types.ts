@@ -1,15 +1,14 @@
 /**
- * StrikeEdge response types.
+ * Backend response types.
  *
- * Lifted from the CalSpread source `api.ts` (the Box + broker portions only), and kept
- * PURE — no browser globals, no fetch — so `node:test` can import this file directly under
- * Node 22's native type-stripping.
+ * Covers the Box and broker surfaces only, and kept PURE — no browser globals, no fetch — so
+ * `node:test` can import this file directly under Node 22's native type-stripping.
  *
  * ── ON IDENTIFIERS ──────────────────────────────────────────────────────────────────
- * Every `id` / `*_id` here is an OPAQUE STRING. StrikeEdge's authoritative store is now
- * PostgreSQL with MongoDB as an async reporting replica, so an id is whatever the backend
- * minted — it is NOT a Mongo ObjectId, NOT a UUID, and NOT parseable. The UI treats ids as
- * equality-comparable opaque tokens and nothing more.
+ * Every `id` / `*_id` here is an OPAQUE STRING. The authoritative store is PostgreSQL with
+ * MongoDB as an async reporting replica, so an id is whatever the backend minted — it is NOT
+ * a Mongo ObjectId, NOT a UUID, and NOT parseable. The UI treats ids as equality-comparable
+ * opaque tokens and nothing more.
  */
 
 /* ============================ shared charge shapes ============================ */
@@ -1329,11 +1328,11 @@ export interface FeedHealthView {
 /**
  * One broker's redacted session, as published inside GET /api/broker/status.
  *
- * VERIFIED AGAINST THE RUNNING BACKEND. This replaces a CalSpread-shaped
- * `BrokerSession` (`authenticated`, `client_id`, `client_name`, `token_expires_at`,
- * `token_expired`, `login_day`, `login_at`) that StrikeEdge's backend never sends: it
- * deliberately RE-PROJECTS the internal state so a future internal field cannot
- * silently become public.
+ * VERIFIED AGAINST THE RUNNING BACKEND. This replaces an earlier `BrokerSession` shape
+ * (`authenticated`, `client_id`, `client_name`, `token_expires_at`, `token_expired`,
+ * `login_day`, `login_at`) that the backend never sends: the backend deliberately
+ * RE-PROJECTS its internal state so a future internal field cannot silently become
+ * public.
  *
  * `account_label` is already redacted by the backend (last four characters, rest
  * masked). There is no token, ciphertext, IV or auth-tag field to render, by design.
@@ -1364,10 +1363,10 @@ export interface BrokerHealthView {
  * GET /api/broker/status.
  *
  * The previous shape here described a SINGLE broker with required `dhan_configured`,
- * `dhan_instruments` and `dhan_instruments_loaded_at` fields — a CalSpread response the
- * StrikeEdge backend does not produce. It actually returns BOTH brokers in an array,
- * which is what makes "active vs standby" renderable at all. Because the old fields were
- * required-but-absent they were `undefined` at runtime while still typechecking.
+ * `dhan_instruments` and `dhan_instruments_loaded_at` fields — a response the backend does
+ * not produce. It actually returns BOTH brokers in an array, which is what makes "active vs
+ * standby" renderable at all. Because the old fields were required-but-absent they were
+ * `undefined` at runtime while still typechecking.
  *
  * Verified against a real response; see `tests/fixtures/broker-status.json`.
  */
