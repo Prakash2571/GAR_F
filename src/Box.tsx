@@ -196,7 +196,7 @@ function duration(fromIso: string, toIso: string | null): string {
 }
 
 export default function Box({ onLock }: Props) {
-  // In StrikeEdge the passcode gate is the single access boundary. Once the dashboard has
+  // In GTS Box the passcode gate is the single access boundary. Once the dashboard has
   // mounted, the session cookie authenticates every call and the backend enforces access
   // per-request (any 401 returns the whole app to the gate). So these three flags — which in
   // CalSpread distinguished anonymous / trade-admin / full-admin — are all true here.
@@ -907,8 +907,15 @@ export default function Box({ onLock }: Props) {
       <header className="topbar">
         <div className="brand">
           <BrandMark />
-          <div className="card-title">
-            <h1>StrikeEdge</h1>
+          <div className="brand-lockup">
+            <div className="brand-line">
+              {/* The wordmark. Two tones separate the desk from the instrument it runs;
+                  see `.brand-word` in styles.css for why it is set in the mono face. */}
+              <h1 className="brand-word">
+                GTS <b>Box</b>
+              </h1>
+              <span className="brand-desc">Box-arbitrage research desk</span>
+            </div>
             {/* SECTION 7: the subtitle is DERIVED from the backend's own execution_mode. It was a
                 literal "paper trading", which kept claiming paper under BOX_EXECUTION_MODE=live —
                 the single most dangerous label a trading UI can get wrong, because it invites an
@@ -930,7 +937,7 @@ export default function Box({ onLock }: Props) {
             type="button"
             className="btn"
             onClick={onLock}
-            title="Lock StrikeEdge and return to the passcode screen"
+            title="Lock GTS Box and return to the passcode screen"
             aria-label="Lock"
           >
             <LockKeyIcon size={16} weight="regular" aria-hidden="true" />

@@ -32,13 +32,13 @@ fixture, so it does not appear above; it is covered by the digest and exercised 
 
 ## What these files are (historical context)
 
-These JSON files were **captured from a running StrikeEdge backend**, not hand-written.
+These JSON files were **captured from a running GTS Box backend**, not hand-written.
 `tests/apiContract.test.mjs` additionally asserts the specific fields the UI reads against them
 as a complementary, human-readable check — but the schema, not the fixture, is the contract.
 
 ## Why they exist
 
-The frontend and backend were built separately and their types for the new StrikeEdge
+The frontend and backend were built separately and their types for the new GTS Box
 endpoints drifted badly without anything catching it:
 
 | Endpoint | Frontend expected | Backend actually sends | Overlap |

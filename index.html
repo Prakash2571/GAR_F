@@ -3,10 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0f1216" />
+    <!-- Matches --surface-0 of the dark theme. ThemeToggle rewrites this on a theme change,
+         so the two values must stay in step with the token blocks in src/styles.css. -->
+    <meta name="theme-color" content="#0b0e13" />
+    <meta name="application-name" content="GTS Box" />
+    <meta
+      name="description"
+      content="GTS Box is a box-arbitrage research desk for NSE F&amp;O: it prices four-leg boxes continuously, shows the full expected-net arithmetic behind every entry decision, and keeps an audit record of each execution attempt."
+    />
+    <!-- An operator console behind a passcode has no business in a search index. -->
+    <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
-    <title>StrikeEdge</title>
+    <title>GTS Box — box-arbitrage research desk</title>
   </head>
   <body>
     <div id="root"></div>

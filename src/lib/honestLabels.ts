@@ -51,7 +51,7 @@ export function modeLabel(executionMode: string | null | undefined): ModeLabel {
     // Unknown mode ⇒ say so. Defaulting to "paper" would be a guess in the dangerous direction.
     return {
       badge: "mode unknown",
-      subtitle: "Box arbitrage · execution mode UNKNOWN, one lot",
+      subtitle: "Four-leg box arbitrage · NSE F&O · execution mode UNKNOWN, one lot",
       live: false,
       detail:
         "The backend has not reported an execution mode. Do not assume this is paper: treat every " +
@@ -61,7 +61,7 @@ export function modeLabel(executionMode: string | null | undefined): ModeLabel {
   if (mode === "live") {
     return {
       badge: "LIVE — real orders",
-      subtitle: "Box arbitrage · LIVE, real money, one lot",
+      subtitle: "Four-leg box arbitrage · NSE F&O · LIVE, real money, one lot",
       live: true,
       detail:
         "This deployment can place REAL orders with REAL money at the configured broker. Nothing " +
@@ -72,7 +72,7 @@ export function modeLabel(executionMode: string | null | undefined): ModeLabel {
   const pretty = mode.replace(/_/g, " ");
   return {
     badge: `paper — ${pretty}`,
-    subtitle: `Box arbitrage · paper trading (${pretty}), one lot`,
+    subtitle: `Four-leg box arbitrage · NSE F&O · paper trading (${pretty}), one lot`,
     live: false,
     detail:
       `This deployment is running the ${pretty} simulation. No order reaches any broker. Simulated ` +

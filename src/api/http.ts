@@ -1,10 +1,10 @@
 /**
- * The one HTTP transport for the whole StrikeEdge frontend.
+ * The one HTTP transport for the whole GTS Box frontend.
  *
  * WHAT THIS REPLACES
  * ------------------
  * The CalSpread source carried a 2,623-line `api.ts` whose transport read and wrote a
- * bearer token in `localStorage` and appended it to the SSE query string. StrikeEdge's
+ * bearer token in `localStorage` and appended it to the SSE query string. GTS Box's
  * session is an HttpOnly cookie the browser attaches automatically, so NONE of that
  * exists here. There is no token to read, store, log or leak — the wrapper simply sends
  * `credentials: "include"` on every request and lets the same-origin cookie do its job.

@@ -1,11 +1,19 @@
+<!--
+  GTS Box favicon: the same instrument mark as src/BrandMark.tsx.
+
+  Two rails are the strikes K1 < K2; the solid bar spanning them is the box, whose value is the
+  strike width; the side ticks are the underlying the payoff ignores. Drawn on the dark graphite
+  ground with the indigo accent so it reads at 16px in a browser tab and matches the app it
+  opens. Colours are literal here because a favicon cannot read CSS custom properties, so keep
+  them in step with the surface and accent tokens in the :root block of src/styles.css.
+-->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <rect width="32" height="32" rx="7" fill="#2f6fed" />
-  <g transform="translate(4 4) scale(1)">
-    <g transform="scale(1)" fill="none" stroke="#f7f9fc" stroke-width="2.4"
-       stroke-linecap="round" stroke-linejoin="round">
-      <path d="M7 2.5v19M17 2.5v19" />
-    </g>
-    <rect x="3.4" y="7" width="6.2" height="9" rx="1.3" fill="#f7f9fc" />
-    <rect x="14.4" y="5" width="6.2" height="8" rx="1.3" fill="#f7f9fc" />
+  <rect width="32" height="32" rx="7" fill="#0b0e13" />
+  <rect x="0.5" y="0.5" width="31" height="31" rx="6.5" fill="none" stroke="#272e38" />
+  <g transform="translate(4 4)" fill="none" stroke="#5b6ee8" stroke-width="1.9"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 2v20M17 2v20" opacity="0.55" />
+    <path d="M1.5 12H7M17 12h5.5" opacity="0.55" />
   </g>
+  <rect x="11" y="12.5" width="10" height="7" rx="1.2" fill="#5b6ee8" />
 </svg>

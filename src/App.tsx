@@ -1,5 +1,5 @@
 /**
- * StrikeEdge application root.
+ * GTS Box application root.
  *
  * There is exactly ONE route — `/` — the Box dashboard. There is no router, no calendar
  * board, no admin page. The whole app is gated by the site passcode:

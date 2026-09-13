@@ -3,7 +3,7 @@ import { MoonIcon, SunIcon } from "@phosphor-icons/react";
 
 export type Theme = "dark" | "light";
 
-const THEME_STORAGE_KEY = "strikedge_theme";
+const THEME_STORAGE_KEY = "gtsbox.theme";
 
 export function readStoredTheme(): Theme {
   try {
@@ -18,9 +18,12 @@ export function readStoredTheme(): Theme {
 export function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
+  // These two literals are --surface-0 of each theme. CSS cannot set the browser chrome colour,
+  // so this is one of the three places the token contract is duplicated by necessity — keep it
+  // in step with the :root blocks in styles.css (see the header comment there).
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", theme === "light" ? "#f7f9fc" : "#0f1216");
+    ?.setAttribute("content", theme === "light" ? "#f7f9fc" : "#0b0e13");
 }
 
 export default function ThemeToggle() {

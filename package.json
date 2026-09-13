@@ -1,5 +1,6 @@
 {
-  "name": "strikedge_frontend",
+  "name": "gts-box-frontend",
+  "description": "GTS Box — the box-arbitrage research desk (operator console).",
   "private": true,
   "version": "0.1.0",
   "type": "module",

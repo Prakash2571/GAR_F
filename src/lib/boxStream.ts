@@ -5,7 +5,7 @@
  * ---------------
  * A bare `new EventSource(url)` reconnects on its own, but with no ceiling on the browser's
  * retry cadence and, crucially, NO way to stop after an auth failure — it would hammer a
- * 401ing endpoint forever. StrikeEdge needs the opposite of that on a 401: close, notify,
+ * 401ing endpoint forever. GTS Box needs the opposite of that on a 401: close, notify,
  * and stay closed until the user re-authenticates.
  *
  * THE CONTRACT
