@@ -1,5 +1,5 @@
 /**
- * The StrikeEdge broker status panel.
+ * The GTS Box broker status panel.
  *
  * Replaces CalSpread's 464-line BrokerPanel with a focused, read-mostly status surface for
  * the DUAL-BROKER world: exactly one broker is active at a time, but BOTH stored sessions
@@ -7,7 +7,7 @@
  * refused.
  *
  * WHY THIS FILE WAS REWRITTEN
- * It was written against a CalSpread-shaped `GET /api/broker/status` that StrikeEdge's
+ * It was written against a CalSpread-shaped `GET /api/broker/status` that GTS Box's
  * backend does not produce. Verified against a running backend, the real response is
  *   { active_broker, generation, brokers: [{ broker, session, health }, …] }
  * whereas this component read `status.broker`, `status.session`, `status.health`,

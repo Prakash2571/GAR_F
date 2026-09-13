@@ -2,7 +2,7 @@
  * API CONTRACT TEST — the frontend's types must match what the backend actually sends.
  *
  * WHY THIS EXISTS
- * The frontend and backend were built separately, and the types for the new StrikeEdge
+ * The frontend and backend were built separately, and the types for the new GTS Box
  * endpoints drifted badly without anything noticing:
  *
  *   GET /api/runtime/status  — the frontend declared `token_waiting`, `instruments_loading`,
@@ -29,7 +29,7 @@
  * `contract/schemas/**` (pinned by `contract/BACKEND_CONTRACT.json`, digest-verified by
  * `npm run contract:verify`, and validated against these fixtures in
  * `tests/contractSchemas.test.mjs`). The JSON in `tests/fixtures/` is NO LONGER the contract —
- * it is a set of realistic sample payloads CAPTURED FROM A RUNNING StrikeEdge BACKEND (see
+ * it is a set of realistic sample payloads CAPTURED FROM A RUNNING GTS Box BACKEND (see
  * tests/fixtures/README.md).
  *
  * The assertions BELOW are retained as a COMPLEMENTARY, human-readable check of the specific
@@ -340,14 +340,14 @@ test("the trades-history source tier no longer advertises Redis or Mongo", () =>
    * because Upstash Redis was removed and MongoDB is no longer authoritative.
    *
    * The frontend union must not still claim the dead tiers, or a reader of the type
-   * would believe StrikeEdge can answer from Redis.
+   * would believe GTS Box can answer from Redis.
    */
   const types = readFileSync(new URL("../src/api/types.ts", import.meta.url), "utf8");
   const m = /export type BoxHistorySource\s*=\s*([^;]+);/.exec(types);
   assert.ok(m, "BoxHistorySource must still be declared");
   const union = m[1];
   assert.match(union, /"postgres"/, "postgres is the durable tier now");
-  assert.doesNotMatch(union, /"redis"/, "Upstash Redis was removed from StrikeEdge entirely");
+  assert.doesNotMatch(union, /"redis"/, "Upstash Redis was removed from GTS Box entirely");
   assert.doesNotMatch(
     union,
     /"mongo"/,

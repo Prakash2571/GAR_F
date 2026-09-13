@@ -1,5 +1,5 @@
 /**
- * Every backend call the StrikeEdge Box UI makes.
+ * Every backend call the GTS Box UI makes.
  *
  * All of these go through the single `request` wrapper in `http.ts`, so they share one
  * behaviour: same-origin cookie credentials, an in-memory CSRF token echoed as the

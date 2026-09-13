@@ -86,10 +86,9 @@ export function BoxHelp({
         type="button"
         className="box-help-btn"
         onClick={() => setOpen(true)}
-        title="What this page does, what every term means, and what every parameter changes"
-        aria-label="About this page"
+        title="The method: what this page does, what every term means, and what every parameter changes"
       >
-        ?
+        Method
       </button>
 
       {open && (
@@ -98,11 +97,11 @@ export function BoxHelp({
             className="box-help"
             role="dialog"
             aria-modal="true"
-            aria-label="About the Box Arbitrage page"
+            aria-label="Method — how GTS Box prices and enters a box"
             onClick={(e) => e.stopPropagation()}
           >
             <header className="box-help-head">
-              <h2>Box Arbitrage — what this page is doing</h2>
+              <h2>Method — how GTS Box prices and enters a box</h2>
               <button type="button" className="box-help-close" onClick={() => setOpen(false)} aria-label="Close">
                 ×
               </button>

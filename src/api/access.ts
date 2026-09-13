@@ -1,7 +1,7 @@
 /**
  * The site-passcode access API.
  *
- * StrikeEdge is gated by a single site passcode. Verifying it establishes an HttpOnly
+ * GTS Box is gated by a single site passcode. Verifying it establishes an HttpOnly
  * session cookie server-side; the browser never sees, stores or forwards a SESSION token.
  * These three calls are the entire surface the AccessGate needs.
  *

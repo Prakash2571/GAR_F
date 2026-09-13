@@ -1,5 +1,5 @@
 /**
- * The StrikeEdge site passcode gate.
+ * The GTS Box site passcode gate.
  *
  * WHAT IT IS — AND IS NOT
  * -----------------------
@@ -126,8 +126,21 @@ export default function AccessGate({ children }: AccessGateProps) {
       <form className="gate-card" onSubmit={(e) => void onSubmit(e)}>
         <div className="gate-brand">
           <BrandMark />
-          <h1>StrikeEdge</h1>
+          <div className="gate-lockup">
+            <h1 className="brand-word">
+              GTS <b>Box</b>
+            </h1>
+            <span className="gate-desc">Box-arbitrage research desk</span>
+          </div>
         </div>
+        {/* What the product IS, stated before the passcode rather than after it. Deliberately
+            describes only what the system does — it makes no claim about the execution mode,
+            because that is the backend's to report and is not known until the gate opens. */}
+        <p className="gate-thesis">
+          Four-leg box arbitrage on NSE F&amp;O. Continuous pricing of the ATM window, the full
+          expected-net arithmetic behind every entry decision, and an audit record of each
+          execution attempt.
+        </p>
         <p className="gate-sub">Enter the site passcode to continue.</p>
         <label className="gate-field">
           <span className="sr-only">Site passcode</span>
@@ -157,8 +170,8 @@ export default function AccessGate({ children }: AccessGateProps) {
           </p>
         )}
         <p className="gate-note">
-          StrikeEdge is protected by a site passcode. Access is granted by the StrikeEdge
-          backend — this screen does not store anything on your device.
+          GTS Box is protected by a site passcode. Access is granted by the GTS Box backend —
+          this screen does not store anything on your device.
         </p>
       </form>
     </div>

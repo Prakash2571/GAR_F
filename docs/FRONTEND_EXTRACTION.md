@@ -1,6 +1,17 @@
-# StrikeEdge frontend — extraction record
+# GTS Box frontend — extraction record
 
-This documents exactly how the StrikeEdge frontend was extracted from CalSpread.
+> **A HISTORICAL RECORD, NOT A DESCRIPTION OF THE PRODUCT.**
+> The product is now **GTS Box**, a box-arbitrage research desk. This document deliberately
+> keeps the name it was written under — **StrikeEdge** — everywhere it refers to a decision that
+> was actually made at that time, because rewriting the name into the history would make the
+> record claim things that did not happen under it. Read every "StrikeEdge" below as "this
+> repository, at extraction time". The rename to GTS Box, the new brand mark and the current
+> design-token palette all came later and are not part of what is recorded here.
+>
+> Nothing in this file is a statement about how GTS Box should look or be described today. For
+> that, see the root `README.md` and the design-system header in `src/styles.css`.
+
+This documents exactly how this frontend was originally extracted from CalSpread.
 
 - **Source (READ ONLY):** `/home/ubuntu/Cal/Cal_Spread`
   (React 18 + TypeScript + Vite, SHA `3ac5abe07a9e580a0ecc0c8c173aff7dff346184`).

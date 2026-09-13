@@ -1,20 +1,29 @@
-# StrikeEdge — frontend
+# GTS Box — frontend
 
-StrikeEdge is a focused, standalone dashboard for the **Box arbitrage** trading system: it
-scans F&O stock and index option chains for mispriced four-leg boxes, shows every candidate
-with its full expected-net-profit arithmetic, streams open and closed positions live, and
-gives an operator the controls to run the scanner, tune the entry gate, arm a trading
-session and switch the active broker — all behind a single site passcode.
+**GTS Box is a box-arbitrage research desk for NSE F&O.** It prices four-leg boxes across
+stock and index option chains continuously, shows the full expected-net arithmetic behind
+every entry decision, streams open and closed positions live, and gives an operator the
+controls to run the scanner, tune the entry gate, arm a trading session and switch the active
+broker — all behind a single site passcode.
+
+The word *research* is load-bearing. This is an instrument for deciding whether an edge is
+real, not a dashboard that reports one: every candidate carries its own denominators, every
+refusal carries a named reason, every price carries its freshness and provenance, and the
+execution funnel is shown with the counts it was computed from. A number this UI cannot
+substantiate is rendered as **unknown** rather than as a plausible figure — see
+[`src/lib/honestLabels.ts`](src/lib/honestLabels.ts), where the labels that must change with
+the system's execution mode are pure functions that *require* the mode as an argument, so a
+paper claim cannot survive into a live deployment.
 
 This repository is **only the frontend**: a React 18 + TypeScript + Vite single-page app. It
 does no trading itself and holds no market logic. Every number it shows is a report from the
-**StrikeEdge backend**, which remains the sole trading authority.
+**GTS Box backend**, which remains the sole trading authority.
 
 ## What it needs to run
 
-StrikeEdge is not usable on its own. It requires:
+GTS Box is not usable on its own. It requires:
 
-1. **The StrikeEdge backend** running and reachable. All data — box opportunities, open and
+1. **The GTS Box backend** running and reachable. All data — box opportunities, open and
    closed trades, execution control, broker status, the live SSE stream — comes from the
    backend's `/api/*` endpoints. PostgreSQL is the backend's authoritative operational store;
    MongoDB Atlas is an async reporting replica.
@@ -56,7 +65,7 @@ npm ci            # install exact locked dependencies
 npm run dev       # Vite dev server on http://localhost:5173
 ```
 
-The dev server proxies `/api` → `http://127.0.0.1:3001`, so just start the StrikeEdge backend
+The dev server proxies `/api` → `http://127.0.0.1:3001`, so just start the GTS Box backend
 on port 3001 locally — **no `VITE_API_BASE_URL` is needed**. Only set it (to a full
 `https://…` origin) if you are pointing the dev UI at a backend on a genuinely different
 origin; if you do, any local `.env` is git-ignored and must never be committed.
@@ -138,9 +147,21 @@ so a high/critical advisory — in a runtime or a dev/build dependency — fails
 - **Dual-broker panel** (`src/BrokerStatusPanel.tsx`) — both sessions, redacted identities,
   feed/margin/charge provenance, guarded selection and switch-blockers. It never renders a
   raw token, encrypted token, passcode or encryption metadata.
-- **Box UI** ported from CalSpread — opportunities, open positions, closed history, the ATM±3
-  chain, execution/session/risk control panels, day P&L, execution health, sounds and the
+- **The desk itself** — the opportunity table with per-candidate arithmetic, open positions,
+  closed history, the ATM±3 chain, execution/session/risk control panels, day P&L, execution
+  health, the operational-state panel with the funnel and its denominators, sounds and the
   dark/light theme.
+- **One design system** (`src/styles.css`) — every colour, size, space and duration is a
+  design token, so the light theme is a token swap and no component rule branches on it. The
+  four rules it enforces (data outranks chrome; colour is semantic and `--accent` is
+  interaction-only; numbers are monospaced and tabular; flat in dark, shadowed in light) are
+  documented in the header of that file.
 
-See `docs/FRONTEND_EXTRACTION.md` for the exact file-by-file provenance and every behaviour
-change from the CalSpread source.
+## Provenance
+
+GTS Box began as an extraction from an earlier calendar-spread application, and
+`docs/FRONTEND_EXTRACTION.md` is the honest file-by-file record of that: what was copied, what
+was rewritten, what was deliberately left behind, and every behaviour change made on the way.
+It is kept as an engineering record, not as a description of the product — GTS Box is a
+box-arbitrage research desk with its own contract, its own access model and its own design
+system, and the record exists so that a reviewer can audit where each file came from.
