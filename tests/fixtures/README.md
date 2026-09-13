@@ -32,13 +32,13 @@ fixture, so it does not appear above; it is covered by the digest and exercised 
 
 ## What these files are (historical context)
 
-These JSON files were **captured from a running StrikeEdge backend**, not hand-written.
+These JSON files were **captured from a running GTS Algo Research backend**, not hand-written.
 `tests/apiContract.test.mjs` additionally asserts the specific fields the UI reads against them
 as a complementary, human-readable check — but the schema, not the fixture, is the contract.
 
 ## Why they exist
 
-The frontend and backend were built separately and their types for the new StrikeEdge
+The frontend and backend were built separately and their types for the new GTS Algo Research
 endpoints drifted badly without anything catching it:
 
 | Endpoint | Frontend expected | Backend actually sends | Overlap |
@@ -57,7 +57,7 @@ A green build proved nothing about the contract. That is what these fixtures fix
 ## The existing Box endpoints are pinned too
 
 `box-status.json`, `box-execution-control.json` and `box-config.json` cover the endpoints
-ported near-verbatim from CalSpread. A mechanical diff confirmed those already matched — 81
+ported near-verbatim from the predecessor codebase. A mechanical diff confirmed those already matched — 81
 required frontend fields across the three, none missing — so unlike the table above these
 record a check that PASSED.
 
@@ -72,7 +72,7 @@ re-captured from an armed process would fail the suite.
 
 ## Provenance
 
-Captured on 2026-09-08 from `Strikedge_B` at commit `3e14d54` against a local PostgreSQL,
+Captured on 2026-09-08 from `GTSAlgoResearch_B` at commit `3e14d54` against a local PostgreSQL,
 with no broker token present (so the token states are `configuration_error` — which is
 useful, because it exercises the fatal-blocker path the old shape could not express).
 
@@ -83,7 +83,7 @@ response carries a token, passcode or encryption metadata field.
 ## Re-capturing
 
 Fixtures are a recording, so they go stale if the backend changes and nobody re-runs this.
-That is the known limitation of the approach. To refresh, from a built `Strikedge_B`:
+That is the known limitation of the approach. To refresh, from a built `GTSAlgoResearch_B`:
 
 ```bash
 # 1. a throwaway database

@@ -185,14 +185,49 @@ test("verify is sent WITHOUT a CSRF header (it is the token-minting public mutat
   reset();
 });
 
-test("logout is sent WITHOUT a CSRF header and clears the in-memory token", async () => {
+/**
+ * LOGOUT IS BEST-EFFORT CSRF, NOT CSRF-EXEMPT.
+ *
+ * The backend's logout route is deliberately asymmetric: with a LIVE session, revoking it is
+ * a real state change and the route REQUIRES an allowed Origin plus a matching
+ * `x-csrf-token` header; with no live session there is nothing left to protect, so it clears
+ * the cookies and returns 200 without one.
+ *
+ * This test previously asserted that logout omits the header unconditionally, which locked in
+ * a real defect: on the live path the backend answered 403 `csrf_failed`, the frontend caught
+ * and logged it, the UI "logged out" locally — and the server-side session row stayed VALID
+ * until it expired. The two tests below pin both halves of the route instead.
+ */
+test("logout CARRIES the CSRF header when a token is held, so the server session is revoked", async () => {
   reset();
   setCsrfToken("TOK-LIVE");
   const calls = stubFetch(() => jsonResponse(200, { authenticated: false }));
   await logout();
   const logoutCall = calls.find((c) => String(c.url).includes("/api/access/logout"));
-  assert.equal(logoutCall.headers["x-csrf-token"], undefined, "logout omits the CSRF header");
+  assert.equal(
+    logoutCall.headers["x-csrf-token"],
+    "TOK-LIVE",
+    "a live session's logout must echo the CSRF token or the backend refuses to revoke it",
+  );
   assert.equal(getCsrfToken(), null, "logout cleared the in-memory token");
+  reset();
+});
+
+test("logout still SENDS with no token held, so a dead session can always be cleared", async () => {
+  reset();
+  // No token: the session is already expired/revoked, or the page was reloaded and the
+  // in-memory token is gone. The request must still be made (and must not throw
+  // MissingCsrfTokenError), or the browser could never clear its stale cookie.
+  const calls = stubFetch(() => jsonResponse(200, { authenticated: false }));
+  await logout();
+  const logoutCall = calls.find((c) => String(c.url).includes("/api/access/logout"));
+  assert.ok(logoutCall, "logout was sent even with no CSRF token held");
+  assert.equal(
+    logoutCall.headers["x-csrf-token"],
+    undefined,
+    "no empty header is sent when there is no token",
+  );
+  assert.equal(getCsrfToken(), null);
   reset();
 });
 
@@ -225,8 +260,8 @@ test("notifyUnauthorized clears the token directly (shared with the SSE 401 path
 test("failed authentication clears any previously-held token", async () => {
   reset();
   setCsrfToken("OLD");
-  stubFetch(() => jsonResponse(401, { error: "That passcode was not accepted." }));
-  await assert.rejects(() => verifyPasscode("wrong"), /not accepted/);
+  stubFetch(() => jsonResponse(401, { error: "Invalid passcode." }));
+  await assert.rejects(() => verifyPasscode("wrong"), /Invalid passcode/);
   assert.equal(getCsrfToken(), null, "a rejected login drops the stale token");
   reset();
 });
