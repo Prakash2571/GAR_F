@@ -1,256 +1,283 @@
 /* ============================================================================
- * StrikeEdge styles.
+ * GTS Algo Research — design system.
  *
- * A CURATED SUBSET of the CalSpread stylesheet: only the design tokens and the
- * component rules the ported Box UI, the broker panel and the access gate use.
- * The calendar board, stock cards, charts, analytics and admin styles are NOT
- * carried over. New rules for the passcode gate and the dual-broker panel are
- * appended at the end.
+ * ONE STYLESHEET, TWO SURFACES, ONE LANGUAGE.
+ *
+ *   The PUBLIC SITE (`/`) is spacious: generous negative space, a restrained type
+ *   hierarchy, nothing decorative. It exists to state what the project is.
+ *
+ *   The GTS BOX WORKSPACE (`/box`) is dense: compact rows, hairline rules, tabular
+ *   numerals, sticky table headers. It is operational software and its job is to make
+ *   state, risk and execution legible at a glance — not to look pleasant.
+ *
+ * They share the same tokens, the same geometry and the same type scale, so the two do
+ * not read as two products.
+ *
+ * WHAT MAKES THIS A DIFFERENT PRODUCT, NOT A RECOLOUR
+ *   • Geometry is nearly square (2–4px radii). Nothing is a pill except numeric counts.
+ *   • Elevation is expressed with HAIRLINE RULES and surface steps, not drop shadows.
+ *     Dark mode has no card shadows at all.
+ *   • Sections are introduced by a rule plus a small uppercase micro-label, rather than
+ *     by floating rounded cards.
+ *   • Tabs are underlined, not filled buttons.
+ *   • Tables have no zebra striping — row separation is a single hairline, which keeps
+ *     dense financial data readable without visual noise.
+ *   • Monospace is reserved for numbers, symbols and identifiers. Never for labels.
+ *
+ * THEMING. Every colour is a variable declared twice: once on `:root` (dark, the default
+ * and primary identity) and once on `[data-theme="light"]`. Light is a designed palette,
+ * not an inversion — its surfaces go UP from a grey page to white cards, whereas dark
+ * goes up from near-black to lifted greys. Nothing outside the two token blocks uses a
+ * literal colour, so a theme change is a token change.
+ *
+ * ACCESSIBILITY. Focus is always visible, motion respects `prefers-reduced-motion`, and
+ * every status is carried by TEXT (and, in the badge primitive, by a glyph shape) so it
+ * survives colour-blindness and a greyscale screenshot. Colour is reinforcement only.
  * ========================================================================== */
 
-/* ---- design tokens, base, focus, reduced-motion ---- */
+/* ==========================================================================
+ * 1. TOKENS
+ * ========================================================================== */
+
 :root {
-  color-scheme: dark;
+  /* ---- surfaces (dark: the default identity) ---- */
+  --bg: #060708;
+  --surface: #0b0d0f;
+  --surface-raised: #101316;
+  --surface-hover: #15191d;
+  --surface-sunken: #08090b;
 
-  /* ---- Surfaces (elevation steps) ---- */
-  --surface-0: #0f1216;
-  --surface-1: #171a1f;
-  --surface-2: #1d2126;
-  --surface-3: #23272e;
+  --border: #1b1f24;
+  --border-strong: #272c33;
 
-  /* ---- Data surfaces ---- */
-  --data-surface: var(--surface-2);
-  --data-surface-strong: var(--surface-3);
-  --data-border: var(--border-subtle);
+  --text: #f4f5f6;
+  --text-secondary: #969ca5;
+  --text-muted: #686f78;
 
-  /* ---- Borders ---- */
-  --border-subtle: #1f242b;
-  --border: #2a3038;
-  --border-strong: #383f4a;
+  /* ---- accent: ONE restrained cool blue. Used for the primary action, the
+         selected tab and the focus ring, and for nothing else. ---- */
+  --accent: #6e8fff;
+  --accent-hover: #829fff;
+  --accent-text: #93aaff;
+  --accent-quiet: rgba(110, 143, 255, 0.12);
+  --accent-line: rgba(110, 143, 255, 0.42);
+  --on-accent: #070a14;
 
-  /* ---- Text ---- */
-  --text-1: #e6e9ee;
-  --text-2: #9ba3af;
-  --text-3: #858e99;
+  /* ---- semantic status. Deliberately DESATURATED: a trading surface that shouts in
+         saturated red/green trains the operator to stop reading it. ---- */
+  --positive: #57a877;
+  --positive-quiet: rgba(87, 168, 119, 0.12);
+  --negative: #d4736b;
+  --negative-quiet: rgba(212, 115, 107, 0.13);
+  --warning: #c99f57;
+  --warning-quiet: rgba(201, 159, 87, 0.13);
+  --info: #7f9ac0;
+  --info-quiet: rgba(127, 154, 192, 0.13);
+  /* LIVE is its own tone. It must never be mistaken for "positive": it means real
+     money can move, which is a warning, not good news. */
+  --live: #e0a03c;
+  --live-quiet: rgba(224, 160, 60, 0.14);
 
-  /* ---- Accent (interaction only) ---- */
-  --accent: #2f6fed;
-  --accent-hover: #1f5ad6;
-  --accent-fill: #285fcf;
-  --accent-fill-hover: #1f52bc;
-  --accent-text: #7fb0ff;
-  --accent-surface: #16233d;
-  --accent-border: #2b4a8a;
-  --on-accent: #f7f9fc; /* text/glyph colour on an --accent or --neg fill */
+  --danger: #c2564d;
+  --danger-hover: #d1655c;
+  --on-danger: #fdf6f5;
 
-  /* ---- Semantic: P&L ---- */
-  --pos: #3fb950;
-  --pos-surface: #12251a;
-  --neg: #f85149;
-  --neg-hover: #d93a31;
-  --danger-fill: #c9362f;
-  --danger-fill-hover: #ae2d28;
-  --neg-surface: #2a1618;
-  --warn: #d29922;
-  --warn-surface: #2a2113;
-
-  /* ---- Semantic: premium / discount ---- */
-  --prem: #58a6ff;
-  --prem-surface: #14243c;
-  --disc: #e3b341;
-  --disc-surface: #2b2313;
-
-  /* ---- Data viz ---- */
-  --oi: #39a0b5;
-  --series-1: #58a6ff;
-  --series-2: #3fb950;
-  --series-3: #d29922;
-  --series-expired: #6e7681;
-  --chart-grid: #23272e;
-  --chart-guide: #333a44;
-  --chart-zero: rgba(255, 255, 255, 0.28);
-  --min-straddle: #f2c94c;
-  --on-min-straddle: #3f2f00;
-
-  /* ---- Typography ---- */
+  /* ---- typography ---- */
   --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --fs-1: 10px;
-  --fs-2: 11px;
-  --fs-3: 12px;
-  --fs-4: 13px;
-  --fs-5: 15px;
-  --fs-6: 18px;
-  --fs-7: 22px;
+
+  --fs-micro: 10.5px;
+  --fs-xs: 11.5px;
+  --fs-sm: 12.5px;
+  --fs-base: 13.5px;
+  --fs-md: 15px;
+  --fs-lg: 18px;
+  --fs-xl: 22px;
+  --fs-2xl: 28px;
+
   --fw-regular: 400;
   --fw-medium: 500;
   --fw-semibold: 600;
   --fw-bold: 700;
-  --lh-tight: 1.25;
-  --lh-base: 1.5;
-  --tracking-caps: 0.06em;
 
-  /* ---- Spacing: 8 steps on a 4px base ---- */
-  --sp-1: 4px;
-  --sp-2: 8px;
-  --sp-3: 12px;
-  --sp-4: 16px;
-  --sp-5: 20px;
-  --sp-6: 24px;
-  --sp-8: 32px;
-  --sp-10: 40px;
+  --lh-tight: 1.2;
+  --lh-snug: 1.4;
+  --lh-base: 1.6;
 
-  /* ---- Radius ---- */
-  --r-sm: 4px;
-  --r-md: 6px;
-  --r-lg: 8px;
+  /* Restrained, not "hacker-spaced". */
+  --tracking-caps: 0.075em;
+  --tracking-tight: -0.011em;
+
+  /* ---- spacing ---- */
+  --s-1: 4px;
+  --s-2: 6px;
+  --s-3: 8px;
+  --s-4: 12px;
+  --s-5: 16px;
+  --s-6: 20px;
+  --s-7: 24px;
+  --s-8: 32px;
+  --s-9: 48px;
+  --s-10: 64px;
+  --s-11: 96px;
+
+  /* ---- geometry: near-square. ---- */
+  --r-xs: 2px;
+  --r-sm: 3px;
+  --r-md: 4px;
+  --r-lg: 6px;
   --r-pill: 999px;
 
-  /* ---- Elevation (overlays only) ---- */
-  --shadow-popover: 0 4px 12px rgba(0, 0, 0, 0.35);
-  --shadow-overlay: 0 12px 32px rgba(0, 0, 0, 0.5);
+  /* ---- elevation. Dark uses none for cards; only true overlays cast a shadow. ---- */
   --shadow-card: none;
-  --shadow-card-hover: none;
-  --shadow-control: none;
-  --shadow-data: none;
-  --scrim: rgba(6, 8, 10, 0.72);
-  --ring: 0 0 0 3px rgba(47, 111, 237, 0.35);
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.55);
+  --shadow-overlay: 0 24px 64px rgba(0, 0, 0, 0.7);
+  --scrim: rgba(3, 4, 5, 0.76);
 
-  /* ---- Option-chain tints ----
-     Own tokens per theme, because the two themes need OPPOSITE treatments: on a
-     dark card a saturated dark wash reads clearly, while on a white card the
-     same idea has to be a real pastel - diluting a near-white surface toward
-     transparent (which is what these used to do) leaves nothing visible. */
-  --chain-ce-tint: color-mix(in srgb, var(--neg-surface) 55%, transparent);
-  --chain-pe-tint: color-mix(in srgb, var(--pos-surface) 55%, transparent);
-  --chain-itm-tint: color-mix(in srgb, var(--accent-surface) 38%, transparent);
-  --bld-pos-bg: var(--pos-surface);
-  --bld-neg-bg: var(--neg-surface);
+  --ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent-line);
 
-  /* ---- Motion ---- */
+  /* ---- motion: 100–200ms, opacity and transform only. ---- */
   --dur-fast: 110ms;
-  --dur: 160ms;
+  --dur: 170ms;
   --ease: cubic-bezier(0.2, 0, 0.2, 1);
 }
 
-:root[data-theme="light"] {
-  color-scheme: light;
+[data-theme="light"] {
+  /* Light is BUILT, not inverted: the page is a soft grey and content surfaces rise to
+     pure white, which is the opposite direction of travel from dark mode. */
+  --bg: #f6f7f8;
+  --surface: #ffffff;
+  --surface-raised: #f1f3f5;
+  --surface-hover: #eaedf0;
+  --surface-sunken: #eef0f2;
 
-  /* WHITE page with BRIGHT WHITE cards. A card is separated from the page by a
-     hairline border + a soft shadow, not by a grey fill - so cards read clean
-     and bright (the grey-panel look felt dull/heavy). Inner accents (table
-     header, strike column) use a faint cool grey so structure still shows
-     inside the white card. */
-  --surface-0: #f7f9fc;
-  --surface-1: #fcfdff;
-  --surface-2: #eef1f5;
-  --surface-3: #e4e8ed;
+  --border: #e0e3e7;
+  --border-strong: #ccd1d7;
 
-  /* Hairline borders - the primary way a bright card separates from the bright
-     page, so they carry a touch more weight than a grey-fill scheme needs. */
-  --border-subtle: #e6eaef;
-  --border: #d5dbe2;
-  --border-strong: #b7bfc9;
+  --text: #111418;
+  --text-secondary: #565d66;
+  --text-muted: #7b828c;
 
-  /* Data surfaces (chart cards, trade cards, the option chain) are white too;
-     their inner accent/hover steps to the faint grey. */
-  --data-surface: #fcfdff;
-  --data-surface-strong: #eef1f5;
-  --data-border: #dde2e8;
+  /* A deeper accent than dark mode's: #6e8fff does not carry enough contrast on white
+     for text or for a filled button's label. Same hue family, more weight. */
+  --accent: #3a5bd0;
+  --accent-hover: #2d4bb8;
+  --accent-text: #2c47ad;
+  --accent-quiet: rgba(58, 91, 208, 0.09);
+  --accent-line: rgba(58, 91, 208, 0.4);
+  --on-accent: #ffffff;
 
-  --text-1: #162033;
-  --text-2: #46566b;
-  --text-3: #526174;
+  --positive: #1f7a4d;
+  --positive-quiet: rgba(31, 122, 77, 0.1);
+  --negative: #b3403a;
+  --negative-quiet: rgba(179, 64, 58, 0.09);
+  --warning: #8a6100;
+  --warning-quiet: rgba(138, 97, 0, 0.11);
+  --info: #3f5c80;
+  --info-quiet: rgba(63, 92, 128, 0.09);
+  --live: #96590a;
+  --live-quiet: rgba(150, 89, 10, 0.11);
 
-  --accent: #2458c6;
-  --accent-hover: #1949ad;
-  --accent-fill: #2458c6;
-  --accent-fill-hover: #1949ad;
-  --accent-text: #174ea6;
-  --accent-surface: #eaf1ff;
-  --accent-border: #6f95df;
+  --danger: #b3403a;
+  --danger-hover: #9a332e;
+  --on-danger: #ffffff;
 
-  --pos: #16752f;
-  --pos-surface: #eaf7ee;
-  --neg: #c52a25;
-  --neg-hover: #a91f1b;
-  --danger-fill: #c52a25;
-  --danger-fill-hover: #a91f1b;
-  --neg-surface: #fff0ef;
-  --warn: #895c00;
-  --warn-surface: #fff6d9;
-
-  --prem: #175eb5;
-  --prem-surface: #eaf3ff;
-  /* A clean, warm amber that stays readable on white (a bright gold like the
-     dark theme's would wash out). Replaces the old olive-mustard #7b5900 that
-     read as a muddy "poop" yellow. */
-  --disc: #b45309;
-  --disc-surface: #fff6d9;
-
-  --oi: #0a6674;
-  /* Three futures lines that stay clearly apart on white: a strong blue, a
-     vivid grass green, and a clean orange (replacing the old muddy amber that
-     read too close to the green/blue). Distinct in hue AND lightness so they're
-     tellable even where the contracts run close. */
-  --series-1: #1565c0;
-  --series-2: #1f9d42;
-  --series-3: #e2660a;
-  --series-expired: #526174;
-  --chart-grid: #d9e0e8;
-  --chart-guide: #8b98a8;
-  --chart-zero: #8b98a8;
-
-  --shadow-popover: 0 4px 12px rgba(22, 32, 51, 0.14);
-  --shadow-overlay: 0 12px 32px rgba(22, 32, 51, 0.2);
-  --shadow-card: 0 2px 4px rgba(22, 32, 51, 0.12),
-    0 10px 24px rgba(22, 32, 51, 0.1);
-  --shadow-card-hover: 0 3px 6px rgba(22, 32, 51, 0.14),
-    0 14px 30px rgba(22, 32, 51, 0.13);
-  --shadow-control: 0 1px 2px rgba(22, 32, 51, 0.13),
-    0 3px 8px rgba(22, 32, 51, 0.08);
-  /* Option-chain tints. Saturated hues at low alpha rather than the dark theme's
-     pale-surface mixes, which were invisible on a white card. Kept TRANSLUCENT
-     (not flat pastels) so they layer the same way dark mode does: the ITM wash
-     blends over the call/put tint instead of erasing it, and the row-hover
-     background still shows through a tinted cell. Alpha is low enough that the
-     red/green LTP text stays readable. */
-  --chain-ce-tint: rgba(229, 57, 53, 0.13);
-  --chain-pe-tint: rgba(22, 145, 58, 0.13);
-  --chain-itm-tint: rgba(21, 101, 192, 0.13);
-  --bld-pos-bg: #c7e9d3;
-  --bld-neg-bg: #ffd6d2;
-
-  --shadow-data: 0 1px 2px rgba(22, 32, 51, 0.09),
-    0 4px 10px rgba(22, 32, 51, 0.06);
-  --scrim: rgba(15, 23, 42, 0.48);
-  --ring: 0 0 0 3px rgba(36, 88, 198, 0.28);
+  /* Light mode DOES get a shadow, because a white card on a grey page needs one to read
+     as a surface. It is a single hairline-soft shadow, not a floating drop shadow. */
+  --shadow-card: 0 1px 2px rgba(17, 20, 24, 0.05);
+  --shadow-popover: 0 8px 24px rgba(17, 20, 24, 0.13);
+  --shadow-overlay: 0 24px 64px rgba(17, 20, 24, 0.2);
+  --scrim: rgba(28, 33, 40, 0.42);
 }
 
-* {
+/* ==========================================================================
+ * 2. BASE
+ * ========================================================================== */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
-html,
+html {
+  /* No smooth scroll: this is a data application and a jump-to is a jump-to. */
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  font-weight: var(--fw-regular);
+  letter-spacing: var(--tracking-tight);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-tight);
+}
+
+p {
   margin: 0;
 }
 
-body {
-  min-height: 100dvh;
-  background: var(--surface-0);
-  color: var(--text-1);
-  font-family: var(--font-ui);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  font-size: var(--fs-4);
-  line-height: var(--lh-base);
+ul,
+ol {
+  margin: 0;
+  padding-left: 1.15em;
 }
 
-#root {
-  min-height: 100dvh;
+a {
+  color: var(--accent-text);
+  text-decoration: none;
 }
 
+a:hover {
+  text-decoration: underline;
+}
+
+input,
+button,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+/* ---- focus: always visible, never removed ---- */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--r-sm);
+}
+
+/* ---- motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ---- utilities ---- */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -263,1358 +290,1418 @@ body {
   border: 0;
 }
 
-.mono {
-  font-family: var(--font-mono);
+/**
+ * Numeric cell. TABULAR figures are the whole point: proportional digits make a column
+ * of rupee amounts impossible to scan and make a changing number jitter.
+ */
+.num {
+  text-align: right;
   font-variant-numeric: tabular-nums;
-}
-
-/* Numeric cells: mono + tabular so columns hold alignment as ticks arrive */
-.num,
-.card-price,
-.chip,
-.leg-cell,
-.trade-pnl,
-.metric-value {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-.app {
-  max-width: 1480px;
-  margin: 0 auto;
-  padding: 0 var(--sp-6) var(--sp-10);
-}
-
-/* Global focus indicator - replaces every one-off focus glow */
-:where(button, a, input, select, summary, [tabindex]):focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: var(--ring);
-}
-
-/* Motion respect - neutralizes pulse, spin, shimmer and every transition */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation: none !important;
-    transition: none !important;
-  }
-
-  html {
-    scroll-behavior: auto;
-  }
-
-  .sk {
-    background: var(--surface-2) !important;
-  }
-
-  .btn:active {
-    transform: none;
-  }
-}
-
-/* ---- top bar ---- */
-/* ================ Top bar ================ */
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-4);
-  flex-wrap: nowrap;
-  min-height: 56px;
-  padding: var(--sp-3) var(--sp-4);
-  margin-bottom: var(--sp-4);
-  background: var(--surface-0);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  min-width: 0;
-}
-
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--r-md);
-  display: grid;
-  place-items: center;
-  background: var(--accent);
-  color: var(--on-accent);
-  flex: none;
-}
-
-.brand-mark svg {
-  width: 18px;
-  height: 18px;
-}
-
-.brand h1 {
-  margin: 0;
-  font-size: var(--fs-7);
-  font-weight: var(--fw-semibold);
-  color: var(--text-1);
-}
-
-.subtitle {
-  margin: 1px 0 0;
-  color: var(--text-2);
-  font-size: var(--fs-2);
-  font-weight: var(--fw-regular);
-}
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--sp-2);
-  flex-wrap: nowrap;
-  min-width: 0;
-}
-
-.theme-toggle,
-.box-sound-toggle,
-.box-sound-test {
-  gap: var(--sp-2);
-}
-
-.theme-toggle svg,
-.box-sound-toggle svg,
-.box-sound-test svg {
-  flex: none;
-}
-
-.toolbar-menu {
-  position: relative;
-}
-
-.toolbar-menu summary {
-  list-style: none;
-}
-
-.toolbar-menu summary::-webkit-details-marker {
-  display: none;
-}
-
-.toolbar-menu-trigger {
-  gap: var(--sp-2);
-}
-
-.toolbar-menu[open] > .toolbar-menu-trigger {
-  color: var(--accent-text);
-  background: var(--accent-surface);
-  border-color: var(--accent-border);
-}
-
-.toolbar-popover {
-  position: absolute;
-  top: calc(100% + var(--sp-2));
-  right: 0;
-  z-index: 40;
-  width: min(390px, calc(100vw - var(--sp-6) * 2));
-  padding: var(--sp-3);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: var(--surface-1);
-  box-shadow: var(--shadow-popover);
-}
-
-.toolbar-popover .rf {
-  width: 100%;
-  padding-bottom: var(--sp-3);
-  margin-bottom: var(--sp-3);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.toolbar-popover-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-}
-
-@media (max-width: 1180px) {
-  .toolbar .count {
-    display: none;
-  }
-
-  .theme-toggle span,
-  .box-sound-toggle span,
-  .box-sound-test span {
-    display: none;
-  }
-
-  .theme-toggle,
-  .box-sound-toggle,
-  .box-sound-test {
-    width: 32px;
-    padding: 0;
-  }
-
-  .search {
-    width: 220px;
-  }
-}
-
-.admin-page > .theme-toggle {
-  position: fixed;
-  top: var(--sp-4);
-  right: var(--sp-4);
-}
-
-/* ---- status pill, buttons, banners, link ---- */
-/* ================ Status pill ================ */
-.status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  font-size: var(--fs-2);
-  font-weight: var(--fw-medium);
-  color: var(--text-2);
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  border-radius: var(--r-pill);
-  padding: var(--sp-1) var(--sp-3);
+  font-feature-settings: "tnum" 1;
   white-space: nowrap;
 }
 
-.status-dot {
-  width: 7px;
-  height: 7px;
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: var(--accent);
   border-radius: 50%;
-  background: var(--text-3);
+  animation: gts-spin 700ms linear infinite;
+  vertical-align: -2px;
   flex: none;
 }
 
-.status--live {
-  color: var(--pos);
-  border-color: var(--pos);
-  background: var(--pos-surface);
+@keyframes gts-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-.status--live .status-dot {
-  position: relative;
-  background: var(--pos);
-}
-
-/* Pulse glow. Carried on a pseudo-element ring so the fade is an opacity
-   animation rather than an alpha ramp - that keeps the glow locked to the
-   current --pos hue with no colour literal outside the Token_Block. */
-.status--live .status-dot::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  box-shadow: 0 0 0 4px var(--pos);
-  animation: pulse 1.8s infinite;
-}
-
-.status--wait {
-  color: var(--warn);
-  border-color: var(--warn);
-  background: var(--warn-surface);
-}
-
-.status--wait .status-dot {
-  background: var(--warn);
-}
-
-/* The "Login for live" state. App.tsx builds this class from status.kind, which has
-   always been able to be "idle", but only --live and --wait were ever defined - so
-   that pill rendered with no colour treatment at all while its two siblings were
-   styled. Muted rather than coloured: nothing is wrong, there is just no session. */
-.status--idle {
-  color: var(--text-2);
-  border-color: var(--border);
-  background: var(--surface-2);
-}
-
-.status--idle .status-dot {
-  background: var(--text-3);
-}
-
-@keyframes pulse {
-  0% { opacity: 0.5; }
-  70% { opacity: 0; }
-  100% { opacity: 0; }
-}
-
-.count {
-  font-size: var(--fs-2);
-  color: var(--text-2);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.count strong {
-  color: var(--text-1);
+/**
+ * The micro-label: small, uppercase, restrained tracking. This is the single most
+ * characteristic element of the system — it introduces every section and every metric,
+ * and replaces the old UI's bold sentence-case headings.
+ */
+.box-stat-k,
+.box-metric-k,
+.box-exec-stat-k,
+.box-gates-k,
+.box-risk-k,
+.box-breakdown-k,
+.box-daypnl-k,
+.gts-field-label,
+.gts-eyebrow,
+.gts-pillar-label,
+.metric-label {
+  font-size: var(--fs-micro);
   font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
-/* ================ Buttons ================ */
+/* ==========================================================================
+ * 3. PRIMITIVES
+ * ========================================================================== */
+
+/* ---- button ---- */
 .btn {
-  appearance: none;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-height: 32px;
-  padding: 0 var(--sp-3);
-  border: 1px solid var(--border);
+  gap: var(--s-2);
+  padding: 6px 11px;
+  min-height: 30px;
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
-  background: var(--surface-2);
-  color: var(--text-1);
-  font-size: var(--fs-4);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
-  font-family: inherit;
   cursor: pointer;
-  text-decoration: none;
   white-space: nowrap;
-  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
-    transform var(--dur-fast) var(--ease);
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    opacity var(--dur-fast) var(--ease);
 }
 
 .btn:hover:not(:disabled) {
-  background: var(--surface-3);
-  border-color: var(--border-strong);
-}
-
-.btn:active {
-  background: var(--surface-3);
-  transform: scale(0.98);
+  background: var(--surface-hover);
+  border-color: var(--text-muted);
 }
 
 .btn:disabled {
   opacity: 0.45;
-  cursor: default;
+  cursor: not-allowed;
+}
+
+.btn--sm {
+  padding: 3px 8px;
+  min-height: 24px;
+  font-size: var(--fs-xs);
+}
+
+.btn--full {
+  width: 100%;
+  justify-content: center;
 }
 
 .btn--primary {
-  background: var(--accent-fill);
-  border-color: var(--accent-fill);
+  background: var(--accent);
+  border-color: var(--accent);
   color: var(--on-accent);
+  font-weight: var(--fw-semibold);
 }
 
 .btn--primary:hover:not(:disabled) {
-  background: var(--accent-fill-hover);
-  border-color: var(--accent-fill-hover);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
-/* Global shortcut for long Calendar, Analytics, Stock and Box pages. */
-.scroll-top {
-  position: fixed;
-  right: max(var(--sp-5), env(safe-area-inset-right));
-  bottom: max(var(--sp-5), env(safe-area-inset-bottom));
-  z-index: 50;
-  min-width: 68px;
-  min-height: 40px;
-  gap: var(--sp-2);
+/* Low emphasis: a toolbar action that should not compete with the primary one. */
+.btn--quiet {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+.btn--quiet:hover:not(:disabled) {
+  background: var(--surface-raised);
   border-color: var(--border-strong);
-  background: var(--surface-1);
-  box-shadow: var(--shadow-popover);
+  color: var(--text);
 }
 
-.scroll-top:hover:not(:disabled) {
-  background: var(--surface-3);
-}
-
-/* ================ Banners ================ */
-.banner {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--r-md);
-  margin: var(--sp-2) 0 var(--sp-4);
-  font-size: var(--fs-4);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text-2);
-}
-
-.banner--error {
-  box-shadow: inset 3px 0 0 var(--neg);
-  color: var(--neg);
-}
-
-.banner--info {
-  box-shadow: inset 3px 0 0 var(--accent);
-  color: var(--accent-text);
-}
-
-/* "Something on screen may be out of date" - not an error (nothing is broken and
-   there is nothing to retry) but not neutral either. Uses --warn so it reads the
-   same as the .status--wait pill, which signals the equivalent state for ticks. */
-.banner--warn {
-  box-shadow: inset 3px 0 0 var(--warn);
-  color: var(--warn);
-}
-
-.link {
-  color: var(--accent-text);
-  font-weight: var(--fw-semibold);
-  text-decoration: none;
-}
-
-.link:hover {
-  color: var(--accent-text);
-  text-decoration: underline;
-}
-
-/* ---- card title ---- */
-.card-title {
-  min-width: 0;
-}
-
-/* ---- index badge ---- */
-.badge-index {
-  font-size: var(--fs-1);
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-caps);
-  color: var(--prem);
-  background: var(--prem-surface);
-  padding: 2px var(--sp-1);
-  border-radius: var(--r-sm);
-  line-height: 1;
-}
-
-/* ---- spinner ---- */
-.spinner {
-  width: var(--sp-4);
-  height: var(--sp-4);
-  border: 2px solid var(--border-strong);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  display: inline-block;
-  vertical-align: -3px;
-  margin-right: var(--sp-2);
-  animation: spin 0.7s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ---- danger button ---- */
-/* Danger buttons */
 .btn--danger {
-  background: var(--danger-fill);
-  border-color: var(--danger-fill);
-  color: var(--on-accent);
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+  font-weight: var(--fw-semibold);
 }
 
 .btn--danger:hover:not(:disabled) {
-  background: var(--danger-fill-hover);
-  border-color: var(--danger-fill-hover);
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--on-danger);
 }
 
-/* ---- small button ---- */
-.btn--sm {
-  min-height: 26px;
-  padding: 0 var(--sp-2);
-  font-size: var(--fs-3);
+/**
+ * CRITICAL, not destructive.
+ *
+ * "Close now" flattens a real four-leg position. It is not a delete, so it is not red —
+ * red is reserved for destroying a record — but it must not look like an ordinary
+ * toolbar button either. A warning-toned outline reads as "this changes exposure".
+ */
+.btn--critical {
+  background: transparent;
+  border-color: var(--warning);
+  color: var(--warning);
+  font-weight: var(--fw-semibold);
+}
+
+.btn--critical:hover:not(:disabled) {
+  background: var(--warning-quiet);
+}
+
+/* The one non-square element: a numeric count. */
+.pill-count {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 5px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+/* ---- status badge primitive (components/ui/StatusBadge.tsx) ---- */
+.gts-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-raised);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Shape, not colour, is what makes two tones distinguishable in greyscale. */
+.gts-badge-glyph {
+  font-size: 8px;
+  line-height: 1;
+}
+
+.gts-badge-label {
+  line-height: 1.4;
+}
+
+.gts-badge--positive {
+  color: var(--positive);
+  border-color: var(--positive);
+  background: var(--positive-quiet);
+}
+
+.gts-badge--warning {
+  color: var(--warning);
+  border-color: var(--warning);
+  background: var(--warning-quiet);
+}
+
+.gts-badge--negative {
+  color: var(--negative);
+  border-color: var(--negative);
+  background: var(--negative-quiet);
+}
+
+.gts-badge--info {
+  color: var(--info);
+  border-color: var(--info);
+  background: var(--info-quiet);
+}
+
+/* LIVE gets the strongest treatment on the page — a filled badge. Real orders. */
+.gts-badge--live {
+  color: var(--live);
+  border-color: var(--live);
+  background: var(--live-quiet);
+  box-shadow: inset 0 0 0 1px var(--live-quiet);
+}
+
+/* ---- banner ---- */
+.banner {
+  display: block;
+  padding: var(--s-3) var(--s-4);
+  margin: 0 0 var(--s-3);
+  border: 1px solid var(--border-strong);
+  /* A left rule carries the severity, so the banner reads as annotated rather than
+     as a coloured block. */
+  border-left-width: 2px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
+}
+
+.banner strong {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+
+.banner--error {
+  border-left-color: var(--negative);
+  background: var(--negative-quiet);
+}
+
+.banner--warn {
+  border-left-color: var(--warning);
+  background: var(--warning-quiet);
+}
+
+.banner--info {
+  border-left-color: var(--info);
+  background: var(--info-quiet);
+}
+
+/* ---- form field ---- */
+.gts-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.gts-field-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--surface-sunken);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
+  font-size: var(--fs-base);
+  transition: border-color var(--dur-fast) var(--ease);
 }
 
-/* ---- modal ---- */
+.gts-field-input:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+.gts-field-input[aria-invalid="true"] {
+  border-color: var(--negative);
+}
+
+.gts-field-input:disabled {
+  opacity: 0.55;
+}
+
+/**
+ * Always in the DOM, so the live region announces a change instead of being inserted.
+ * `min-height` reserves its line so appearing text does not shift the buttons below it —
+ * a layout shift under the pointer is how a mis-click happens.
+ */
+.gts-field-error {
+  min-height: 1.2em;
+  margin: 0;
+  color: var(--negative);
+  font-size: var(--fs-sm);
+}
+
+/* ---- dialog primitive (components/ui/Modal.tsx) ---- */
+.gts-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-5);
+  background: var(--scrim);
+  backdrop-filter: blur(2px);
+  animation: gts-fade var(--dur) var(--ease);
+}
+
+.gts-dialog {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-overlay);
+  animation: gts-rise var(--dur) var(--ease);
+}
+
+.gts-dialog-head {
+  padding: var(--s-6) var(--s-6) var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.gts-dialog-title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+
+.gts-dialog-sub {
+  margin-top: var(--s-1);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+
+.gts-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-3);
+}
+
+@keyframes gts-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes gts-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* ---- the passcode dialog ---- */
+.gts-dialog--passcode {
+  /* Narrower than a general dialog: it holds one field and two buttons, and a wide box
+     around a single input reads as an empty form. */
+  max-width: 380px;
+}
+
+.gts-passcode-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-6);
+}
+
+.gts-passcode-note {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+}
+
+/* ---- legacy modal shell, used by BoxDeleteModal ---- */
 .modal-overlay {
   position: fixed;
   inset: 0;
   z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-5);
   background: var(--scrim);
-  display: grid;
-  place-items: start center;
-  padding: var(--sp-6) var(--sp-4);
-  overflow: hidden;
+  backdrop-filter: blur(2px);
 }
 
 .modal {
   width: 100%;
-  max-width: 660px;
-  max-height: calc(100dvh - var(--sp-6) * 2);
-  display: flex;
-  flex-direction: column;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
+  max-width: 620px;
+  max-height: calc(100vh - 2 * var(--s-8));
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-overlay);
-  overflow: hidden;
 }
 
 .modal--sm {
-  max-width: 440px;
-}
-
-.modal--md {
-  max-width: 520px;
+  max-width: 460px;
 }
 
 .modal-head {
-  flex: none;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  padding: var(--sp-4);
+  gap: var(--s-4);
+  padding: var(--s-5) var(--s-6);
   border-bottom: 1px solid var(--border);
 }
 
-.modal-body {
+.modal-head h2,
+.modal-head h3 {
   flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.modal-head h2 {
-  margin: 0;
-  font-size: var(--fs-6);
-  font-weight: var(--fw-semibold);
-  color: var(--text-1);
+  font-size: var(--fs-md);
 }
 
 .modal-sub {
-  margin: var(--sp-1) 0 0;
-  font-size: var(--fs-2);
-  color: var(--text-2);
+  margin-top: var(--s-1);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
 }
 
 .modal-x {
+  flex: none;
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  padding: 0;
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  background: var(--surface-2);
-  color: var(--text-2);
+  border-radius: var(--r-sm);
+  color: var(--text-secondary);
   cursor: pointer;
-  font-size: var(--fs-4);
-  flex: none;
-  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
-    color var(--dur) var(--ease);
 }
 
 .modal-x:hover {
-  background: var(--surface-3);
-  border-color: var(--border-strong);
-  color: var(--text-1);
+  background: var(--surface-hover);
+  color: var(--text);
 }
 
-/* ---- pill-count ---- */
-.pill-count {
-  display: inline-grid;
-  place-items: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 var(--sp-1);
-  border-radius: var(--r-pill);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text-2);
-  font-size: var(--fs-1);
+.modal-body {
+  padding: var(--s-6);
+}
+
+.confirm-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
+  color: var(--text-secondary);
+}
+
+.confirm-modal-body strong {
+  color: var(--text);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-3);
+  padding-top: var(--s-2);
+}
+
+.modal-action {
+  min-width: 110px;
+  justify-content: center;
+}
+
+/* ==========================================================================
+ * 4. BRAND
+ * ========================================================================== */
+
+.gts-mark {
+  display: block;
+  flex: none;
+  color: var(--text);
+}
+
+.gts-wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--text);
+}
+
+.gts-wordmark-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.gts-wordmark-name {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+/* "GTS" carries the weight; "Algo Research" is the qualifier. */
+.gts-wordmark-lead {
+  font-weight: var(--fw-bold);
+}
+
+.gts-wordmark-short {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.02em;
+}
+
+.gts-wordmark-sub {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.gts-wordmark--product .gts-wordmark-name {
+  font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
-  letter-spacing: 0;
 }
 
-/* ---- metric label ---- */
-.metric-label {
-  font-size: var(--fs-3);
-  color: var(--text-2);
+/* ==========================================================================
+ * 5. PUBLIC SITE  (/)
+ *
+ * Spacious. One screen of content, lots of negative space, no illustrations, no
+ * gradients, no chart imagery. Everything is type and rules.
+ * ========================================================================== */
+
+.gts-site {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
-/* ---- an-page header helpers ---- */
-.an-page .brand {
+.gts-site-header {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  justify-content: space-between;
+  gap: var(--s-5);
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: var(--s-6) var(--s-7);
 }
-.an-back {
-  white-space: nowrap;
-  gap: var(--sp-1);
+
+.gts-site-brand {
+  color: var(--text);
+  text-decoration: none;
 }
-.an-underline {
-  font-size: var(--fs-2);
-  color: var(--text-3);
-  text-transform: uppercase;
+
+.gts-site-brand:hover {
+  text-decoration: none;
+}
+
+.gts-site-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.gts-site-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 var(--s-7);
+}
+
+/* ---- hero ---- */
+.gts-hero {
+  /* The negative space IS the design. */
+  padding: var(--s-11) 0 var(--s-10);
+  max-width: 720px;
+}
+
+.gts-eyebrow {
+  margin-bottom: var(--s-5);
+  color: var(--text-muted);
+}
+
+.gts-hero-heading {
+  /* Large and confident, but not a billboard. clamp() keeps it sane on a phone and
+     stops it dominating a 2560px display. */
+  font-size: clamp(30px, 5.2vw, 52px);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.022em;
+  line-height: 1.06;
+}
+
+.gts-hero-lead {
+  margin-top: var(--s-6);
+  max-width: 56ch;
+  font-size: var(--fs-md);
+  line-height: var(--lh-base);
+  color: var(--text-secondary);
+}
+
+.gts-hero-sub {
+  margin-top: var(--s-4);
+  max-width: 56ch;
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  color: var(--text-muted);
+}
+
+.gts-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-5);
+  margin-top: var(--s-8);
+  flex-wrap: wrap;
+}
+
+.gts-hero-actions .btn--primary {
+  padding: 10px 20px;
+  min-height: 38px;
+  font-size: var(--fs-base);
+}
+
+.gts-hero-hint {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
   letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-weight: var(--fw-medium);
 }
 
-/* ============================ Box arbitrage page ============================ */
-/* ================ Box arbitrage page ================
-   A control surface for a backend strategy: a status strip, an opportunities
-   table, the ATM ±3 chain, and the open/closed position lists. Uses only the
-   shared theme tokens, so it follows light/dark with everything else. */
+/* ---- the one secondary section ---- */
+.gts-pillars {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin-bottom: var(--s-11);
+  /* A single top rule introduces the section. No cards, no shadows, no borders around
+     each column — the columns are separated by hairlines only. */
+  border-top: 1px solid var(--border);
+}
 
-.box-mode {
-  font-size: var(--fs-1);
+.gts-pillar {
+  padding: var(--s-7) var(--s-6) var(--s-7) 0;
+}
+
+.gts-pillar + .gts-pillar {
+  padding-left: var(--s-6);
+  border-left: 1px solid var(--border);
+}
+
+.gts-pillar-label {
+  /* Inherits the micro-label rule above; only the accent line is added here. */
+  margin-bottom: var(--s-4);
+  color: var(--text);
+}
+
+.gts-pillar-body {
+  max-width: 34ch;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+}
+
+/* ---- footer ---- */
+.gts-site-footer {
+  border-top: 1px solid var(--border);
+}
+
+.gts-site-footer-inner {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-6);
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: var(--s-7);
+}
+
+.gts-site-footer-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gts-site-footer-name {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+.gts-site-footer-line {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.gts-site-footer-copy {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* ---- the neutral route-transition surface (auth/ProtectedRoute.tsx) ---- */
+.gts-route-wait {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-3);
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.gts-route-wait-text {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+/* ==========================================================================
+ * 6. WORKSPACE SHELL  (/box)
+ *
+ * Dense. The opposite brief from the landing page.
+ * ========================================================================== */
+
+.gts-workspace {
+  max-width: 2200px;
+  margin: 0 auto;
+  padding: 0 var(--s-5) var(--s-9);
+}
+
+/* ---- the top bar ---- */
+.gts-workbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+  padding: var(--s-3) 0;
+  margin-bottom: var(--s-4);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.gts-workbar-identity {
+  flex: none;
+  padding-right: var(--s-5);
+  border-right: 1px solid var(--border);
+}
+
+.gts-workbar-sub {
+  color: var(--text-muted);
+}
+
+/* The mode subtitle turns warning-toned under a live deployment. */
+.gts-workbar-sub.is-live {
+  color: var(--live);
+}
+
+/* State: backend-derived readouts. Takes the slack so the command group stays right. */
+.gts-workbar-state {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Session utilities: nothing here can place an order. */
+.gts-workbar-session {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
+}
+
+/* Command: separated by a rule and its own inset, so RUN/STOP is never read as
+   another toolbar toggle. */
+.gts-workbar-command {
+  flex: none;
+  padding-left: var(--s-5);
+  border-left: 1px solid var(--border);
+}
+
+.gts-workbar-command .btn {
+  min-width: 74px;
+  justify-content: center;
+  letter-spacing: 0.06em;
+  font-weight: var(--fw-bold);
+}
+
+.gts-strike-window {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 2px 6px 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.gts-strike-window-label {
+  font-size: var(--fs-micro);
   font-weight: var(--fw-semibold);
   letter-spacing: var(--tracking-caps);
-  color: var(--warn);
-  background: var(--warn-surface);
-  border: 1px solid var(--border);
-  padding: 3px var(--sp-2);
-  border-radius: var(--r-pill);
-  white-space: nowrap;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
-/* ---- Status strip ---- */
-.box-strip {
+.theme-toggle-label {
+  /* The icon carries the meaning; the word is a courtesy that is dropped when the bar
+     gets tight (see the responsive block). */
+  font-size: var(--fs-xs);
+}
+
+/* ==========================================================================
+ * 7. WORKSPACE: SECTIONS, STRIP, TABS
+ * ========================================================================== */
+
+/**
+ * A section. Introduced by a rule and a micro-label heading — the replacement for the
+ * old UI's floating rounded cards.
+ */
+.box-section {
+  margin-bottom: var(--s-6);
+}
+
+.box-section-title {
   display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
   flex-wrap: wrap;
-  gap: var(--sp-2) var(--sp-5);
-  padding: var(--sp-3) var(--sp-4);
-  margin-bottom: var(--sp-4);
-  border: 1px solid var(--data-border);
-  border-radius: var(--r-lg);
-  background: var(--data-surface);
-  box-shadow: var(--shadow-data);
+  padding-bottom: var(--s-3);
+  margin-bottom: var(--s-4);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.box-section-title--sub {
+  margin-top: var(--s-8);
+}
+
+/* ---- the status strip: the readiness readout, first thing under the bar ---- */
+.box-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: 1px;
+  margin-bottom: var(--s-5);
+  /* A 1px gap over a border-coloured background draws every internal hairline for
+     free, so the strip reads as one instrument panel rather than N boxes. */
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
 }
 
 .box-stat {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.box-stat-k {
-  font-size: var(--fs-1);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  color: var(--text-3);
-  white-space: nowrap;
+  gap: 3px;
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface);
 }
 
 .box-stat-v {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--fs-4);
-  font-weight: var(--fw-semibold);
-  color: var(--text-1);
-  white-space: nowrap;
-}
-
-/* ---- Sections ---- */
-.box-section {
-  margin-bottom: var(--sp-6);
-}
-
-.box-section-title {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  margin: 0 0 var(--sp-3);
-  font-size: var(--fs-2);
-  font-weight: var(--fw-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  color: var(--text-3);
-}
-
-.box-chain-meta {
-  font-family: var(--font-ui);
-  font-size: var(--fs-2);
-  font-weight: var(--fw-regular);
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--text-3);
-}
-
-.box-empty {
-  margin: 0;
-  padding: var(--sp-5) var(--sp-4);
-  border: 1px dashed var(--border);
-  border-radius: var(--r-lg);
-  color: var(--text-2);
-  font-size: var(--fs-4);
-  text-align: center;
-}
-
-/* ---- Tables (opportunities + closed history) ---- */
-.box-table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--data-border);
-  border-radius: var(--r-lg);
-  background: var(--data-surface);
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
-}
-
-.box-table-wrap::-webkit-scrollbar {
-  height: 6px;
-}
-
-.box-table-wrap::-webkit-scrollbar-thumb {
-  border-radius: var(--r-pill);
-  background: var(--border-strong);
-}
-
-.box-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--fs-3);
-  white-space: nowrap;
-}
-
-.box-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: var(--sp-2) var(--sp-3);
-  font-size: var(--fs-1);
-  font-weight: var(--fw-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  color: var(--text-3);
-  text-align: left;
-  background: var(--surface-2);
-  box-shadow: inset 0 -1px 0 var(--border);
-}
-
-.box-table thead th.num {
-  text-align: right;
-}
-
-.box-table td {
-  padding: var(--sp-2) var(--sp-3);
-  border-bottom: 1px solid var(--data-border);
-  color: var(--text-1);
-}
-
-.box-table td.num {
-  text-align: right;
-  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
-.box-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.box-table tbody tr:hover {
-  background: var(--data-surface-strong);
-}
-
-/* A qualifying box is the one row that matters — mark it, don't just colour text. */
-.box-table tbody tr.box-row--eligible {
-  background: var(--pos-surface);
-  box-shadow: inset 3px 0 0 var(--pos);
-}
-
-.box-table tbody tr.box-row--open {
-  box-shadow: inset 3px 0 0 var(--accent);
-}
-
-.box-sym {
-  font-weight: var(--fw-semibold);
-  margin-right: var(--sp-1);
-}
-
-.box-dim {
-  color: var(--text-3);
-}
-
-.box-net {
-  font-weight: var(--fw-bold);
-}
-
-.box-reason {
-  font-size: var(--fs-1);
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-caps);
-  color: var(--text-2);
-}
-
-/* Closed trades are folded by IST close day; today alone starts expanded. */
-.box-history-days {
-  display: grid;
-  gap: var(--sp-3);
-}
-
-.box-history-day {
-  overflow: hidden;
-  border: 1px solid var(--data-border);
-  border-radius: var(--r-lg);
-  background: var(--data-surface);
-  box-shadow: var(--shadow-data);
-}
-
-.box-history-day-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--sp-2) var(--sp-4);
-  min-height: 44px;
-  padding: var(--sp-3) var(--sp-4);
-  cursor: pointer;
-  color: var(--text-1);
-  font-size: var(--fs-4);
-  font-weight: var(--fw-semibold);
-  list-style-position: inside;
-  background: var(--surface-1);
-}
-
-.box-history-day-summary:hover {
-  background: var(--surface-2);
-}
-
-.box-history-day[open] > .box-history-day-summary {
-  border-bottom: 1px solid var(--data-border);
-}
-
-.box-history-day-meta {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--sp-2) var(--sp-3);
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: var(--fs-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.box-history-day > .box-table-wrap {
-  border: 0;
-  border-radius: 0;
-}
-
-@media (max-width: 720px) {
-  .box-history-day-summary {
-    align-items: flex-start;
-  }
-  .box-history-day-meta {
-    flex-basis: 100%;
-    justify-content: flex-start;
-    margin-left: 0;
-  }
-}
-
-/* ---- Pills: freshness, liquidity, status ---- */
-.box-fresh,
-.box-liq,
-.box-status,
-.box-badge {
-  display: inline-block;
-  padding: 2px var(--sp-2);
-  border-radius: var(--r-pill);
-  font-family: var(--font-ui);
-  font-size: var(--fs-1);
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-caps);
-  white-space: nowrap;
-}
-
-.box-fresh--ok {
-  color: var(--pos);
-  background: var(--pos-surface);
-}
-
-.box-fresh--warn {
-  color: var(--warn);
-  background: var(--warn-surface);
-}
-
-.box-fresh--bad {
-  color: var(--neg);
-  background: var(--neg-surface);
-}
-
-.box-liq--ok {
-  color: var(--pos);
-  background: var(--pos-surface);
-}
-
-.box-liq--bad {
-  color: var(--neg);
-  background: var(--neg-surface);
-}
-
-.box-status--eligible {
-  color: var(--on-accent);
-  background: var(--pos);
-}
-
-.box-status--paper_opened,
-.box-status--open {
-  color: var(--accent-text);
-  background: var(--accent-surface);
-}
-
-.box-status--unpriced {
-  color: var(--warn);
-  background: var(--warn-surface);
-}
-
-.box-status--watching {
-  color: var(--text-2);
-  background: var(--surface-2);
-}
-
-.box-status--rejected {
-  color: var(--neg);
-  background: var(--neg-surface);
-}
-
-.box-badge--eligible,
-.box-badge--exit {
-  color: var(--on-accent);
-  background: var(--pos);
-}
-
-.box-badge--warn {
-  color: var(--warn);
-  background: var(--warn-surface);
-}
-
-/* ---- The ATM ±3 chain ---- */
-.box-chain {
-  width: 100%;
-  min-width: 640px;
-  border-collapse: collapse;
-  font-size: var(--fs-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.box-chain thead th {
-  padding: var(--sp-2) var(--sp-2);
-  font-size: var(--fs-1);
-  font-weight: var(--fw-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  color: var(--text-3);
-  text-align: right;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-}
-
-.box-chain-ce {
-  text-align: center !important;
-  color: var(--neg) !important;
-}
-
-.box-chain-pe {
-  text-align: center !important;
-  color: var(--pos) !important;
-}
-
-.box-chain-strike-h {
-  text-align: center !important;
-  color: var(--text-2) !important;
-  border-left: 1px solid var(--data-border);
-  border-right: 1px solid var(--data-border);
-}
-
-.box-chain td {
-  padding: var(--sp-2) var(--sp-2);
-  border-bottom: 1px solid var(--data-border);
-  font-family: var(--font-mono);
-  text-align: right;
-  color: var(--text-1);
-}
-
-.box-chain tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.box-chain-strike {
-  text-align: center !important;
-  font-weight: var(--fw-semibold);
-  background: var(--surface-2);
-  border-left: 1px solid var(--data-border);
-  border-right: 1px solid var(--data-border);
-}
-
-.box-chain-atm {
-  background: var(--chain-itm-tint);
-}
-
-.box-chain-atm .box-chain-strike {
-  background: var(--accent-surface);
-  color: var(--accent-text);
-}
-
-.box-atm-tag {
-  display: inline-block;
-  margin-left: var(--sp-1);
-  padding: 0 var(--sp-1);
-  border-radius: var(--r-sm);
-  background: var(--accent-fill);
-  color: var(--on-accent);
-  font-family: var(--font-ui);
-  font-size: var(--fs-1);
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-caps);
-}
-
-/* A cell that is one of the four legs of a detected or open box. */
-.box-chain td.box-marked {
-  font-weight: var(--fw-bold);
-  background: var(--accent-surface);
-  box-shadow: inset 0 0 0 1px var(--accent-border);
-}
-
-.box-leg {
-  display: inline-block;
-  margin-left: var(--sp-1);
-  padding: 0 var(--sp-1);
-  border-radius: var(--r-sm);
-  font-family: var(--font-ui);
-  font-size: var(--fs-1);
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-caps);
-}
-
-.box-leg--buy {
-  color: var(--prem);
-  background: var(--prem-surface);
-}
-
-.box-leg--sell {
-  color: var(--disc);
-  background: var(--disc-surface);
-}
-
-/* ---- Open position cards ---- */
-.box-cards {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-}
-
-.box-card {
-  border: 1px solid var(--data-border);
-  border-radius: var(--r-lg);
-  background: var(--data-surface);
-  box-shadow: var(--shadow-data);
-  padding: var(--sp-3) var(--sp-4);
-}
-
-.box-card--exiting {
-  box-shadow: inset 3px 0 0 var(--pos), var(--shadow-data);
-}
-
-.box-card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-3);
-}
-
-.box-card-strikes {
-  margin-left: var(--sp-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-4);
-  font-weight: var(--fw-semibold);
-  color: var(--accent-text);
-}
-
-.box-card-head .box-chain-meta {
-  display: block;
-  margin-top: 2px;
-}
-
-.box-card-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  flex-wrap: wrap;
-}
-
-/* Entry fill + current exit touch, per leg. */
-.box-legs {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
-  padding-bottom: var(--sp-3);
-  margin-bottom: var(--sp-3);
-  border-bottom: 1px solid var(--border);
-}
-
-.box-leg-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-3);
-  font-variant-numeric: tabular-nums;
-}
-
-.box-leg-name {
-  min-width: 92px;
-  font-weight: var(--fw-semibold);
-  color: var(--text-1);
-}
-
-.box-leg-cell {
-  min-width: 96px;
-  color: var(--text-2);
-}
-
-.box-leg-side {
-  margin-left: var(--sp-1);
-  font-family: var(--font-ui);
-  font-size: var(--fs-1);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  color: var(--text-3);
-}
-
-.box-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: var(--sp-2) var(--sp-3);
-}
-
-.box-metric {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.box-metric-k {
-  font-size: var(--fs-1);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  color: var(--text-3);
-  white-space: nowrap;
-}
-
-.box-metric-v {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--fs-4);
-  font-weight: var(--fw-semibold);
-  color: var(--text-1);
-}
-
-.box-metric--strong .box-metric-v {
-  font-size: var(--fs-6);
-  font-weight: var(--fw-bold);
-}
-
-.box-metric.pnl-pos .box-metric-v {
-  color: var(--pos);
-}
-
-.box-metric.pnl-neg .box-metric-v {
-  color: var(--neg);
-}
-
-.box-metric.muted .box-metric-v {
-  color: var(--text-3);
-}
-
-/* "Should close, but the market cannot fill it" — never hidden from the user. */
-.box-blocked {
-  margin: var(--sp-3) 0 0;
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--r-md);
-  background: var(--warn-surface);
-  box-shadow: inset 3px 0 0 var(--warn);
-  color: var(--warn);
-  font-size: var(--fs-3);
-}
-
-.box-disclaimer {
-  margin: var(--sp-6) 0 var(--sp-8);
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px dashed var(--border);
-  border-radius: var(--r-lg);
-  color: var(--text-2);
-  font-size: var(--fs-3);
-  line-height: var(--lh-base);
-}
-
-.box-disclaimer strong {
-  color: var(--text-1);
-}
-
-/* ---- Trades modal: Calendar | Box tabs ---- */
-.trade-tabs {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-5);
-  border-bottom: 1px solid var(--border);
-}
-
-.trade-tabs .btn {
-  gap: var(--sp-1);
-}
-
-.trade-tabs .btn--primary .pill-count {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: transparent;
-  color: var(--on-accent);
-}
-
-.box-tab-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sp-1) var(--sp-2);
-  margin-top: var(--sp-1);
-  font-size: var(--fs-2);
-  color: var(--text-3);
-}
-
-@media (max-width: 720px) {
-  .box-strip {
-    gap: var(--sp-2) var(--sp-4);
-  }
-  .box-leg-row {
-    font-size: var(--fs-2);
-  }
-  .box-leg-name,
-  .box-leg-cell {
-    min-width: 72px;
-  }
-}
-
-
-/* Market-closed (last-close) pills. Neutral rather than green/red: a closing
-   price is neither good nor bad liquidity, it is simply not executable. */
-.box-liq--closed,
-.box-fresh--closed {
-  color: var(--text-3);
-  background: var(--surface-2);
-}
-
-.box-status--indicative {
-  color: var(--text-2);
-  background: var(--surface-3);
-}
-
-
-/* ---- Box page: view switcher (Opportunities | Open | Closed) ----
-   The three jobs are shown one at a time instead of stacked, but every tab keeps
-   its count (and its attention markers) so nothing important hides behind a
-   click. */
+/* ---- tabs: underlined, not filled ---- */
 .box-views {
   display: flex;
   align-items: center;
+  gap: var(--s-5);
   flex-wrap: wrap;
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-4);
-  padding-bottom: var(--sp-3);
+  margin-bottom: var(--s-5);
   border-bottom: 1px solid var(--border);
 }
 
-.box-views .btn {
-  gap: var(--sp-1);
+.box-view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) 2px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
 }
 
-/* On the active (filled) tab the count/marker pills need to read against the
-   accent fill rather than the page background. */
-.box-views .btn--primary .pill-count {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: transparent;
-  color: var(--on-accent);
+.box-view-tab:hover {
+  color: var(--text);
 }
 
-.box-views .box-badge {
-  margin-left: 2px;
+.box-view-tab[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: var(--fw-semibold);
+}
+
+.box-view-tab[aria-selected="true"] .pill-count {
+  border-color: var(--accent-line);
+  background: var(--accent-quiet);
+  color: var(--accent-text);
+}
+
+.box-view-tab-label {
+  letter-spacing: var(--tracking-tight);
 }
 
 .box-views-total {
   margin-left: auto;
-  font-family: var(--font-mono);
+  padding: var(--s-3) 0;
+  font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
-  font-size: var(--fs-4);
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+ * 8. WORKSPACE: TABLES
+ * ========================================================================== */
+
+/**
+ * Dense financial tables are allowed to scroll HORIZONTALLY.
+ *
+ * This is deliberate. Squeezing seventeen columns of rupee amounts into a 1366px
+ * viewport to avoid a scrollbar produces a table nobody can read, which is worse than
+ * scrolling. The wrapper scrolls; the header stays.
+ */
+.box-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.box-table,
+.box-chain {
+  width: 100%;
+  min-width: max-content;
+  font-size: var(--fs-xs);
+}
+
+/**
+ * STRUCTURAL COLOUR IS DELIBERATELY LOW-SPECIFICITY.
+ *
+ * A cell's className is often `num box-net ${pnlClass(value)}` — the structural class and a
+ * semantic tone class on the same element. A descendant selector like
+ * `.box-table tbody td { color: … }` (specificity 0,2,1) would beat the single-class
+ * `.pnl-pos` (0,1,0) and every profit/loss colour in every table would silently do nothing.
+ *
+ * Wrapping the table classes in `:where()` drops their contribution to zero, so these base
+ * rules sit at (0,0,2) and any single-class tone utility overrides them. This is why the
+ * tone utilities are gathered in ONE final section at the end of this file: with structural
+ * rules held below them in both specificity and source order, the cascade is predictable
+ * instead of accidental.
+ */
+:where(.box-table, .box-chain) thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-strong);
+  font-size: var(--fs-micro);
   font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left;
   white-space: nowrap;
 }
 
-.box-views-total.pnl-pos {
-  color: var(--pos);
+:where(.box-table, .box-chain) thead th.num {
+  text-align: right;
 }
 
-.box-views-total.pnl-neg {
-  color: var(--neg);
+:where(.box-table, .box-chain) tbody td {
+  padding: 7px var(--s-4);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
-@media (max-width: 560px) {
-  .box-views {
-    gap: var(--sp-1);
-  }
-  .box-views .btn {
-    padding: 0 var(--sp-2);
-    font-size: var(--fs-3);
-  }
-  .box-views-total {
-    margin-left: 0;
-    flex-basis: 100%;
-  }
+:where(.box-table, .box-chain) tbody tr:last-child td {
+  border-bottom: none;
 }
 
+/* No zebra striping: a hairline per row is enough separation and keeps the surface calm. */
+:where(.box-table) tbody tr:hover td {
+  background: var(--surface-hover);
+}
 
-/* Neutral explanation of why an open box has not auto-closed yet — informative,
-   not an error. */
-.box-held {
-  margin: var(--sp-3) 0 0;
-  padding: var(--sp-2) var(--sp-3);
+/**
+ * Column-group rules. A vertical hairline before a group turns a seventeen-column table
+ * into four readable blocks — decision, derivation, structure, executability.
+ */
+.box-col--group {
+  border-left: 1px solid var(--border);
+}
+
+/* The decision column: the figure the entry gate tests. Given its own weight and a
+   faint tint so the eye lands on it first. */
+.box-col--lead {
+  background: var(--surface-raised);
+}
+
+.box-net {
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+.box-sym {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  color: var(--text);
+  letter-spacing: 0;
+}
+
+.badge-index {
+  margin-left: 5px;
+  padding: 1px 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-xs);
+  font-size: 9px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+  color: var(--text-muted);
+  vertical-align: 1px;
+}
+
+/* Row states. A left accent bar, not a wash of colour across the row. */
+.box-row--eligible td:first-child {
+  box-shadow: inset 2px 0 0 var(--positive);
+}
+
+.box-row--open td:first-child {
+  box-shadow: inset 2px 0 0 var(--info);
+}
+
+.box-reason {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-muted);
+}
+
+.box-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-7) var(--s-5);
+  border: 1px dashed var(--border-strong);
   border-radius: var(--r-md);
-  background: var(--surface-2);
-  box-shadow: inset 3px 0 0 var(--border-strong);
-  color: var(--text-2);
-  font-size: var(--fs-3);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
 }
 
+.box-empty strong {
+  color: var(--text-secondary);
+}
 
-/* ---- Box: the four monitored legs of a selected box ---- */
+.box-disclaimer {
+  padding: var(--s-4) var(--s-5);
+  margin-top: var(--s-7);
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+}
+
+.box-disclaimer strong {
+  color: var(--text-secondary);
+}
+
+/* ==========================================================================
+ * 9. WORKSPACE: STATE PILLS  (freshness, liquidity, direction, broker, status)
+ *
+ * All share one geometry so they read as one vocabulary, and all carry TEXT.
+ * ========================================================================== */
+
+.box-fresh,
+.box-liq,
+.box-status,
+.box-dir,
+.box-broker,
+.box-charge-origin,
+.box-badge,
+.box-exec-badge,
+.box-exec-mode,
+.box-session-state,
+.box-exec-session-state,
+.leg-tag,
+.box-leg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface-raised);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* ---- book freshness ---- */
+.box-fresh {
+  font-variant-numeric: tabular-nums;
+}
+
+.box-fresh--ok {
+  color: var(--positive);
+  border-color: var(--positive);
+  background: var(--positive-quiet);
+}
+
+.box-fresh--bad {
+  color: var(--negative);
+  border-color: var(--negative);
+  background: var(--negative-quiet);
+}
+
+.box-fresh--closed {
+  color: var(--text-muted);
+}
+
+/* ---- liquidity ---- */
+.box-liq--ok {
+  color: var(--positive);
+  border-color: var(--positive);
+  background: var(--positive-quiet);
+}
+
+.box-liq--bad {
+  color: var(--negative);
+  border-color: var(--negative);
+  background: var(--negative-quiet);
+}
+
+.box-liq--closed {
+  color: var(--text-muted);
+}
+
+/* ---- direction. LONG and SHORT must never be confusable: different tone AND
+       different fill, so they survive greyscale. ---- */
+.box-dir {
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em;
+}
+
+.box-dir--long {
+  color: var(--info);
+  border-color: var(--info);
+  background: var(--info-quiet);
+}
+
+.box-dir--short {
+  /* Filled, not outlined — the strongest available difference from LONG. */
+  color: var(--bg);
+  border-color: var(--info);
+  background: var(--info);
+  font-weight: var(--fw-bold);
+}
+
+/* ---- broker ---- */
+.box-broker {
+  font-weight: var(--fw-semibold);
+}
+
+.box-broker--zerodha {
+  color: var(--text-secondary);
+}
+
+.box-broker--dhan {
+  color: var(--accent-text);
+  border-color: var(--accent-line);
+  background: var(--accent-quiet);
+}
+
+/* ---- charge origin ---- */
+.box-charge-origin {
+  margin-left: 5px;
+}
+
+.box-charge-origin--kite,
+.box-charge-origin--local_verified {
+  color: var(--positive);
+  border-color: var(--positive);
+  background: var(--positive-quiet);
+}
+
+.box-charge-origin--local {
+  color: var(--text-muted);
+}
+
+/* ---- opportunity status ---- */
+.box-status {
+  font-weight: var(--fw-semibold);
+}
+
+.box-status--eligible {
+  color: var(--positive);
+  border-color: var(--positive);
+  background: var(--positive-quiet);
+}
+
+.box-status--paper_opened,
+.box-status--live_opened,
+.box-status--open {
+  color: var(--info);
+  border-color: var(--info);
+  background: var(--info-quiet);
+}
+
+.box-status--rejected {
+  color: var(--text-muted);
+}
+
+.box-status--unpriced,
+.box-status--indicative {
+  color: var(--warning);
+  border-color: var(--warning);
+  background: var(--warning-quiet);
+}
+
+.box-status--watching {
+  color: var(--text-muted);
+}
+
+/* ---- attention badges on tabs and cards ---- */
+.box-badge {
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.03em;
+}
+
+.box-badge--eligible {
+  color: var(--positive);
+  border-color: var(--positive);
+  background: var(--positive-quiet);
+}
+
+.box-badge--exit {
+  color: var(--accent-text);
+  border-color: var(--accent-line);
+  background: var(--accent-quiet);
+}
+
+.box-badge--warn {
+  color: var(--warning);
+  border-color: var(--warning);
+  background: var(--warning-quiet);
+}
+
+/* ---- BUY / SELL leg tags ---- */
+.leg-tag,
+.box-leg {
+  min-width: 40px;
+  justify-content: center;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.04em;
+}
+
+.tag-buy,
+.box-leg--buy {
+  color: var(--positive);
+  border-color: var(--positive);
+  background: var(--positive-quiet);
+}
+
+.tag-sell,
+.box-leg--sell {
+  color: var(--negative);
+  border-color: var(--negative);
+  background: var(--negative-quiet);
+}
+
+/* ==========================================================================
+ * 10. WORKSPACE: THE OPTION CHAIN
+ * ========================================================================== */
+
+.box-chain thead tr:first-child th {
+  text-align: center;
+  border-bottom: none;
+}
+
+.box-chain-ce {
+  color: var(--negative) !important;
+}
+
+.box-chain-pe {
+  color: var(--positive) !important;
+}
+
+.box-chain-strike-h,
+.box-chain-strike {
+  text-align: center !important;
+  background: var(--surface-raised);
+  font-family: var(--font-mono);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+.box-chain-atm td {
+  background: var(--accent-quiet);
+}
+
+/* The four legs of the SELECTED box, marked precisely. */
+.box-chain-leg-row td {
+  box-shadow: inset 0 -1px 0 var(--accent-line);
+}
+
+.box-marked {
+  color: var(--text) !important;
+  font-weight: var(--fw-semibold);
+}
+
+.box-atm-tag {
+  margin-left: 5px;
+  font-size: 9px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+  color: var(--accent-text);
+}
+
+.box-chain-meta {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-regular);
+  letter-spacing: var(--tracking-tight);
+  text-transform: none;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* ---- the four monitored legs of a selected box ---- */
 .box-legsum {
-  margin-bottom: var(--sp-3);
-  border: 1px solid var(--data-border);
-  border-radius: var(--r-lg);
-  background: var(--data-surface);
-  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .box-legsum-head {
   display: flex;
   align-items: baseline;
+  gap: var(--s-3);
   flex-wrap: wrap;
-  gap: var(--sp-1) var(--sp-2);
-  margin-bottom: var(--sp-2);
-  font-size: var(--fs-3);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
+  font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .box-legsum-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--sp-2);
+  gap: 1px;
+  background: var(--border);
 }
 
 .box-legsum-leg {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-2);
-  border: 1px solid var(--data-border);
-  border-radius: var(--r-md);
-  background: var(--surface-0);
-  font-size: var(--fs-3);
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface);
+  font-size: var(--fs-xs);
 }
 
 .box-legsum-role {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
   font-weight: var(--fw-semibold);
-  color: var(--text-2);
-  white-space: nowrap;
+  color: var(--text-muted);
 }
 
 .box-legsum-sym {
@@ -1622,1745 +1709,1477 @@ body {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
   font-family: var(--font-mono);
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .box-legsum-px {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  color: var(--text-1);
-  white-space: nowrap;
+  color: var(--text);
 }
 
 .box-legsum-qty {
   font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-3);
-  white-space: nowrap;
+  font-size: var(--fs-micro);
+  color: var(--text-muted);
 }
 
-/* The two strike rows of the selected box, lightly lifted in the chain. */
-.box-chain tbody tr.box-chain-leg-row td {
-  background: var(--accent-surface);
-}
+/* ==========================================================================
+ * 11. WORKSPACE: OPEN POSITION CARDS
+ * ========================================================================== */
 
-
-/* ------------------------------------------------------------------ box: direction + execution breakdown ------ */
-
-.box-dir {
-  display: inline-block;
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-  vertical-align: middle;
-  margin-left: 0.35rem;
-}
-.box-dir--long {
-  background: color-mix(in srgb, var(--pos, #16a34a) 16%, transparent);
-  color: var(--pos, #16a34a);
-}
-.box-dir--short {
-  background: color-mix(in srgb, var(--neg, #dc2626) 16%, transparent);
-  color: var(--neg, #dc2626);
-}
-
-.box-charge-origin {
-  display: inline-block;
-  font-size: 0.6rem;
-  font-weight: 600;
-  padding: 0.02rem 0.3rem;
-  border-radius: 4px;
-  margin-left: 0.35rem;
-  opacity: 0.85;
-  border: 1px solid currentColor;
-}
-.box-charge-origin--local {
-  color: var(--text-3);
-}
-.box-charge-origin--local_verified {
-  color: var(--pos, #16a34a);
-}
-.box-charge-origin--kite {
-  color: var(--accent, #2563eb);
-}
-
-.box-breakdown {
+.box-cards {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  font-size: 0.8rem;
-  min-width: 220px;
+  gap: var(--s-4);
 }
-.box-breakdown-row {
+
+.box-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+/* A position the backend says is exit-eligible gets an accent edge, not a coloured card. */
+.box-card--exiting {
+  border-color: var(--accent-line);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.box-card-head {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
-}
-.box-breakdown-row--sub {
-  color: var(--text-3);
-  padding-left: 0.5rem;
-}
-.box-breakdown-row--net {
-  margin-top: 0.2rem;
-  padding-top: 0.2rem;
-  border-top: 1px solid var(--border, #e5e7eb);
-  font-weight: 700;
-}
-.box-breakdown-row--net.is-pass .box-breakdown-v {
-  color: var(--pos, #16a34a);
-}
-.box-breakdown-row--net.is-fail .box-breakdown-v {
-  color: var(--neg, #dc2626);
-}
-.box-breakdown-gate {
-  font-weight: 400;
-  color: var(--text-3);
-  font-size: 0.72rem;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+  padding: var(--s-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
 }
 
-
-/* ------------------------------------------------------------------ box: admin strike-level selector ------ */
-
-.box-strike-level {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  margin-right: 0.5rem;
-}
-.box-strike-level-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-3);
-  margin-right: 0.1rem;
-}
-.box-strike-level .btn--sm {
-  min-width: 1.9rem;
-  padding-left: 0.5rem;
-  padding-right: 0.5rem;
-}
-
-
-/* ------------------------------------------------------------------ box: execution health panel ------ */
-
-.box-exec-health {
-  margin: 0.75rem 0;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 10px;
-  background: var(--surface-1);
-}
-.box-exec-health-title {
-  margin: 0 0 0.5rem;
-  font-size: 0.9rem;
+.box-card-head > div:first-child {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--s-3);
+  flex-wrap: wrap;
 }
-.box-exec-mode {
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent, #2563eb) 16%, transparent);
-  color: var(--accent, #2563eb);
+
+.box-card-strikes {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
 }
-.box-exec-sub {
-  margin: 0.6rem 0 0.35rem;
-  font-size: 0.78rem;
-  color: var(--text-3);
+
+.box-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
 }
-.box-exec-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 0.4rem 0.9rem;
+
+/**
+ * The critical-action group.
+ *
+ * Separated from the read-mostly card by its own rule and inset. It makes the controls
+ * that change exposure easy to FIND and no easier to hit by accident — the affordances
+ * themselves are unchanged.
+ */
+.box-card-critical {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding-left: var(--s-4);
+  margin-left: var(--s-2);
+  border-left: 1px solid var(--border-strong);
 }
-.box-exec-stat {
+
+.box-delete-blocked {
+  max-width: 30ch;
+  font-size: var(--fs-micro);
+  line-height: var(--lh-snug);
+}
+
+/* ---- the four legs ---- */
+.box-legs {
   display: flex;
   flex-direction: column;
+  border-bottom: 1px solid var(--border);
 }
-.box-exec-stat-k {
-  font-size: 0.68rem;
-  color: var(--text-3);
+
+.box-leg-row {
+  display: grid;
+  grid-template-columns: 48px 110px minmax(96px, 1fr) 48px minmax(80px, 1fr) minmax(96px, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 5px var(--s-4);
+  font-size: var(--fs-xs);
 }
-.box-exec-stat-v {
-  font-size: 0.9rem;
-  font-weight: 600;
+
+.box-leg-row + .box-leg-row {
+  border-top: 1px solid var(--border);
+}
+
+.box-leg-name {
+  font-family: var(--font-mono);
+  font-weight: var(--fw-medium);
+  color: var(--text);
+}
+
+.box-leg-cell {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.box-leg-side {
+  font-size: 9px;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ---- the metric grid ---- */
+.box-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 1px;
+  background: var(--border);
+}
+
+.box-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface);
+}
+
+.box-metric-v {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* The headline figure of the card. */
+.box-metric--strong {
+  background: var(--surface-raised);
+}
+
+.box-metric--strong .box-metric-v {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+}
+
+.box-held,
+.box-blocked {
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+  color: var(--text-muted);
+}
+
+.box-blocked {
+  color: var(--warning);
+  background: var(--warning-quiet);
+}
+
+/* ==========================================================================
+ * 12. WORKSPACE: HISTORY
+ * ========================================================================== */
+
+.box-history-days {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.box-history-day {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.box-history-day-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-5);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface-raised);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  list-style: none;
+}
+
+.box-history-day-summary::-webkit-details-marker {
+  display: none;
+}
+
+/* A disclosure caret we draw ourselves, so it is consistent across browsers. */
+.box-history-day-summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  margin-right: var(--s-2);
+  border-left: 4px solid var(--text-muted);
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+.box-history-day[open] > .box-history-day-summary::before {
+  transform: rotate(90deg);
+}
+
+.box-history-day-summary:hover {
+  background: var(--surface-hover);
+}
+
+.box-history-day-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
 }
-.box-exec-stat.is-good .box-exec-stat-v {
-  color: var(--pos, #16a34a);
-}
-.box-exec-stat.is-bad .box-exec-stat-v {
-  color: var(--neg, #dc2626);
+
+.box-history-day .box-table-wrap {
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
 }
 
-/* ---- order-update stream panel ----------------------------------------------
-   A warning tone for `not_wired`: the capability exists in the code but delivers
-   no fill, which must not read as a neutral "off". */
-.box-exec-stat.is-warn .box-exec-stat-v {
-  color: var(--warn, #d97706);
-}
-.box-exec-stat-sub {
-  font-size: 0.63rem;
-  color: var(--text-3);
-  margin-top: 0.15rem;
-  line-height: 1.35;
-}
-.box-exec-note {
-  font-size: 0.7rem;
-  color: var(--text-3);
-  margin: 0.2rem 0 0.6rem;
-  line-height: 1.45;
-}
-.box-exec-note.is-warn {
-  color: var(--warn, #d97706);
-}
-.box-exec-mode.is-good {
-  color: var(--pos, #16a34a);
-}
-.box-exec-mode.is-warn {
-  color: var(--warn, #d97706);
-}
-
-/* ---- operational state panel (item 10) --------------------------------------
-   Two INDEPENDENT health signals rendered side by side but never conflated, plus
-   an entry-gate banner whose "paused-but-safe" band is visually distinct from a
-   "broken" band. Signalling is never colour-alone — each band also carries a text
-   glyph and a word. */
-.box-op-columns {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 0.5rem 1.25rem;
-}
-.box-op-signal {
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 8px;
-  padding: 0.5rem 0.75rem;
-  background: var(--surface-0, transparent);
-}
-.box-op-gate {
-  margin: 0.35rem 0 0.7rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid var(--border, #e5e7eb);
-  font-size: 0.8rem;
-  line-height: 1.45;
-}
-.box-op-gate--ok {
-  color: var(--pos, #16a34a);
-  border-color: color-mix(in srgb, var(--pos, #16a34a) 40%, transparent);
-  background: color-mix(in srgb, var(--pos, #16a34a) 8%, transparent);
-}
-/* PAUSED-but-safe: warn tone, deliberately NOT the error red of "broken". */
-.box-op-gate--paused {
-  color: var(--warn, #d97706);
-  border-color: color-mix(in srgb, var(--warn, #d97706) 45%, transparent);
-  background: color-mix(in srgb, var(--warn, #d97706) 8%, transparent);
-}
-/* BROKEN: error tone, visually distinct from the paused band above. */
-.box-op-gate--broken {
-  color: var(--neg, #dc2626);
-  border-color: color-mix(in srgb, var(--neg, #dc2626) 45%, transparent);
-  background: color-mix(in srgb, var(--neg, #dc2626) 8%, transparent);
-}
-.box-op-gate-head {
-  margin: 0 0 0.25rem;
-}
-.box-op-reasons {
-  margin: 0.15rem 0 0.35rem;
-  padding-left: 1.1rem;
-  font-size: 0.75rem;
-  color: var(--text-2, inherit);
-}
-.box-op-reasons li {
-  margin: 0.1rem 0;
-}
-.box-neg {
-  color: var(--neg, #dc2626);
-}
-
-/* ------------------------------------------------------------------ box: running day P&L strip ------ */
+/* ==========================================================================
+ * 13. WORKSPACE: DAY P&L STRIP
+ * ========================================================================== */
 
 .box-daypnl {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 1.75rem;
-  margin: 0.75rem 0;
-  padding: 0.6rem 1rem;
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 10px;
-  background: var(--surface-1);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  margin-bottom: var(--s-5);
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
 }
+
 .box-daypnl-item {
   display: flex;
   flex-direction: column;
-}
-.box-daypnl-k {
-  font-size: 0.68rem;
-  color: var(--text-3);
-}
-.box-daypnl-v {
-  font-size: 1rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.box-daypnl-total .box-daypnl-k {
-  font-weight: 600;
-  color: var(--text-1);
-}
-.box-daypnl-total .box-daypnl-v {
-  font-size: 1.15rem;
-}
-.box-daypnl-v.is-pos {
-  color: var(--pos, #16a34a);
-}
-.box-daypnl-v.is-neg {
-  color: var(--neg, #dc2626);
-}
-/* Margin deployed is capital, not profit: no P&L colour, and set apart from the
-   figures either side of it so it is not misread as part of the day's result. */
-.box-daypnl-item--neutral {
-  padding-left: 1.25rem;
-  border-left: 1px solid var(--border, #e5e7eb);
-}
-.box-daypnl-item--neutral .box-daypnl-v {
-  color: var(--text-2);
-}
-.box-daypnl-sub {
-  font-size: 0.66rem;
-  color: var(--text-3);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ------------------------------------------------------------------ box: admin threshold editor ------ */
-
-.box-gates {
-  margin: 0.5rem 0 0.75rem;
-}
-.box-gates-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.box-gates-summary {
-  font-size: 0.7rem;
-  color: var(--text-3);
-  font-variant-numeric: tabular-nums;
-}
-.box-gates-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1.5rem;
-  margin-top: 0.6rem;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 10px;
-  background: var(--surface-1);
-}
-.box-gates-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  max-width: 22rem;
-}
-.box-gates-k {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-2);
-}
-.box-gates-field input {
-  width: 11rem;
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 6px;
-  background: var(--surface-0, #fff);
-  color: var(--text-1);
-  font-variant-numeric: tabular-nums;
-}
-.box-gates-field input[aria-invalid="true"] {
-  border-color: var(--neg, #dc2626);
-}
-.box-gates-hint {
-  font-size: 0.68rem;
-  color: var(--text-3);
-  line-height: 1.35;
-}
-.box-gates-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  flex-basis: 100%;
-}
-.box-gates-note {
-  font-size: 0.68rem;
-  color: var(--text-3);
-  max-width: 40rem;
-}
-.box-gates-msg {
-  flex-basis: 100%;
-  margin: 0;
-  font-size: 0.72rem;
-}
-.box-gates-msg--error {
-  color: var(--neg, #dc2626);
-}
-.box-gates-msg--ok {
-  color: var(--pos, #16a34a);
-}
-
-.box-section-title--sub {
-  margin-top: 1.25rem;
-  font-size: 0.95rem;
-}
-
-
-/* ------------------------------------------------------------------ box: "?" page explainer ------ */
-
-.box-help-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-1);
-  color: var(--text-2);
-  font-size: 0.85rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-.box-help-btn:hover {
-  color: var(--text-1);
-  border-color: var(--border-strong);
-}
-
-.box-help-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 3vh 1rem;
-  background: rgba(0, 0, 0, 0.55);
-  overflow-y: auto;
-}
-.box-help {
-  width: min(860px, 100%);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-1);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
-}
-.box-help-head {
-  position: sticky;
-  top: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.9rem 1.25rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-1);
-  border-radius: 12px 12px 0 0;
-}
-.box-help-head h2 {
-  margin: 0;
-  font-size: 1rem;
-  color: var(--text-1);
-}
-.box-help-close {
-  border: none;
-  background: none;
-  color: var(--text-2);
-  font-size: 1.5rem;
-  line-height: 1;
-  cursor: pointer;
-}
-.box-help-close:hover {
-  color: var(--text-1);
-}
-.box-help-body {
-  padding: 0.5rem 1.25rem 1.5rem;
-  font-size: 0.86rem;
-  line-height: 1.55;
-  color: var(--text-2);
-}
-.box-help-lead {
-  padding: 0.7rem 0.9rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-2);
-  color: var(--text-1);
-}
-.box-help-section {
-  margin-top: 1.4rem;
-}
-.box-help-section h3 {
-  margin: 0 0 0.4rem;
-  font-size: 0.82rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-}
-.box-help-section p {
-  margin: 0.5rem 0;
-}
-.box-help-section ul {
-  margin: 0.5rem 0;
-  padding-left: 1.1rem;
-}
-.box-help-section li {
-  margin: 0.3rem 0;
-}
-.box-help-section strong {
-  color: var(--text-1);
-}
-.box-help-formula {
-  padding: 0.6rem 0.8rem;
-  border-left: 3px solid var(--accent);
-  background: var(--surface-2);
-  border-radius: 0 6px 6px 0;
-  font-family: var(--mono, ui-monospace, monospace);
-  font-size: 0.8rem;
-  color: var(--text-1);
-}
-.box-help-note {
-  padding: 0.55rem 0.8rem;
-  border-left: 3px solid var(--warn, #d29922);
-  background: var(--surface-2);
-  border-radius: 0 6px 6px 0;
-}
-.box-help-glossary {
-  margin: 0.5rem 0 0;
-}
-.box-help-row {
-  display: grid;
-  grid-template-columns: 11rem 1fr;
-  gap: 0.75rem;
-  padding: 0.4rem 0;
-  border-top: 1px solid var(--border-subtle);
-}
-.box-help-row dt {
-  font-weight: 600;
-  color: var(--text-1);
-}
-.box-help-row dd {
-  margin: 0;
-}
-@media (max-width: 620px) {
-  .box-help-row {
-    grid-template-columns: 1fr;
-    gap: 0.15rem;
-  }
-}
-
-/* The lead paragraph turns from neutral to a warning tone under LIVE, because
-   "this is real money" must not look like the same reassuring box as "this is
-   all simulated". */
-.box-help-lead--live {
-  border-color: var(--danger, #f85149);
-  border-left-width: 3px;
-}
-.box-help-steps {
-  margin: 0.5rem 0;
-  padding-left: 1.35rem;
-}
-.box-help-steps li {
-  margin: 0.35rem 0;
-}
-.box-help-sub {
-  margin: 1.1rem 0 0.3rem;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-2);
-}
-/* Parameter tables carry a third column — the value this server is really
-   running — so the name and the live figure stay aligned down the list and a
-   changed setting is easy to spot. */
-.box-help-params {
-  margin: 0.35rem 0 0;
-}
-.box-help-prow {
-  display: grid;
-  grid-template-columns: 12rem 7rem 1fr;
-  gap: 0.75rem;
-  padding: 0.4rem 0;
-  border-top: 1px solid var(--border-subtle);
-}
-.box-help-prow dt {
-  font-weight: 600;
-  color: var(--text-1);
-}
-.box-help-prow dd {
-  margin: 0;
-}
-.box-help-pval {
-  font-family: var(--mono, ui-monospace, monospace);
-  font-size: 0.8rem;
-  color: var(--accent);
-  overflow-wrap: anywhere;
-}
-.box-help-pmean {
-  color: var(--text-2);
-}
-@media (max-width: 620px) {
-  .box-help-prow {
-    grid-template-columns: 1fr auto;
-    gap: 0.15rem 0.6rem;
-  }
-  .box-help-pmean {
-    grid-column: 1 / -1;
-  }
-}
-
-
-/* ==========================================================================
-   Broker identity + Box trade deletion
-   --------------------------------------------------------------------------
-   Two brokers can appear in history at once, so a trade's broker has to be
-   readable at a glance without competing with the direction pill next to it.
-   The broker badge is therefore NEUTRAL-toned rather than semantic: long/short
-   owns the green/red vocabulary on this page, and a second colour-coded pill
-   beside it would make "DHAN" look like a verdict on the trade.
-   ========================================================================== */
-
-.box-broker {
-  display: inline-block;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-  vertical-align: middle;
-  margin-left: 0.35rem;
-  border: 1px solid transparent;
-  white-space: nowrap;
-}
-
-/* Zerodha: the incumbent — quiet, so existing screens do not suddenly shout. */
-.box-broker--zerodha {
-  background: color-mix(in srgb, var(--fg) 8%, transparent);
-  color: color-mix(in srgb, var(--fg) 72%, transparent);
-  border-color: color-mix(in srgb, var(--fg) 16%, transparent);
-}
-
-/* Dhan: distinguishable at a glance, still not green/red. */
-.box-broker--dhan {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
-}
-
-.box-broker-filter {
-  display: inline-flex;
-  gap: 0.3rem;
-  margin-left: 0.6rem;
-  vertical-align: middle;
-}
-
-/* ---- the compact broker/session/feed/trading readout ---- */
-
-.box-broker-status {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-.box-broker-status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  font-size: 0.78rem;
-}
-.box-ok {
-  color: var(--pos, #16a34a);
-  font-weight: 600;
-}
-.box-bad {
-  color: var(--neg, #dc2626);
-  font-weight: 600;
-}
-.box-broker-problems {
-  margin: 0.3rem 0 0;
-  padding-left: 1rem;
-  font-size: 0.74rem;
-  color: var(--neg, #dc2626);
-}
-.box-broker-problems li {
-  margin: 0.1rem 0;
-}
-
-/* ---- deletion ---- */
-
-/*
- * The live-position explanation that stands in for a delete button.
- * Wrapped and dimmed: it is a reason, not an action, and must not read as a
- * disabled control the operator could enable somehow.
- */
-.box-delete-blocked {
-  font-size: 0.72rem;
-  max-width: 22rem;
-  text-align: right;
-  line-height: 1.3;
-}
-
-.box-delete-warning {
-  margin: 0 0 0.6rem;
-  font-size: 0.85rem;
-}
-
-/* Spelling out exactly which numbers move, so "permanent" is concrete. */
-.box-delete-effects {
-  margin: 0 0 0.9rem;
-  padding-left: 1.1rem;
-  font-size: 0.8rem;
-  color: color-mix(in srgb, var(--fg) 78%, transparent);
-}
-.box-delete-effects li {
-  margin: 0.15rem 0;
-}
-
-.box-delete-reason {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  margin-bottom: 0.9rem;
-}
-.box-delete-reason input {
-  width: 100%;
-  padding: 0.4rem 0.55rem;
-  font: inherit;
-  font-size: 0.85rem;
-  color: var(--fg);
-  background: var(--surface-2, var(--surface));
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.box-delete-reason input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-
-/* ---- broker selection on /admin/verify ---- */
-
-.admin-broker {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.7rem 0.8rem 0.8rem;
-  margin-bottom: 0.9rem;
-}
-.admin-broker legend {
-  padding: 0 0.35rem;
-}
-
-.admin-broker-options {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
-  margin-top: 0.4rem;
-}
-
-/*
- * A whole-card radio target rather than a bare dot: this choice decides which venue
- * every subsequent price, charge and order belongs to, so it deserves a deliberate
- * click area rather than a 12px control.
- */
-.admin-broker-option {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  padding: 0.55rem 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  cursor: pointer;
+  gap: 3px;
+  padding: var(--s-3) var(--s-4);
   background: var(--surface);
-  transition: border-color 0.12s ease, background 0.12s ease;
-}
-.admin-broker-option:hover {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-}
-.admin-broker-option.is-selected {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
-}
-/* The native radio stays for keyboard and screen-reader users, just not for layout. */
-.admin-broker-option input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.admin-broker-option:focus-within {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-.admin-broker-name {
-  font-weight: 700;
-  font-size: 0.8rem;
-  letter-spacing: 0.04em;
-}
-.admin-broker-hint {
-  font-size: 0.68rem;
-  color: color-mix(in srgb, var(--fg) 62%, transparent);
-  line-height: 1.25;
-}
-.admin-broker-note {
-  margin: 0.6rem 0 0;
-  font-size: 0.68rem;
-  line-height: 1.35;
-  color: color-mix(in srgb, var(--fg) 62%, transparent);
 }
 
-/*
- * A REFUSED broker switch is a warning, not an error: the operator is signed in and
- * the session works, it is just still on the previous broker. Styling it as an error
- * would imply the login failed.
- */
-.admin-warn {
-  margin: 0.6rem 0 0.9rem;
-  padding: 0.6rem 0.7rem;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--warn, #d97706) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--warn, #d97706) 38%, transparent);
-  font-size: 0.76rem;
-  line-height: 1.4;
-}
-.admin-warn ul {
-  margin: 0.35rem 0;
-  padding-left: 1.05rem;
-}
-.admin-warn li {
-  margin: 0.15rem 0;
+.box-daypnl-total {
+  background: var(--surface-raised);
 }
 
-
-/* ---- broker chip in the top bar (opens the broker panel) ---- */
-
-/*
- * The badge is the affordance: it already names the active broker, so making it the
- * button avoids a second competing control saying the same thing.
- */
-.broker-chip {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-}
-.broker-chip:hover {
-  filter: brightness(1.15);
-}
-.broker-chip:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.box-daypnl-item--neutral .box-daypnl-v {
+  color: var(--text-secondary);
 }
 
-/* ---- the broker panel ---- */
-
-.broker-live {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  padding: 0.6rem 0.7rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 0.7rem;
-}
-
-.broker-problems {
-  margin: 0 0 0.8rem;
-  padding: 0.5rem 0.7rem 0.5rem 1.6rem;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--warn, #d97706) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--warn, #d97706) 32%, transparent);
-  font-size: 0.74rem;
-  line-height: 1.4;
-}
-.broker-problems li {
-  margin: 0.12rem 0;
-}
-
-.broker-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-bottom: 0.8rem;
-}
-
-.broker-row {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.55rem 0.65rem;
-}
-/* The active broker is visually anchored, so "which one is live" needs no reading. */
-.broker-row.is-active {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
-}
-
-.broker-row-head {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.45rem;
-}
-
-.broker-tag {
-  font-size: 0.58rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  padding: 0.08rem 0.35rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--fg) 10%, transparent);
-  color: color-mix(in srgb, var(--fg) 70%, transparent);
-  text-transform: uppercase;
-}
-.broker-tag.is-ok {
-  background: color-mix(in srgb, var(--pos, #16a34a) 14%, transparent);
-  color: var(--pos, #16a34a);
-}
-.broker-tag.is-off {
-  background: color-mix(in srgb, var(--fg) 8%, transparent);
-}
-
-.broker-row-actions {
-  display: flex;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-}
-
-.broker-row-note {
-  margin: 0 0 0.45rem;
-  font-size: 0.68rem;
-  line-height: 1.35;
-  color: color-mix(in srgb, var(--fg) 62%, transparent);
-}
-
-/*
- * A refused switch. Styled as a warning rather than an error: nothing broke, the
- * operator simply has exposure to clear first.
- */
-.broker-blockers {
-  margin: 0 0 0.8rem;
-  padding: 0.6rem 0.7rem;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--warn, #d97706) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--warn, #d97706) 38%, transparent);
-  font-size: 0.76rem;
-  line-height: 1.4;
-}
-.broker-blockers ul {
-  margin: 0.35rem 0;
-  padding-left: 1.05rem;
-}
-.broker-blockers li {
-  margin: 0.15rem 0;
-}
-
-
-/* ---- the static-IP verification row in the broker panel ---- */
-
-.broker-ip {
-  margin: 0 0 0.8rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid color-mix(in srgb, var(--warn, #d97706) 32%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--warn, #d97706) 8%, transparent);
-}
-/* Addresses are shown monospaced so a single transposed octet is actually visible. */
-.broker-ip code {
-  font-family: var(--mono, ui-monospace, monospace);
-  font-size: 0.72rem;
-  padding: 0.05rem 0.25rem;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--fg) 10%, transparent);
-}
-.broker-ip .broker-row-note {
-  margin-bottom: 0.45rem;
-}
-
-
-/* A link-styled button, so a broker action can sit inside prose like a link. */
-.link--button {
-  background: none;
-  border: none;
-  padding: 0;
-  font: inherit;
-  color: var(--accent);
-  cursor: pointer;
-  text-decoration: underline;
-}
-.link--button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-/* Every blocking reason listed, rather than collapsed into one vague message. */
-.banner-reasons {
-  margin: 0.35rem 0 0;
-  padding-left: 1.1rem;
-  font-size: 0.78rem;
-  line-height: 1.4;
-}
-.banner-reasons li {
-  margin: 0.12rem 0;
-}
-
-/* ---- feed + subscription readout in the broker panel ---- */
-
-.broker-feed-grid {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.15rem 0.75rem;
-  font-size: 0.78rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  margin-bottom: 0.7rem;
-}
-.broker-feed-grid dt {
-  color: color-mix(in srgb, var(--fg) 62%, transparent);
-}
-.broker-feed-grid dd {
-  margin: 0;
+.box-daypnl-v {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
   font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 
-/*
- * Feed states are colour-coded by whether data is actually usable, NOT by whether a
- * socket is open — "connected with nothing subscribed" is a warning, not a success.
- */
-.feed-state--LIVE {
-  color: var(--pos, #16a34a);
-  font-weight: 600;
-}
-.feed-state--STALE,
-.feed-state--CONNECTED_NO_SUBSCRIPTIONS,
-.feed-state--CONNECTING {
-  color: var(--warn, #d97706);
-  font-weight: 600;
-}
-.feed-state--DOWN {
-  color: var(--neg, #dc2626);
-  font-weight: 600;
+.box-daypnl-total .box-daypnl-v {
+  font-size: var(--fs-lg);
 }
 
-
-/* A verified static IP is no longer a warning, so it loses the amber treatment. */
-.broker-ip.is-ok {
-  border-color: color-mix(in srgb, var(--pos, #16a34a) 32%, transparent);
-  background: color-mix(in srgb, var(--pos, #16a34a) 7%, transparent);
+.box-daypnl-sub {
+  font-size: var(--fs-micro);
+  color: var(--text-muted);
 }
-.broker-ip .broker-feed-grid {
-  border: none;
-  padding: 0;
-  margin-bottom: 0.4rem;
-  background: none;
-}
-
 
 /* ==========================================================================
-   BOX EXECUTION / RISK / SESSION PANELS
-   ==========================================================================
+ * 14. WORKSPACE: CONTROL PANELS
+ *
+ * Execution control, session control, risk, gates, execution health, operational
+ * state, order-stream status. One shell shared by all of them.
+ * ========================================================================== */
 
-   The one visual rule that matters here: LIVE must be unmissable. A paper run and
-   a real-money run must never be mistakable for one another at a glance, so the
-   live mode chip and the REAL ORDERS badge use the danger fill rather than a
-   subtle tint, and the badge is persistent rather than transient.
-   ========================================================================== */
-
-.box-exec {
-  margin: 0.5rem 0 0.75rem;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-1);
-}
-
-.box-exec-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-
-/* The mode chip. Paper is quiet; live is loud, deliberately. */
-.box-exec-mode {
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  padding: 0.28rem 0.6rem;
-  border-radius: 6px;
-}
-.box-exec-mode--paper {
-  color: var(--text-2);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-.box-exec-mode--live {
-  color: var(--on-accent);
-  background: var(--danger-fill);
-  border: 1px solid var(--danger-fill);
-}
-
-.box-exec-badge {
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  padding: 0.22rem 0.45rem;
-  border-radius: 5px;
-  color: var(--accent-text);
-  background: var(--accent-surface);
-  border: 1px solid var(--accent-border);
-  white-space: nowrap;
-}
-.box-exec-badge--danger {
-  color: var(--on-accent);
-  background: var(--neg);
-  border-color: var(--neg);
-}
-
-/* The status grid. Fixed columns so a value changing length never reflows the row. */
-.box-exec-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  gap: 0.5rem 1rem;
-  margin: 0 0 0.75rem;
-}
-.box-exec-cell dt {
-  font-size: 0.64rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  color: var(--text-3);
-}
-.box-exec-cell dd {
-  margin: 0.1rem 0 0;
-  font-size: 0.78rem;
-  color: var(--text-1);
-  font-variant-numeric: tabular-nums;
-}
-.box-exec-cell dd.ok {
-  color: var(--pos);
-}
-.box-exec-cell dd.warn {
-  color: var(--warn);
-}
-
-/* Mode selection. An unavailable option stays visible but is clearly inert: hiding
-   it would leave an operator wondering whether live exists at all. */
-.box-exec-modes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-bottom: 0.6rem;
-}
-.box-exec-mode-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.1rem;
-  padding: 0.35rem 0.6rem;
-  font: inherit;
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--text-2);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
-}
-.box-exec-mode-btn:hover:not(:disabled) {
-  border-color: var(--border-strong);
-  color: var(--text-1);
-}
-.box-exec-mode-btn.is-active {
-  color: var(--accent-text);
-  background: var(--accent-surface);
-  border-color: var(--accent-border);
-}
-.box-exec-mode-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-.box-exec-mode-btn.is-unavailable {
-  border-style: dashed;
-  opacity: 0.5;
-}
-.box-exec-mode-btn-label {
-  white-space: nowrap;
-}
-.box-exec-mode-btn-note {
-  font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--warn);
-}
-
-.box-exec-arm,
-.box-exec-session {
-  margin-top: 0.75rem;
-  padding-top: 0.7rem;
-  border-top: 1px solid var(--border-subtle);
-}
-.box-exec-arm-h,
-.box-risk-h,
-.box-session-h {
-  margin: 0 0 0.3rem;
-  font-size: 0.7rem
-;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-2);
-}
-.box-exec-arm-note,
-.box-session-note {
-  margin: 0 0 0.5rem;
-  font-size: 0.7rem;
-  line-height: 1.45;
-  color: var(--text-3);
-  max-width: 62rem;
-}
-.box-exec-arm-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.4rem;
-}
-.box-exec-arm-state {
-  font-size: 0.7rem;
-  color: var(--text-2);
-  font-variant-numeric: tabular-nums;
-}
-.box-exec-arm-state em {
-  color: var(--warn);
-  font-style: normal;
-}
-
-/* The entry-arming confirmation. Framed in danger colours because it is the one
-   click in the UI that can start creating real exposure. */
-.box-exec-confirm {
-  margin-top: 0.75rem;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--neg);
-  border-radius: 8px;
-  background: var(--neg-surface);
-}
-.box-exec-confirm h4 {
-  margin: 0 0 0.3rem;
-  font-size: 0.85rem;
-  color: var(--text-1);
-}
-.box-exec-confirm > p {
-  margin: 0 0 0.6rem;
-  font-size: 0.74rem;
-  color: var(--text-2);
-}
-.box-exec-confirm-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
-  gap: 0.5rem 1rem;
-  margin: 0 0 0.7rem;
-}
-.box-exec-confirm-grid dt {
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  color: var(--text-3);
-}
-.box-exec-confirm-grid dd {
-  margin: 0.1rem 0 0;
-  font-size: 0.76rem;
-  color: var(--text-1);
-  font-variant-numeric: tabular-nums;
-}
-.box-exec-confirm-grid dd small {
-  display: block;
-  font-size: 0.62rem;
-  color: var(--text-3);
-}
-.box-exec-confirm-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.box-exec-blockers {
-  margin: 0.3rem 0 0;
-  padding-left: 1.1rem;
-  font-size: 0.7rem;
-  color: var(--text-2);
-}
-
-.box-exec-latency {
-  margin: 0.75rem 0 0;
-  padding-top: 0.6rem;
-  border-top: 1px solid var(--border-subtle);
-  font-size: 0.68rem;
-  line-height: 1.5;
-  color: var(--text-3);
-  max-width: 70rem;
-}
-
-.box-exec-msg,
-.box-session-msg {
-  margin: 0.5rem 0 0;
-  padding: 0.45rem 0.6rem;
-  border-radius: 6px;
-  font-size: 0.72rem;
-  line-height: 1.45;
-}
-.box-exec-msg code,
-.box-risk-env code,
-.box-risk-hint code {
-  padding: 0.05rem 0.25rem;
-  border-radius: 4px;
-  background: var(--surface-3);
-  font-family: var(--mono, ui-monospace, monospace);
-  font-size: 0.94em;
-}
-.box-exec-msg--error,
-.box-session-msg--error {
-  color: var(--neg);
-  background: var(--neg-surface);
-  border: 1px solid var(--neg);
-}
-.box-exec-msg--warn,
-.box-session-msg--warn {
-  color: var(--warn);
-  background: var(--warn-surface);
-  border: 1px solid var(--warn);
-}
-.box-exec-msg--ok,
-.box-session-msg--ok {
-  color: var(--pos);
-  background: var(--pos-surface);
-  border: 1px solid var(--pos);
-}
-.box-exec-msg--info,
-.box-session-msg--info {
-  color: var(--text-2);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-
-/* ---------------------------- risk panel ---------------------------- */
-
+.box-exec,
+.box-session,
 .box-risk,
-.box-session {
-  margin: 0.5rem 0 0.75rem;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-1);
-}
-.box-risk-item {
-  padding: 0.55rem 0;
-  border-top: 1px solid var(--border-subtle);
-}
-.box-risk-item:first-of-type {
-  border-top: 0;
-}
-.box-risk-item-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-.box-risk-k {
-  font-size: 0.76rem;
-  font-weight: 600;
-  color: var(--text-1);
-}
-.box-risk-v {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--text-3);
-  font-variant-numeric: tabular-nums;
-}
-.box-risk-v.is-on {
-  color: var(--accent-text);
-}
-.box-risk-v small {
-  display: block;
-  font-size: 0.62rem;
-  font-weight: 400;
-  color: var(--text-3);
-}
-.box-risk-hint,
-.box-risk-env,
-.box-risk-evidence {
-  margin: 0.25rem 0 0;
-  font-size: 0.69rem;
-  line-height: 1.5;
-  color: var(--text-3);
-  max-width: 66rem;
-}
-.box-risk-evidence {
-  color: var(--text-2);
-  font-variant-numeric: tabular-nums;
-}
-.box-risk-evidence .ok {
-  color: var(--pos);
-}
-.box-risk-evidence .warn,
-.box-risk-hint .warn {
-  color: var(--warn);
-}
-.box-risk-hint .ok {
-  color: var(--pos);
-}
-.box-risk-env {
-  color: var(--text-3);
-  font-style: italic;
-}
-.box-risk-underlyings {
-  margin: 0.35rem 0 0;
-  padding-left: 1.1rem;
-  font-size: 0.71rem;
-  color: var(--text-2);
-}
-.box-risk-underlyings em {
-  color: var(--accent-text);
-  font-style: normal;
-}
-
-/* --------------------------- session panel -------------------------- */
-
-.box-session-state-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.6rem;
-}
-.box-session-state,
-.box-exec-session-state {
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  padding: 0.22rem 0.5rem;
-  border-radius: 5px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--text-2);
-  white-space: nowrap;
-}
-/* Only the states that carry a warning or a terminal meaning get a colour. Colouring
-   every state would make none of them stand out. */
-.box-session-state--armed,
-.box-exec-session-state--armed {
-  color: var(--pos);
-  border-color: var(--pos);
-  background: var(--pos-surface);
-}
-.box-session-state--completed,
-.box-exec-session-state--completed {
-  color: var(--accent-text);
-  border-color: var(--accent-border);
-  background: var(--accent-surface);
-}
-.box-session-state--blocked,
-.box-exec-session-state--blocked {
-  color: var(--warn);
-  border-color: var(--warn);
-  background: var(--warn-surface);
-}
-.box-session-state--recovery,
-.box-exec-session-state--recovery {
-  color: var(--neg);
-  border-color: var(--neg);
-  background: var(--neg-surface);
-}
-.box-session-help {
-  font-size: 0.7rem;
-  color: var(--text-3);
-}
-.box-session-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
-  gap: 0.5rem 1rem;
-  margin: 0 0 0.6rem;
-}
-.box-session-grid dt {
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  color: var(--text-3);
-}
-.box-session-grid dd {
-  margin: 0.1rem 0 0;
-  font-size: 0.8rem;
-  color: var(--text-1);
-  font-variant-numeric: tabular-nums;
-}
-.box-session-grid dd small {
-  display: block;
-  font-size: 0.6rem;
-  font-weight: 400;
-  color: var(--text-3);
-}
-.box-session-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.4rem;
-}
-.box-session-custom {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-.box-session-custom input {
-  width: 5rem;
-  padding: 0.3rem 0.45rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface-0);
-  color: var(--text-1);
-  font: inherit;
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-}
-.box-session-custom input[aria-invalid="true"] {
-  border-color: var(--neg);
-}
-
-/* ============================ StrikeEdge additions ============================ */
-
-/* ---- the passcode gate ---- */
-.gate {
-  min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  padding: var(--sp-6) var(--sp-4);
-  background: var(--surface-0);
-}
-
-.gate-topbar {
-  position: fixed;
-  top: var(--sp-4);
-  right: var(--sp-4);
-}
-
-.gate-card {
-  width: 100%;
-  max-width: 380px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-  padding: var(--sp-6);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: var(--surface-1);
-  box-shadow: var(--shadow-popover);
-}
-
-.gate-checking {
-  color: var(--text-2);
-  font-size: var(--fs-4);
-}
-
-.gate-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-}
-
-.gate-brand h1 {
-  margin: 0;
-  font-size: var(--fs-7);
-  font-weight: var(--fw-semibold);
-  color: var(--text-1);
-}
-
-.gate-sub {
-  margin: 0;
-  color: var(--text-2);
-  font-size: var(--fs-4);
-}
-
-.gate-field {
-  display: block;
-}
-
-.gate-input {
-  width: 100%;
-  min-height: 40px;
-  padding: 0 var(--sp-3);
+.box-gates,
+.box-exec-health,
+.box-broker-panel,
+.box-op-columns {
+  margin-bottom: var(--s-5);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  background: var(--surface-2);
-  color: var(--text-1);
-  font-family: var(--font-ui);
-  font-size: var(--fs-5);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
-.gate-submit {
-  margin-top: var(--sp-1);
-}
-
-.gate-error {
-  margin: 0;
-  color: var(--neg);
-  font-size: var(--fs-3);
-}
-
-.gate-note {
-  margin: 0;
-  color: var(--text-3);
-  font-size: var(--fs-2);
-  line-height: var(--lh-base);
-}
-
-/* ---- the dual-broker status panel ---- */
-.box-broker-panel {
-  margin: var(--sp-2) 0 var(--sp-4);
-  padding: var(--sp-4);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: var(--surface-1);
-}
-
-.box-broker-panel-h {
-  margin: 0 0 var(--sp-3);
-  font-size: var(--fs-3);
+.box-exec-head,
+.box-session-h,
+.box-risk-h,
+.box-gates-summary,
+.box-exec-health-title,
+.box-broker-panel-h,
+.box-exec-arm-h {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
+  font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
-  color: var(--text-2);
+  color: var(--text-secondary);
 }
 
-.box-broker-panel-msg {
-  margin: 0 0 var(--sp-3);
-  font-size: var(--fs-3);
-  color: var(--text-2);
+.box-exec-sub,
+.box-session-help,
+.box-risk-hint,
+.box-gates-hint,
+.box-exec-note,
+.box-session-note,
+.box-gates-note,
+.box-exec-arm-note,
+.box-help-note,
+.box-broker-panel-foot {
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: var(--tracking-tight);
+  font-weight: var(--fw-regular);
 }
 
-.box-broker-panel-msg--error {
-  color: var(--neg);
+.box-exec-note.is-warn {
+  color: var(--warning);
+  background: var(--warning-quiet);
 }
 
-.box-broker-panel-msg--warn {
-  padding: var(--sp-3);
+/* ---- metric grids inside the panels ---- */
+.box-exec-grid,
+.box-session-grid,
+.box-exec-latency,
+.box-exec-confirm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.box-exec-stat,
+.box-exec-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface);
+}
+
+.box-exec-stat-v {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.box-exec-stat-sub {
+  font-size: var(--fs-micro);
+  line-height: var(--lh-snug);
+  color: var(--text-muted);
+}
+
+.box-exec-stat.is-good .box-exec-stat-v {
+  color: var(--positive);
+}
+
+.box-exec-stat.is-warn .box-exec-stat-v {
+  color: var(--warning);
+}
+
+.box-exec-stat.is-bad .box-exec-stat-v {
+  color: var(--negative);
+}
+
+/* ---- mode chips ---- */
+.box-exec-mode {
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.03em;
+}
+
+.box-exec-mode--paper {
+  color: var(--info);
+  border-color: var(--info);
+  background: var(--info-quiet);
+}
+
+/* LIVE, everywhere it appears, uses the one live tone. */
+.box-exec-mode--live,
+.box-exec-badge--danger {
+  color: var(--live);
+  border-color: var(--live);
+  background: var(--live-quiet);
+}
+
+.box-exec-mode.is-good {
+  color: var(--positive);
+  border-color: var(--positive);
+  background: var(--positive-quiet);
+}
+
+.box-exec-mode.is-warn {
+  color: var(--warning);
+  border-color: var(--warning);
+  background: var(--warning-quiet);
+}
+
+.box-exec-mode.is-bad {
+  color: var(--negative);
+  border-color: var(--negative);
+  background: var(--negative-quiet);
+}
+
+/* ---- mode selector ---- */
+.box-exec-modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+
+.box-exec-mode-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--s-3) var(--s-4);
+  text-align: left;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
-  background: var(--warn-surface);
-  color: var(--warn);
-  box-shadow: inset 3px 0 0 var(--warn);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
 }
+
+.box-exec-mode-btn:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+.box-exec-mode-btn.is-active {
+  border-color: var(--accent);
+  background: var(--accent-quiet);
+}
+
+.box-exec-mode-btn.is-unavailable {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.box-exec-mode-btn-label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+.box-exec-mode-btn-note {
+  font-size: var(--fs-micro);
+  line-height: var(--lh-snug);
+  color: var(--text-muted);
+}
+
+/* ---- arming ---- */
+.box-exec-arm {
+  border-top: 1px solid var(--border);
+}
+
+.box-exec-arm-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  padding: var(--s-4);
+}
+
+.box-exec-arm-state {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+.box-exec-blockers,
+.box-broker-blockers,
+.box-broker-problems,
+.box-op-reasons,
+.box-exec-badge + .box-exec-blockers {
+  margin: 0;
+  padding: 0 var(--s-4) var(--s-4) calc(var(--s-4) + 1.1em);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+  color: var(--warning);
+}
+
+.box-exec-confirm {
+  padding: var(--s-4);
+  border-top: 1px solid var(--border);
+  border-left: 2px solid var(--live);
+  background: var(--live-quiet);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
+}
+
+.box-exec-confirm-actions {
+  display: flex;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  margin-top: var(--s-4);
+}
+
+/* ---- inline panel messages ---- */
+.box-exec-msg,
+.box-session-msg,
+.box-gates-msg,
+.box-broker-panel-msg {
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--border);
+  border-left: 2px solid var(--border-strong);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+  color: var(--text-secondary);
+}
+
+.box-exec-msg--ok,
+.box-session-msg--ok,
+.box-gates-msg--ok {
+  border-left-color: var(--positive);
+  color: var(--positive);
+  background: var(--positive-quiet);
+}
+
+.box-exec-msg--warn,
+.box-session-msg--warn,
+.box-broker-panel-msg--warn {
+  border-left-color: var(--warning);
+  color: var(--warning);
+  background: var(--warning-quiet);
+}
+
+.box-exec-msg--error,
+.box-session-msg--error,
+.box-gates-msg--error,
+.box-broker-panel-msg--error {
+  border-left-color: var(--negative);
+  color: var(--negative);
+  background: var(--negative-quiet);
+}
+
+.box-exec-msg--info,
+.box-session-msg--info {
+  border-left-color: var(--info);
+  color: var(--info);
+  background: var(--info-quiet);
+}
+
+/* ---- the session block inside the execution panel ---- */
+.box-exec-session {
+  border-top: 1px solid var(--border);
+}
+
+.box-exec-session > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-4);
+}
+
+/* ---- session control ---- */
+.box-session-state-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.box-session-state,
+.box-exec-session-state {
+  font-weight: var(--fw-semibold);
+}
+
+.box-session-state--armed,
+.box-exec-session-state--armed {
+  color: var(--live);
+  border-color: var(--live);
+  background: var(--live-quiet);
+}
+
+.box-session-state--idle,
+.box-exec-session-state--idle,
+.box-session-state--disarmed,
+.box-exec-session-state--disarmed {
+  color: var(--text-muted);
+}
+
+.box-session-state--exhausted,
+.box-exec-session-state--exhausted,
+.box-session-state--blocked,
+.box-exec-session-state--blocked {
+  color: var(--negative);
+  border-color: var(--negative);
+  background: var(--negative-quiet);
+}
+
+.box-session-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-4);
+}
+
+.box-session-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.box-session-custom input {
+  width: 68px;
+  padding: 3px 6px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-align: right;
+}
+
+/* ---- risk ---- */
+.box-risk-item {
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.box-risk-item:last-child {
+  border-bottom: none;
+}
+
+.box-risk-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.box-risk-v {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* An ENFORCED limit reads differently from a merely reported one. */
+.box-risk-v.is-on {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+
+.box-risk-env,
+.box-risk-evidence,
+.box-risk-underlyings {
+  margin-top: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: var(--lh-snug);
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
+/* ---- runtime gates form ---- */
+.box-gates-toggle {
+  margin-left: auto;
+}
+
+.box-gates-form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  padding: var(--s-4);
+}
+
+.box-gates-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.box-gates-field input {
+  width: 128px;
+  padding: 6px 8px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-sm);
+  text-align: right;
+}
+
+.box-gates-actions {
+  display: flex;
+  gap: var(--s-3);
+}
+
+/* ---- execution health ---- */
+.box-exec-badge {
+  font-weight: var(--fw-semibold);
+}
+
+/* ==========================================================================
+ * 15. WORKSPACE: OPERATIONAL READINESS + ORDER STREAM
+ *
+ * SYSTEM READINESS IS THE FIRST THING. These panels get the strongest structure on
+ * the page, because "may this deployment enter a trade, and on what evidence" is the
+ * question everything else depends on.
+ * ========================================================================== */
+
+.box-op-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1px;
+  background: var(--border);
+}
+
+.box-op-signal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  background: var(--surface);
+}
+
+/**
+ * The entry gate verdict. Framed as a statement with a left rule, tinted by outcome —
+ * never a bare green tick, because "entry permitted" and "entry blocked because X" need
+ * to be equally readable.
+ */
+.box-op-gate {
+  display: block;
+  padding: var(--s-3) var(--s-4);
+  border-left: 2px solid var(--border-strong);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
+  color: var(--text-secondary);
+}
+
+.box-op-gate-head {
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+.box-op-gate--ok {
+  border-left-color: var(--positive);
+  background: var(--positive-quiet);
+}
+
+.box-op-gate--paused {
+  border-left-color: var(--warning);
+  background: var(--warning-quiet);
+}
+
+.box-op-gate--broken {
+  border-left-color: var(--negative);
+  background: var(--negative-quiet);
+}
+
+/* ==========================================================================
+ * 16. WORKSPACE: BROKER PANEL
+ *
+ * Dhan and Zerodha are ALWAYS separate cards. A broker-specific failure must never be
+ * collapsed into one system-wide green light, so each card reports its own session,
+ * market-data health and order channel.
+ * ========================================================================== */
 
 .box-broker-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--sp-3);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1px;
+  background: var(--border);
 }
 
 .box-broker-card {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--r-md);
-  background: var(--surface-2);
+  gap: var(--s-3);
+  padding: var(--s-4);
+  background: var(--surface);
 }
 
+/* The ACTIVE broker — the one that owns the feed, the scanner and execution. */
 .box-broker-card--active {
-  border-color: var(--accent-border);
-  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--surface-raised);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.box-broker-card-head {
+.box-broker-card-h {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--s-3);
+  flex-wrap: wrap;
 }
 
-.box-broker-active-tag {
-  font-size: var(--fs-1);
+.box-broker-card-name {
+  font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
-  letter-spacing: var(--tracking-caps);
-  color: var(--on-accent);
-  background: var(--accent-fill);
-  padding: 2px var(--sp-2);
-  border-radius: var(--r-sm);
+  color: var(--text);
 }
 
-.box-broker-standby-tag {
-  font-size: var(--fs-1);
+.box-broker-badge {
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-xs);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
   font-weight: var(--fw-semibold);
-  color: var(--pos);
-  background: var(--pos-surface);
-  padding: 2px var(--sp-2);
-  border-radius: var(--r-sm);
+  color: var(--text-muted);
 }
 
-.box-broker-card-grid {
+.box-broker-badge--active {
+  color: var(--accent-text);
+  border-color: var(--accent-line);
+  background: var(--accent-quiet);
+}
+
+/* The per-broker readout: a definition list, so every row is a labelled fact. */
+.box-broker-card-dl {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--sp-2);
+  grid-template-columns: minmax(110px, auto) 1fr;
+  gap: 3px var(--s-4);
   margin: 0;
+  font-size: var(--fs-xs);
 }
 
-.box-broker-card-grid > div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.box-broker-card-grid dt {
-  font-size: var(--fs-1);
+.box-broker-card-dl dt {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
-  color: var(--text-3);
+  color: var(--text-muted);
+  align-self: center;
 }
 
-.box-broker-card-grid dd {
+.box-broker-card-dl dd {
   margin: 0;
-  font-size: var(--fs-3);
-  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
 }
 
-.box-broker-token.is-ready {
-  color: var(--pos);
+.box-broker-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-left: auto;
 }
 
-.box-broker-token.is-wait {
-  color: var(--warn);
-}
-
-.box-broker-token.is-bad {
-  color: var(--neg);
-}
-
-.box-broker-blockers-h {
-  margin: var(--sp-1) 0 0;
-  font-size: var(--fs-2);
+.box-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 4px 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
-  color: var(--warn);
+  cursor: pointer;
 }
 
-.box-broker-blockers {
-  margin: 0;
-  padding-left: var(--sp-4);
-  font-size: var(--fs-2);
-  color: var(--text-2);
+.box-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.box-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.box-btn--secondary {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.box-btn--secondary:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* ==========================================================================
+ * 17. WORKSPACE: EXPECTED-NET BREAKDOWN
+ * ========================================================================== */
+
+.box-breakdown {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.box-breakdown-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: 5px var(--s-4);
+  font-size: var(--fs-xs);
+}
+
+.box-breakdown-row + .box-breakdown-row {
+  border-top: 1px solid var(--border);
+}
+
+.box-breakdown-row--sub {
+  padding-left: var(--s-7);
+  color: var(--text-muted);
+}
+
+/* The bottom line of the derivation. */
+.box-breakdown-row--net {
+  background: var(--surface-raised);
+  border-top: 1px solid var(--border-strong) !important;
+  font-weight: var(--fw-semibold);
+}
+
+.box-breakdown-row--net.is-pass {
+  box-shadow: inset 2px 0 0 var(--positive);
+}
+
+.box-breakdown-row--net.is-fail {
+  box-shadow: inset 2px 0 0 var(--negative);
+}
+
+.box-breakdown-v {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.box-breakdown-gate {
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-micro);
+  line-height: var(--lh-snug);
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+ * 18. WORKSPACE: SOUND TOGGLE, HELP PANEL, DELETE CONFIRMATION
+ * ========================================================================== */
+
+.box-sound-toggle,
+.box-sound-test,
+.box-help-btn {
+  /* These reuse `.btn`; only their density differs from a default toolbar button. */
+  padding: 6px 9px;
+}
+
+.box-sound-test {
+  padding: 6px 8px;
+}
+
+/* ---- help panel ---- */
+.box-help-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: var(--scrim);
+  backdrop-filter: blur(2px);
+}
+
+.box-help {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 91;
+  width: min(760px, 100vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-overlay);
+  animation: gts-slide var(--dur) var(--ease);
+}
+
+@keyframes gts-slide {
+  from {
+    transform: translateX(12px);
+    opacity: 0;
+  }
+}
+
+.box-help-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-5) var(--s-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.box-help-head h2 {
+  font-size: var(--fs-md);
+}
+
+.box-help-sub {
+  margin-top: var(--s-1);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.box-help-close {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.box-help-close:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.box-help-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s-6);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+  color: var(--text-secondary);
+}
+
+.box-help-lead {
+  padding: var(--s-4);
+  margin-bottom: var(--s-6);
+  border-left: 2px solid var(--info);
+  background: var(--info-quiet);
+  font-size: var(--fs-sm);
+}
+
+/* A live deployment's help must not look reassuring. */
+.box-help-lead--live {
+  border-left-color: var(--live);
+  background: var(--live-quiet);
+}
+
+.box-help-section {
+  margin-bottom: var(--s-7);
+}
+
+.box-help-section h3 {
+  padding-bottom: var(--s-2);
+  margin-bottom: var(--s-4);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.box-help-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding-left: 1.3em;
+}
+
+.box-help-row,
+.box-help-prow {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(90px, auto) minmax(0, 2fr);
+  gap: var(--s-3) var(--s-4);
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs);
+}
+
+.box-help-glossary,
+.box-help-params {
+  display: flex;
+  flex-direction: column;
+}
+
+.box-help-pval {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.box-help-pmean {
+  color: var(--text-muted);
+}
+
+.box-help-formula {
+  display: block;
+  padding: var(--s-3) var(--s-4);
+  margin: var(--s-3) 0;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+/* ---- delete confirmation ---- */
+.box-delete-warning {
+  padding: var(--s-3) var(--s-4);
+  border-left: 2px solid var(--danger);
+  background: var(--negative-quiet);
+  color: var(--negative);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
+}
+
+.box-delete-effects {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding-left: 1.2em;
+  font-size: var(--fs-sm);
+}
+
+.box-delete-reason {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.box-delete-reason input,
+.box-delete-reason textarea {
+  padding: 7px 9px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  font-size: var(--fs-sm);
+}
+
+/* ==========================================================================
+ * 19. SCROLL TO TOP
+ * ========================================================================== */
+
+.scroll-top {
+  position: fixed;
+  right: var(--s-6);
+  bottom: var(--s-6);
+  z-index: 50;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-popover);
+  cursor: pointer;
+  transition:
+    opacity var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+
+.scroll-top:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+  transform: translateY(-1px);
+}
+
+/* ==========================================================================
+ * 20. RESPONSIVE
+ *
+ * PRIMARY TARGET: a desktop trading workstation (1366×768 → 2560×1440). The landing
+ * page must also work on a phone. The workspace is not made phone-friendly at the cost
+ * of compressing financial tables — those scroll horizontally instead.
+ * ========================================================================== */
+
+/* ---- 1440 and below: recover top-bar width by dropping the toggle labels ---- */
+@media (max-width: 1440px) {
+  .theme-toggle-label,
+  .box-sound-toggle span:not(.sr-only) {
+    /* The icons remain, and both controls keep their aria-label, so nothing is lost
+       to a screen reader — only the redundant visible word goes. */
+    display: none;
+  }
+}
+
+/* ---- 1366×768: the smallest workstation we optimise for ---- */
+@media (max-width: 1366px) {
+  .gts-workspace {
+    padding-left: var(--s-4);
+    padding-right: var(--s-4);
+  }
+
+  .box-strip {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+
+  .box-leg-row {
+    /* Below this the eight fixed tracks fight for space; let the row wrap instead of
+       crushing the price cells. */
+    grid-template-columns: 44px 96px repeat(auto-fit, minmax(84px, 1fr));
+  }
+}
+
+/* ---- tablet / small laptop ---- */
+@media (max-width: 1024px) {
+  .gts-workbar {
+    align-items: flex-start;
+    row-gap: var(--s-3);
+  }
+
+  .gts-workbar-identity {
+    border-right: none;
+    padding-right: 0;
+  }
+
+  .gts-workbar-command {
+    border-left: none;
+    padding-left: 0;
+    margin-left: auto;
+  }
+
+  .gts-pillars {
+    grid-template-columns: 1fr;
+  }
+
+  .gts-pillar,
+  .gts-pillar + .gts-pillar {
+    padding: var(--s-6) 0;
+    border-left: none;
+  }
+
+  .gts-pillar + .gts-pillar {
+    border-top: 1px solid var(--border);
+  }
+
+  .gts-pillar-body {
+    max-width: 60ch;
+  }
+}
+
+/* ---- phone: the landing page must read well; the workspace stays dense ---- */
+@media (max-width: 640px) {
+  .gts-site-header {
+    padding: var(--s-5) var(--s-5);
+  }
+
+  .gts-site-main,
+  .gts-site-footer-inner {
+    padding-left: var(--s-5);
+    padding-right: var(--s-5);
+  }
+
+  .gts-hero {
+    padding: var(--s-9) 0 var(--s-8);
+  }
+
+  .gts-hero-actions {
+    gap: var(--s-4);
+  }
+
+  .gts-site-footer-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--s-4);
+  }
+
+  .gts-site-header-actions .theme-toggle {
+    /* The theme toggle is a convenience; the one CTA gets the width on a phone. */
+    padding: 6px 8px;
+  }
+
+  .gts-dialog {
+    max-width: none;
+  }
+
+  .box-card-critical {
+    /* Wrapping the critical group under the badges keeps its separating rule from
+       becoming a stray horizontal line mid-card. */
+    width: 100%;
+    padding-left: 0;
+    margin-left: 0;
+    padding-top: var(--s-3);
+    border-left: none;
+    border-top: 1px solid var(--border-strong);
+  }
+
+  .box-help {
+    width: 100vw;
+    border-left: none;
+  }
+}
+
+/* ---- large displays: the workspace uses the width rather than centring a column ---- */
+@media (min-width: 1921px) {
+  .box-strip {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+
+  .box-card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  }
+}
+
+/* ---- print: not a target, but a blank page is worse than a plain one ---- */
+@media print {
+  .gts-workbar,
+  .scroll-top,
+  .box-views {
+    display: none;
+  }
+}
+
+
+/* ==========================================================================
+ * 21. SEMANTIC TONE UTILITIES  —  DELIBERATELY LAST
+ *
+ * These are applied by the components ALONGSIDE a structural class, on the same element:
+ *
+ *   <td className={`num box-net ${pnlClass(value)}`}>          → .box-net + .pnl-pos
+ *   <span className={`box-stat-v ${… ? "pnl-neg" : ""}`}>      → .box-stat-v + .pnl-neg
+ *   <span className={`box-daypnl-v ${pnlClass(value)}`}>       → .box-daypnl-v + .is-pos
+ *
+ * Every one of those pairs is class-vs-class, so SOURCE ORDER decides the winner. Keeping
+ * this block last is what makes the tone win, and keeping ALL of the tone utilities together
+ * here is what makes that guarantee auditable — rather than scattered through the file where
+ * a later structural rule could silently take a P&L colour away.
+ *
+ * The structural rules that set `color` on a table cell are additionally held at low
+ * specificity with `:where()` (see section 8), because a descendant selector would outrank a
+ * single class regardless of order.
+ *
+ * MEANING, NOT DECORATION. A tone here always reinforces text that already states the same
+ * thing (a signed number, or a word like "blocked"/"ready"). Nothing in this application is
+ * communicated by colour alone.
+ * ========================================================================== */
+
+.box-dim {
+  color: var(--text-muted);
+}
+
+/* Signed P&L, from `pnlClass()`. */
+.pnl-pos {
+  color: var(--positive);
+}
+
+.pnl-neg {
+  color: var(--negative);
+}
+
+/* The day-P&L strip's own vocabulary for the same thing. */
+.is-pos {
+  color: var(--positive);
+}
+
+.is-neg {
+  color: var(--negative);
+}
+
+/* Health bands, from `bandClass()` / `severity()`. */
+.is-good {
+  color: var(--positive);
+}
+
+.is-warn {
+  color: var(--warning);
+}
+
+.is-bad {
+  color: var(--negative);
+}
+
+/* Threshold verdicts in the expected-net breakdown. */
+.is-pass {
+  color: var(--positive);
+}
+
+.is-fail {
+  color: var(--negative);
+}
+
+/* A figure that carries a caveat (e.g. a margin whose provenance overstates the hedge). */
+.box-warn {
+  color: var(--warning);
+}
+
+/**
+ * An unconditionally negative figure.
+ *
+ * Aborted-legging costs are losses by definition, so the cell is toned outright rather than
+ * through `pnlClass()`.
+ */
+.box-neg {
+  color: var(--negative);
+}
+
+/**
+ * Tone on a metric WRAPPER has to reach the value inside it.
+ *
+ * `<Metric cls={pnlClass(v)}>` puts the tone on `.box-metric`, but the number lives in a
+ * child `.box-metric-v` that sets its own colour — which would block inheritance. These
+ * descendant rules carry the wrapper's tone down to the value. `.box-exec-stat` has the same
+ * shape and is handled with its panel in section 14.
+ */
+.box-metric.pnl-pos .box-metric-v,
+.box-metric.is-pos .box-metric-v {
+  color: var(--positive);
+}
+
+.box-metric.pnl-neg .box-metric-v,
+.box-metric.is-neg .box-metric-v {
+  color: var(--negative);
+}
+
+.box-metric.box-dim .box-metric-v {
+  color: var(--text-muted);
 }
