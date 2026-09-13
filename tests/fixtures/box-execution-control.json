@@ -1,124 +1,127 @@
 {
-    "execution_mode": "paper_latency",
-    "paper_execution_profile": "standard",
-    "broker": "zerodha",
-    "deployment_live_capable": false,
-    "live_capability_detail": "BOX_EXECUTION_MODE is \"paper_latency\", not \"live\"",
-    "live_runtime_armed": false,
-    "entry_enabled": false,
-    "emergency_flatten_enabled": false,
-    "mode": {
-        "selection": "paper_latency",
-        "label": "PAPER \u00b7 LATENCY",
-        "runtime_selectable": [
-            "paper_latency",
-            "paper_legging",
-            "paper_legging_live_parity"
-        ],
-        "live_requires_restart": true,
-        "transition_blockers": []
-    },
-    "session": {
-        "state": "IDLE",
-        "session_id": null,
-        "armed": false,
-        "armed_at": null,
-        "armed_by": null,
-        "max_completed_trades": 0,
-        "completed_trades": 0,
-        "consumed_cycles": 0,
-        "remaining_trades": null,
-        "current_trade_id": null,
-        "in_flight_trade_ids": [],
-        "aborted_attempts": 0,
-        "arm_count": 0,
-        "block_reason": null,
-        "readable": true,
-        "enforcing": false,
-        "write_failed": false
-    },
-    "risk": {
-        "max_box_capital_rupees": 0,
-        "paper_max_box_capital_rupees": 0,
-        "max_box_capital_enforced": false,
-        "max_box_capital_metric": "gross_entry_order_notional_rupees",
-        "capital": {
-            "enabled": false,
-            "configured_max_rupees": 0,
-            "last_calculated_rupees": null,
-            "last_stage": null,
-            "last_allowed": null,
-            "last_at": null,
-            "limit_source": "paper"
-        },
-        "one_active_box_per_underlying": false,
-        "active_underlyings": [],
-        "claimed_underlyings": [],
-        "max_open_boxes": 1,
-        "open_boxes": 0,
-        "residual_legs": 0,
-        "daily_loss_limit": 5000,
-        "realised_pnl_today": null
-    },
-    "execution": {
-        "live_entry_submit_concurrency": 1,
-        "max_concurrent_executions": 1,
-        "effective_broker_min_interval_ms": 250,
-        "effective_broker_order_min_interval_ms": 110,
-        "broker_order_interval_floor_ms": 100,
-        "broker_order_interval_source": "broker_default",
-        "broker_pacing_rationale": "Kite Connect permits 10 order requests/second (100ms floor); the default adds 10% headroom because the limiter runs on the broker's clock and a rejected request still consumes the daily order-request budget.",
-        "pacing_source_of_truth": "config_projection",
-        "four_leg_burst_pacing_budget_ms": 330,
-        "entry_burst": null,
-        "queued": 0,
-        "in_flight": 0,
-        "circuit": "closed",
-        "artificial_latency_applied_to_live": false,
-        "paper_only_simulated_decision_ms": 40,
-        "paper_only_simulated_latency_ms": 250
-    },
-    "arm": {
-        "preconditions": {
-            "deploymentLiveCapable": false,
-            "brokerAuthenticated": false,
-            "reconciliationHealthy": false,
-            "reconciliationComplete": false,
-            "feedHealthy": false,
-            "feedWarmedUp": false,
-            "circuitClosed": false,
-            "recoveryActive": false,
-            "unknownOrders": 0,
-            "durableReservationsAvailable": true
-        },
-        "entry": {
-            "ok": false,
-            "blockers": [
-                {
-                    "code": "deployment_gate_disabled",
-                    "detail": "LIVE UNAVAILABLE \u2014 deployment gate disabled: BOX_EXECUTION_MODE=live and BOX_LIVE_TRADING_ENABLED=true are required, and cannot be set from the UI."
-                }
-            ]
-        },
-        "exposure_management": {
-            "ok": false,
-            "blockers": [
-                {
-                    "code": "deployment_gate_disabled",
-                    "detail": "LIVE UNAVAILABLE \u2014 deployment gate disabled: BOX_EXECUTION_MODE=live and BOX_LIVE_TRADING_ENABLED=true are required, and cannot be set from the UI."
-                }
-            ]
-        },
-        "emergency_flatten": {
-            "ok": false,
-            "blockers": [
-                {
-                    "code": "deployment_gate_disabled",
-                    "detail": "LIVE UNAVAILABLE \u2014 deployment gate disabled: BOX_EXECUTION_MODE=live and BOX_LIVE_TRADING_ENABLED=true are required, and cannot be set from the UI."
-                }
-            ]
-        }
-    },
+  "execution_mode": "paper_latency",
+  "paper_execution_profile": "standard",
+  "broker": "zerodha",
+  "deployment_live_capable": false,
+  "live_capability_detail": "BOX_EXECUTION_MODE is \"paper_latency\", not \"live\"",
+  "live_runtime_armed": false,
+  "entry_enabled": false,
+  "emergency_flatten_enabled": false,
+  "mode": {
+    "selection": "paper_latency",
+    "label": "PAPER · LATENCY",
+    "runtime_selectable": [
+      "paper_latency",
+      "paper_legging",
+      "paper_legging_live_parity"
+    ],
+    "live_requires_restart": true,
+    "transition_blockers": []
+  },
+  "session": {
+    "state": "IDLE",
+    "session_id": null,
+    "armed": false,
+    "armed_at": null,
+    "armed_by": null,
+    "max_completed_trades": 0,
+    "completed_trades": 0,
+    "consumed_cycles": 0,
+    "remaining_trades": null,
+    "current_trade_id": null,
+    "in_flight_trade_ids": [],
+    "aborted_attempts": 0,
+    "entry_attempts": 1,
+    "max_entry_attempts": 3,
+    "remaining_entry_attempts": 2,
+    "arm_count": 0,
     "block_reason": null,
-    "block_detail": null
+    "readable": true,
+    "enforcing": false,
+    "write_failed": false
+  },
+  "risk": {
+    "max_box_capital_rupees": 0,
+    "paper_max_box_capital_rupees": 0,
+    "max_box_capital_enforced": false,
+    "max_box_capital_metric": "gross_entry_order_notional_rupees",
+    "capital": {
+      "enabled": false,
+      "configured_max_rupees": 0,
+      "last_calculated_rupees": null,
+      "last_stage": null,
+      "last_allowed": null,
+      "last_at": null,
+      "limit_source": "paper"
+    },
+    "one_active_box_per_underlying": false,
+    "active_underlyings": [],
+    "claimed_underlyings": [],
+    "max_open_boxes": 1,
+    "open_boxes": 0,
+    "residual_legs": 0,
+    "daily_loss_limit": 5000,
+    "realised_pnl_today": null
+  },
+  "execution": {
+    "live_entry_submit_concurrency": 1,
+    "max_concurrent_executions": 1,
+    "effective_broker_min_interval_ms": 250,
+    "effective_broker_order_min_interval_ms": 110,
+    "broker_order_interval_floor_ms": 100,
+    "broker_order_interval_source": "broker_default",
+    "broker_pacing_rationale": "Kite Connect permits 10 order requests/second (100ms floor); the default adds 10% headroom because the limiter runs on the broker's clock and a rejected request still consumes the daily order-request budget.",
+    "pacing_source_of_truth": "config_projection",
+    "four_leg_burst_pacing_budget_ms": 330,
+    "entry_burst": null,
+    "queued": 0,
+    "in_flight": 0,
+    "circuit": "closed",
+    "artificial_latency_applied_to_live": false,
+    "paper_only_simulated_decision_ms": 40,
+    "paper_only_simulated_latency_ms": 250
+  },
+  "arm": {
+    "preconditions": {
+      "deploymentLiveCapable": false,
+      "brokerAuthenticated": false,
+      "reconciliationHealthy": false,
+      "reconciliationComplete": false,
+      "feedHealthy": false,
+      "feedWarmedUp": false,
+      "circuitClosed": false,
+      "recoveryActive": false,
+      "unknownOrders": 0,
+      "durableReservationsAvailable": true
+    },
+    "entry": {
+      "ok": false,
+      "blockers": [
+        {
+          "code": "deployment_gate_disabled",
+          "detail": "LIVE UNAVAILABLE — deployment gate disabled: BOX_EXECUTION_MODE=live and BOX_LIVE_TRADING_ENABLED=true are required, and cannot be set from the UI."
+        }
+      ]
+    },
+    "exposure_management": {
+      "ok": false,
+      "blockers": [
+        {
+          "code": "deployment_gate_disabled",
+          "detail": "LIVE UNAVAILABLE — deployment gate disabled: BOX_EXECUTION_MODE=live and BOX_LIVE_TRADING_ENABLED=true are required, and cannot be set from the UI."
+        }
+      ]
+    },
+    "emergency_flatten": {
+      "ok": false,
+      "blockers": [
+        {
+          "code": "deployment_gate_disabled",
+          "detail": "LIVE UNAVAILABLE — deployment gate disabled: BOX_EXECUTION_MODE=live and BOX_LIVE_TRADING_ENABLED=true are required, and cannot be set from the UI."
+        }
+      ]
+    }
+  },
+  "block_reason": null,
+  "block_detail": null
 }

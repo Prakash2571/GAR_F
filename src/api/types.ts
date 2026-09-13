@@ -1152,6 +1152,20 @@ export interface BoxSessionView {
   current_trade_id: string | null;
   in_flight_trade_ids: string[];
   aborted_attempts: number;
+  /**
+   * Entry attempts STARTED by this armed session, counted at ADMISSION before any broker POST — so a
+   * failed or recovered attempt still spends budget.
+   *
+   * DISTINCT from `aborted_attempts`, which counts only attempts that ended with no Box and gates
+   * nothing, and from `consumed_cycles`, which counts attempts that SUCCEEDED. This is the counter
+   * that bounds RISK-TAKING: an attempt that submitted orders, partially filled and was then unwound
+   * took real exposure and paid real charges, and under the cycle budget alone it was free.
+   */
+  entry_attempts: number;
+  /** The arm-time attempt ceiling snapshot. 0 = unbounded (the control is off). */
+  max_entry_attempts: number;
+  /** Attempts still permitted, or null when the attempt bound is not configured for this session. */
+  remaining_entry_attempts: number | null;
   arm_count: number;
   block_reason: string | null;
   readable: boolean;

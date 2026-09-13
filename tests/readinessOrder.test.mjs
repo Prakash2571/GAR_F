@@ -266,7 +266,10 @@ test("the vendored schema REQUIRES the instance object and documents the orderin
 test("the contract version and the backend pin move TOGETHER", () => {
   const version = JSON.parse(readFileSync(new URL("../contract/version.json", import.meta.url), "utf8"));
   const pin = JSON.parse(readFileSync(new URL("../contract/BACKEND_CONTRACT.json", import.meta.url), "utf8"));
-  assert.equal(version.contract_version, "1.7.0");
+  // Pinned to the CURRENT contract version, deliberately as a literal: this assertion exists to fail
+  // when the contract moves without the pin and the generated types moving with it, so reading it from
+  // the file it is checking would defeat the purpose.
+  assert.equal(version.contract_version, "1.8.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,
