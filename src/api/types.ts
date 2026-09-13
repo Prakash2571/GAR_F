@@ -498,7 +498,7 @@ export interface ReadinessBlocker {
 }
 
 /**
- * THE ONE AUTHORITATIVE READINESS DECISION (contract v1.6.0) — `box_status.operational_readiness`.
+ * THE ONE AUTHORITATIVE READINESS DECISION (contract v1.7.0) — `box_status.operational_readiness`.
  *
  * WHY THE FRONTEND MUST RENDER THIS AND NOT RECOMPUTE IT
  * Defect (b) was that this file's consumers derived entry permission from market-data readiness plus
@@ -507,16 +507,40 @@ export interface ReadinessBlocker {
  * backend now answers the question once, from the same permission table its live-entry checkpoint
  * enforces. Anything the UI computes for itself is a divergence waiting to happen.
  *
- * `decision_generation` is monotonic per response: a payload carrying a LOWER value than one already
- * rendered is STALE and must be IGNORED rather than allowed to overwrite newer state.
+ * ORDERING (contract v1.7.0). `decision_generation` is monotonic per response but SCOPED TO
+ * `instance.instance_id` — it is a process-local counter that resets on restart. Treating it as
+ * globally monotonic is what left a browser holding generation 5000 rejecting a restarted backend's
+ * generation 1 indefinitely, rendering a permission verdict from a process that no longer existed.
+ * Decisions are ordered by the pair (`instance.boot_ordinal`, `decision_generation`); see
+ * `lib/readinessOrder.ts`, which vendors the backend's own rule rather than reimplementing it.
  *
  * Mirrors `OperationalReadinessDecision` in the backend `src/box/operationalReadiness.ts`. The whole
  * object is CLOSED in the schema, so `contract.assert.ts` pins it whole-object — a rename, removal
  * or retype on either side fails `tsc -b`.
  */
 export interface OperationalReadiness {
-  /** Monotonic per-decision counter. Lower than what is on screen ⇒ stale ⇒ ignore. */
+  /**
+   * Monotonic per-decision counter, SCOPED TO `instance.instance_id`. Lower than what is on screen
+   * FROM THE SAME INSTANCE ⇒ stale ⇒ ignore. Across instances it means nothing: it is process-local
+   * and resets on restart, so `instance.boot_ordinal` is what orders decisions across one.
+   */
   decision_generation: number;
+  /**
+   * WHICH backend process produced this decision, and where that process sits in the restart order.
+   *
+   * `boot_ordinal` is a restart-durable, strictly increasing integer minted by the backend's
+   * PostgreSQL — not a clock (an NTP step or a snapshot restore would make an older instance look
+   * newer) and not a random id (a random value cannot express "newer"). `null` means the backend
+   * could not establish it, so the decision is UNORDERABLE: it must not overwrite an ordered decision
+   * and new entry must be treated as disabled. The backend independently refuses entry in that state,
+   * so this is defence in depth rather than the only guard.
+   */
+  instance: {
+    instance_id: string | null;
+    boot_ordinal: number | null;
+    /** AUDIT ONLY. Never used for ordering. */
+    started_at: number | null;
+  };
   /** The decision shape's version. An unrecognised value must degrade to unknown, never to green. */
   decision_version: string;
   /** Wall-clock ms the decision was evaluated. */
