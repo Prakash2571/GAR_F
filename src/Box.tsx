@@ -37,10 +37,15 @@ import { ReconnectingBoxStream } from "./lib/boxStream.ts";
 import {
   ControlRequests,
   RefreshTracker,
-  acceptStatus,
-  decisionGenerationOf,
   runOnce,
 } from "./lib/statusIntegrity.ts";
+// Contract v1.7.0: ordering readiness decisions ACROSS a backend restart. A process-local
+// decision_generation cannot do it — see the module header for the defect it fixes.
+import {
+  ReadinessOrderTracker,
+  verdictApplies,
+  verdictDisablesEntry,
+} from "./lib/readinessOrder.ts";
 import { explainScannerStop, modeLabel } from "./lib/honestLabels.ts";
 import { fmt, formatExpiry } from "./format.ts";
 import ThemeToggle from "./ThemeToggle.tsx";
@@ -267,7 +272,29 @@ export default function Box({ onLock }: Props) {
    * Held in a REF, not state: the comparison has to be correct for two responses that land in the
    * same frame, and a state value read from a render closure would be stale for the second of them.
    */
-  const renderedGeneration = useRef<number | null>(null);
+  /**
+   * RESTART-AWARE ORDERING STATE (contract v1.7.0).
+   *
+   * This used to be a bare `useRef<number | null>` holding the last `decision_generation`, and the
+   * guard accepted only a strictly greater one. That ordered concurrent responses from ONE backend
+   * process correctly and broke completely across a restart: the backend mints that counter with
+   * `++this.readinessDecisionGeneration` on a field declared `= 0`, so after a restart it publishes 1
+   * while the browser is holding 5000 — and 5000 > 1, so every decision from the new process was
+   * rejected indefinitely. The dashboard went on rendering a permission verdict from a process that
+   * no longer existed, and only a manual reload cleared it.
+   *
+   * The tracker orders by (instance.boot_ordinal, decision_generation) and REBASES onto a newer
+   * instance, so a restart is picked up automatically while a delayed response from the superseded
+   * process is still refused. See lib/readinessOrder.ts.
+   */
+  const readinessOrder = useRef(new ReadinessOrderTracker());
+  /**
+   * Set when a readiness payload could not be ORDERED at all — no instance identity, no durable boot
+   * ordinal, or two backends claiming one epoch. Distinct from "stale": a stale response is normal and
+   * what is on screen is still the newest thing seen, whereas an unorderable one means we cannot tell
+   * whether what is on screen is current. Rendered as an entry-disabling banner.
+   */
+  const [readinessIncompatible, setReadinessIncompatible] = useState<string | null>(null);
 
   /**
    * The ONE guarded way this component accepts a status payload.
@@ -276,9 +303,14 @@ export default function Box({ onLock }: Props) {
    * applied in one place rather than remembered at five call sites.
    */
   const applyStatus = useCallback((incoming: BoxStatus | null | undefined): boolean => {
-    if (!acceptStatus(renderedGeneration.current, incoming)) return false;
-    const gen = decisionGenerationOf(incoming);
-    if (gen !== null) renderedGeneration.current = gen;
+    const verdict = readinessOrder.current.offerStatus(incoming);
+    if (!verdictApplies(verdict.kind)) {
+      // An unorderable payload must visibly disable new entry rather than be silently dropped: the
+      // operator needs to know we cannot vouch for what is on screen.
+      setReadinessIncompatible(verdictDisablesEntry(verdict.kind) ? verdict.reason : null);
+      return false;
+    }
+    setReadinessIncompatible(null);
     setStatus(incoming as BoxStatus);
     return true;
   }, []);
@@ -1229,6 +1261,20 @@ export default function Box({ onLock }: Props) {
           economic admission (gross notional vs margin), and the denominator-carrying funnel. The
           two health signals are rendered independently — a live quote socket is not evidence that
           fills are observed. */}
+      {/* READINESS THAT CANNOT BE ORDERED IS NOT READINESS.
+          When a payload carries no backend instance identity, no durable boot ordinal, or two
+          backends claim the same epoch, we cannot tell the current verdict from a superseded one — so
+          the operator is told, and new entry is presented as disabled. This is deliberately NOT shown
+          for a merely out-of-order response: that is normal, and what is on screen is still the newest
+          thing we have seen. The backend independently refuses entry in this state too (blocker code
+          instance_epoch_unknown), so this banner explains a refusal rather than being the only guard. */}
+      {readinessIncompatible !== null && (
+        <div className="banner banner--warn" role="status">
+          <strong>Readiness cannot be ordered — new entry is disabled.</strong>{" "}
+          {readinessIncompatible}
+        </div>
+      )}
+
       <BoxOperationalState status={status} />
 
       {/* Directly below execution health, because "how fast do fills complete" is meaningless

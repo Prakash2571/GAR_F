@@ -311,6 +311,13 @@ function DecisionBlock({
         Backend readiness decision{" "}
         <span className="box-exec-mode">
           v{decision.decision_version} · gen {decision.decision_generation}
+          {/* THE BACKEND INSTANCE, shown because `gen` alone is ambiguous across a restart: the
+              counter is process-local and resets, so "gen 3" from a fresh process and "gen 3" from an
+              hour-old one look identical. The boot ordinal is what tells them apart, and it is the
+              value the ordering rule actually uses. `boot·?` means the backend could not establish a
+              durable ordinal, in which case its decisions cannot be ordered and entry is disabled. */}
+          {" · boot·"}
+          {decision.instance?.boot_ordinal ?? "?"}
         </span>
       </h4>
       <p className="box-exec-note">

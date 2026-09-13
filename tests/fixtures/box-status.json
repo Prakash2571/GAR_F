@@ -401,6 +401,11 @@
   },
   "operational_readiness": {
     "decision_generation": 1,
+    "instance": {
+      "instance_id": "6f1c9a52-4b7e-4c1d-9a3f-2e8b7c5d1a04",
+      "boot_ordinal": 12,
+      "started_at": 1757745600000
+    },
     "decision_version": "1.6.0",
     "decided_at": 1789048047769,
     "identity": {
