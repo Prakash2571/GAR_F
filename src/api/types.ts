@@ -454,11 +454,44 @@ export interface EconomicPicture {
   gross_notional_metrics?: Record<string, unknown>;
 }
 
-/** Why an economic admission was refused. Distinct, non-conflated reasons. */
+/**
+ * Why an economic admission was refused. Distinct, non-conflated reasons.
+ *
+ * MIRRORS `EconomicRefusalReason` in the backend `src/box/boxCapital.ts` — ALL EIGHT of them.
+ * This union previously listed only four, which was a silent drift: the backend has emitted
+ * `margin_evidence_invalid`, `funds_evidence_invalid`, `funding_stage_unknown` and
+ * `hedge_sequence_invalid` for some time.
+ *
+ * Nothing was VISIBLY broken by the gap, and that is worth stating precisely so the fix is not
+ * mistaken for a bug fix: `BoxOperationalState` renders reasons generically
+ * (`r.replace(/_/g, " ")`) and the contract assertions do not enumerate this field, so an
+ * unlisted reason still displayed and was never rejected at runtime. The gap was a TYPE hazard —
+ * any code that switches on a reason, or maps reasons to operator-facing copy, would have been
+ * type-checked against an incomplete set and silently missed four cases.
+ *
+ * `funding_stage_unknown` is the one that now matters most in practice. It is what the supervised
+ * Mumbai trial profile reports when the active broker cannot supply a defensible
+ * EXECUTION-STAGE funding requirement — which is the documented, intended state for Dhan, whose
+ * API publishes no field meaning "margin required to execute the orders". An operator seeing it
+ * is being told the gate is working, not that something is misconfigured.
+ */
 export type EconomicRefusalReason =
   | "gross_notional_over_cap"
   | "insufficient_available_funds"
   | "margin_evidence_stale_or_missing"
+  /** The margin figure was present but structurally unusable (non-finite, negative, wrong shape). */
+  | "margin_evidence_invalid"
+  /** The available-funds figure was present but structurally unusable. */
+  | "funds_evidence_invalid"
+  /**
+   * No defensible funding requirement could be established for an INTERMEDIATE point of the
+   * four-leg entry sequence. While hedges are still going out the completed-basket spread benefit
+   * does not exist yet, so the FINAL hedged margin is not evidence for the stages that create the
+   * box. Refusing is the honest answer; gross option premium does not bound a short-option margin.
+   */
+  | "funding_stage_unknown"
+  /** The planned transport order was not hedge-first (a SELL would precede its protecting BUY). */
+  | "hedge_sequence_invalid"
   | "metric_incomplete";
 
 /**
