@@ -90,6 +90,22 @@ export default function LandingPage() {
 
   return (
     <div className="gts-site">
+      {/*
+       * A photographic sense of place — Ghatsila — behind the top of the page.
+       *
+       * DECORATIVE, AND ONLY DECORATIVE. It is an empty element carrying a CSS background,
+       * hidden from assistive technology: it conveys nothing a screen-reader user would
+       * otherwise miss, so announcing it would be noise. The text over it is unchanged and
+       * keeps its own colours; the scrim in `.gts-hero-backdrop` is what protects contrast.
+       *
+       * WHY NOT AN <img>. The asset lives in `public/` and is referenced by absolute URL from
+       * CSS, so if it is absent the layer paints nothing and the page renders exactly as it
+       * did before. An <img> would show a broken-image glyph, and a bundler-resolved import
+       * would fail the BUILD — neither is an acceptable outcome for decoration on the public
+       * page of a trading project. See the `--hero-image` variable in styles.css.
+       */}
+      <div className="gts-hero-backdrop" aria-hidden="true" />
+
       <LandingHeader onEnterBox={onEnterBox} busy={state === "checking"} />
 
       <main className="gts-site-main">

@@ -54,6 +54,59 @@
   --text-secondary: #969ca5;
   --text-muted: #686f78;
 
+  /* ---- hero backdrop (dark) — see .gts-hero-backdrop ---- *
+
+     The one asset. Referenced from public/ by ABSOLUTE URL on purpose: Vite passes it
+     through without resolving, so a missing file degrades to "no backdrop" instead of
+     failing the build. Swap the filename here and nowhere else. */
+  --hero-image: url("/ghatsila.jpg");
+
+  /* Dark mode can carry the photo relatively strongly — it is competing with a near-black
+     page, so this is what makes it visible at all rather than what makes it loud. */
+  --hero-photo-opacity: 0.58;
+
+  /* THE BLUR IS THE POINT, NOT A SOFTENER.
+     The source is a CONTACT SHEET — ten unrelated photographs butted together — so at full
+     sharpness its grid reads as hard vertical seams marching across the header, which looks
+     like a rendering fault rather than a design. Blurring past the seam width dissolves the
+     grid into a single field of colour that still says "fields, river, sunset, festival"
+     without asking the eye to parse ten pictures behind a headline.
+     Set blur(0) to show the collage sharp; everything else here still holds. */
+  --hero-photo-blur: 14px;
+  /* Saturation pushed slightly UP because the blur averages colour and flattens it. */
+  --hero-photo-filter: saturate(1.14) contrast(1.02);
+
+  /* Two axes, in one paint.
+       1st gradient — vertical: transparent at the top, solid --bg at the bottom, so the
+                      backdrop ENDS rather than being cut off by a hard edge.
+       2nd gradient — horizontal: heaviest under the copy column on the left, clearing to
+                      the right so the photography is actually visible somewhere. */
+  --hero-veil:
+    linear-gradient(
+      to bottom,
+      rgba(6, 7, 8, 0.10) 0%,
+      rgba(6, 7, 8, 0.30) 42%,
+      rgba(6, 7, 8, 0.78) 80%,
+      #060708 100%
+    ),
+    linear-gradient(
+      to right,
+      rgba(6, 7, 8, 0.86) 0%,
+      rgba(6, 7, 8, 0.72) 32%,
+      rgba(6, 7, 8, 0.28) 66%,
+      rgba(6, 7, 8, 0) 100%
+    );
+  /* Single-column viewports: vertical only, and heavier, because the copy now spans the
+     full width and there is no clear side to leave uncovered. */
+  --hero-veil-narrow:
+    linear-gradient(
+      to bottom,
+      rgba(6, 7, 8, 0.52) 0%,
+      rgba(6, 7, 8, 0.68) 40%,
+      rgba(6, 7, 8, 0.90) 78%,
+      #060708 100%
+    );
+
   /* ---- accent: ONE restrained cool blue. Used for the primary action, the
          selected tab and the focus ring, and for nothing else. ---- */
   --accent: #6e8fff;
@@ -157,6 +210,39 @@
   --text: #111418;
   --text-secondary: #565d66;
   --text-muted: #7b828c;
+
+  /* ---- hero backdrop (light) ----
+     Held MUCH fainter and washed with the page colour rather than darkened. These are
+     saturated, mostly dark photographs: at dark mode's strength they would fight #111418
+     body copy and look like a mistake. Light mode wants a tint, not a picture. */
+  --hero-photo-opacity: 0.30;
+  /* Lifted and de-saturated rather than dimmed: on a #f6f7f8 page the goal is a pale wash of
+     the same colours, so the photo brightens INTO the background instead of punching holes in
+     it. Blur is shared with dark mode — the contact-sheet grid is a property of the source. */
+  --hero-photo-filter: saturate(0.80) contrast(0.92) brightness(1.18);
+  --hero-veil:
+    linear-gradient(
+      to bottom,
+      rgba(246, 247, 248, 0.42) 0%,
+      rgba(246, 247, 248, 0.58) 42%,
+      rgba(246, 247, 248, 0.88) 80%,
+      #f6f7f8 100%
+    ),
+    linear-gradient(
+      to right,
+      rgba(246, 247, 248, 0.90) 0%,
+      rgba(246, 247, 248, 0.78) 32%,
+      rgba(246, 247, 248, 0.40) 66%,
+      rgba(246, 247, 248, 0.12) 100%
+    );
+  --hero-veil-narrow:
+    linear-gradient(
+      to bottom,
+      rgba(246, 247, 248, 0.74) 0%,
+      rgba(246, 247, 248, 0.82) 40%,
+      rgba(246, 247, 248, 0.94) 78%,
+      #f6f7f8 100%
+    );
 
   /* A deeper accent than dark mode's: #6e8fff does not carry enough contrast on white
      for text or for a filled button's label. Same hue family, more weight. */
@@ -841,6 +927,94 @@ table {
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
+  /* Containing block + own stacking context for the decorative hero backdrop below, so the
+     backdrop's layering is scoped to this page and cannot interact with anything else
+     (the passcode dialog is `position: fixed`, which `isolation` does not affect). */
+  position: relative;
+  isolation: isolate;
+}
+
+/* ==========================================================================
+ * HERO BACKDROP — a photographic sense of place, behind the type
+ *
+ * WHAT IT IS. A single collage of Ghatsila (fields, the river boat, the sunsets, the
+ * temple procession, the road) sitting behind the top of the landing page and fading
+ * into the page background before the pillars begin.
+ *
+ * WHY IT IS BUILT THIS WAY
+ *
+ * 1. TYPE FIRST. The photo is a backdrop, never the subject. It carries a two-axis
+ *    scrim — vertical (fades to the page background) and horizontal (darkest under the
+ *    copy column) — so the headline and lead sit on near-solid background and keep
+ *    their contrast ratio no matter which frame of the collage lands behind them.
+ *    Nothing here changes a text colour, so the contrast the palette already
+ *    guarantees is preserved rather than re-argued.
+ *
+ * 2. A CSS BACKGROUND, NOT AN <img>. If the asset is missing this layer simply paints
+ *    nothing and the page looks exactly as it did before — no broken-image glyph, no
+ *    layout shift, no build failure. An `<img>` or a bundler-resolved `import` would
+ *    fail loudly at build or paint a broken icon in production. The file is referenced
+ *    from `public/` by absolute URL for the same reason: Vite passes it through
+ *    untouched instead of erroring when it cannot resolve it.
+ *
+ * 3. DECORATIVE. It is a background of an empty element with `aria-hidden`, so it is
+ *    never announced and adds nothing to the accessibility tree.
+ *
+ * 4. THEME-AWARE. Dark and light need different treatments, not the same one dimmed:
+ *    the photos are saturated and mostly dark, so on the light theme they are held
+ *    much fainter and veiled with the light background colour instead.
+ * ========================================================================== */
+
+.gts-hero-backdrop {
+  position: absolute;
+  inset: 0 0 auto 0;
+  /* Tall enough to sit behind the header and the whole hero, short enough to be gone
+     before the pillars — their hairline rules must stay crisp against flat background. */
+  height: clamp(460px, 68vh, 820px);
+  overflow: hidden;
+  pointer-events: none;
+  /* z-index 0 with the siblings lifted to 1, deliberately NOT z-index -1.
+     `body` carries an OPAQUE `background: var(--bg)`, so a negative z-index here would paint
+     the backdrop *behind the body background* and it would never be seen. Staying at 0 and
+     raising the content instead keeps this correct without depending on that subtlety. */
+  z-index: 0;
+}
+
+/* The photograph. Its own layer so opacity and filter are independent of the scrim. */
+.gts-hero-backdrop::before,
+.gts-hero-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.gts-hero-backdrop::before {
+  /* Bled OUTWARD past the element on every side. A blurred layer fades to transparent at its
+     own edges, which would otherwise draw a soft light band down the sides and across the top;
+     overflowing the clip boundary by more than the blur radius keeps the field solid to the
+     edge. The parent's `overflow: hidden` trims the excess. */
+  inset: -40px;
+  background-image: var(--hero-image);
+  background-size: cover;
+  /* Biased ABOVE centre: the collage's upper row (fields, boat, sky) is the calmer half,
+     and it is the half that survives a wide crop. */
+  background-position: center 32%;
+  background-repeat: no-repeat;
+  opacity: var(--hero-photo-opacity);
+  filter: var(--hero-photo-filter) blur(var(--hero-photo-blur));
+}
+
+/* The scrim. Painted over the photo, under the type. */
+.gts-hero-backdrop::after {
+  background-image: var(--hero-veil);
+}
+
+/* Keep the page content above the backdrop. */
+.gts-site-header,
+.gts-site-main,
+.gts-site-footer {
+  position: relative;
+  z-index: 1;
 }
 
 .gts-site-header {
@@ -3027,6 +3201,25 @@ table {
     gap: var(--s-4);
   }
 
+  /* ---- hero backdrop on a phone ----
+     A 16:9 collage cropped to a tall narrow viewport keeps only a sliver of its middle, so
+     the two-row grid stops reading as a collage at all. Shorter, and pulled to the upper
+     band where the landscape frames are, so what survives the crop is sky and field rather
+     than half a wall. The horizontal scrim also flattens out: on one column there is no
+     "beside the text" left to clear, so the veil becomes vertical only and simply guarantees
+     contrast for the full width of the copy. */
+  .gts-hero-backdrop {
+    height: clamp(360px, 46vh, 520px);
+  }
+
+  .gts-hero-backdrop::before {
+    background-position: center 22%;
+  }
+
+  .gts-hero-backdrop::after {
+    background-image: var(--hero-veil-narrow, var(--hero-veil));
+  }
+
   .gts-site-footer-inner {
     flex-direction: column;
     align-items: flex-start;
@@ -3075,6 +3268,43 @@ table {
   .gts-workbar,
   .scroll-top,
   .box-views {
+    display: none;
+  }
+
+  /* A decorative photograph is not worth the ink, and printers render a dark scrim as a
+     solid grey block that swallows the headline. */
+  .gts-hero-backdrop {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+ * HERO BACKDROP — USER PREFERENCES OVERRIDE THE DECORATION
+ *
+ * Placed after the media queries above so these win regardless of viewport.
+ * ========================================================================== */
+
+/* prefers-contrast: more — the user has explicitly asked for maximum legibility. A
+   photograph behind text is the first thing that should go; the layout is unaffected
+   because the backdrop is absolutely positioned and out of flow. */
+@media (prefers-contrast: more) {
+  .gts-hero-backdrop {
+    display: none;
+  }
+}
+
+/* Windows/macOS forced-colours: the OS is substituting its own palette, and a background
+   image is both ignored for contrast purposes and liable to render as an opaque block. */
+@media (forced-colors: active) {
+  .gts-hero-backdrop {
+    display: none;
+  }
+}
+
+/* Some users disable transparency effects at OS level to reduce visual noise. Honour the
+   intent by dropping the photograph rather than by making it more opaque. */
+@media (prefers-reduced-transparency: reduce) {
+  .gts-hero-backdrop {
     display: none;
   }
 }
