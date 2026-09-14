@@ -4,10 +4,14 @@
  * Two things only: who this is, and the one way in. No navigation links, because there are
  * no other public pages — inventing a nav bar for a single page is how a small research site
  * starts looking like a marketing template.
+ *
+ * AND NO THEME TOGGLE. The public page is dark only — see LANDING_THEME in lib/theme.ts for
+ * why. The control is not merely hidden: the page does not honour a light preference at all,
+ * so offering a switch that appeared to do nothing would be worse than offering none. The
+ * workspace header keeps its toggle.
  */
 
 import GTSWordmark from "../brand/GTSWordmark.tsx";
-import ThemeToggle from "../../ThemeToggle.tsx";
 import Button from "../ui/Button.tsx";
 
 export interface LandingHeaderProps {
@@ -26,7 +30,6 @@ export default function LandingHeader({ onEnterBox, busy = false }: LandingHeade
         <GTSWordmark variant="full" markSize={22} />
       </a>
       <div className="gts-site-header-actions">
-        <ThemeToggle />
         <Button variant="primary" onClick={onEnterBox} aria-busy={busy}>
           Enter Box
         </Button>

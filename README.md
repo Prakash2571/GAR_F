@@ -157,13 +157,17 @@ and hero, fading into the page background before the pillars.
 **The asset is in git and bundled**, at:
 
 ```
-src/image/gts.png
+src/image/gts2.jpg      3840 × 2160, 2.2 MB
 ```
 
-`src/styles.css` references it with a path relative to itself (`url("./image/gts.png")`), so
+`src/styles.css` references it with a path relative to itself (`url("./image/gts2.jpg")`), so
 Vite resolves it at build time and emits a content-hashed copy into `dist/assets/`. That is the
 only place the filename appears; to swap the photograph, change `--hero-image` there and
 nothing else.
+
+The earlier `gts.png` (1366 × 768) was removed once this replaced it — nothing referenced it and
+it was 2.35 MB of dead weight in every checkout. It is still in history:
+`git checkout f02d571 -- src/image/gts.png`.
 
 It previously lived at an absolute `/public` URL, chosen so a *missing* file degraded to "no
 backdrop" rather than breaking the build. That mattered while the asset was outside the repo,
@@ -172,24 +176,23 @@ which is exactly how the backdrop spent its first release invisible. Now that th
 committed, build-time resolution is strictly better: a bad path is a loud build error, and the
 content hash makes the asset permanently cacheable with no stale-cache risk when it changes.
 
-**The current file is undersized and overweight.** `src/image/gts.png` is **1366×768 and
-2.35 MB**. Both numbers are wrong for the job, in opposite directions:
+**Resolution is now correct; weight is not.** At 3840px wide the backdrop is *downscaled* on
+every display in normal use, which is the condition under which a CSS background looks genuinely
+crisp — the previous 1366px source was upscaled ~1.4× at 1920px and ~1.9× at 2560px, and
+upscaling is softness no filter can undo.
 
-| | current | should be |
-| --- | --- | --- |
-| width | 1366px | **2400–2800px** (16:9, so ~2560×1440) |
-| format | PNG | **JPEG**, quality 72–78 |
-| size | 2.35 MB | **under ~350 KB** — decoration on a public page, not content |
-
-At 1366px wide the backdrop is upscaled about 1.4× on a 1920px display and 1.9× on 2560px, and
-upscaling is softness that no CSS can undo. PNG is the wrong container for a photograph and is
-what makes a small image this heavy — the same picture as JPEG q76 is roughly a tenth the size.
-Replacing it is a drop-in: nothing in the stylesheet needs to change.
+The remaining issue is transfer size: **2.2 MB for decoration on a public page.** 4K is more
+resolution than the backdrop can use, since it is cropped to a band and sits under a scrim. A
+2560px export at q76 would look identical and cost roughly a tenth:
 
 ```bash
-# from a larger original, ideally ~2560px wide
-magick original.png -resize 2560x -quality 76 src/image/gts.jpg
+magick src/image/gts2.jpg -resize 2560x -quality 76 src/image/gts2.jpg
 ```
+
+| | current | target |
+| --- | --- | --- |
+| width | 3840px | 2400–2800px |
+| size | 2.2 MB | under ~350 KB |
 
 **Content note:** keep the calmer landscape frames in the upper band. The backdrop is
 `background-size: cover` in a band far wider than 16:9, so it is cropped vertically — most on a
@@ -217,22 +220,59 @@ automatic AVIF/WebP selection. Every file listed must exist, or the build now fa
 
 ### Retuning the backdrop
 
-Every knob is a custom property at the top of `src/styles.css`, per theme:
+Every knob is a custom property at the top of `src/styles.css`. There is now **one** set, not
+one per theme — see "The landing page is dark only" below.
 
 | property | does |
 | --- | --- |
-| `--hero-photo-opacity` | strength. `0.42` dark, `0.24` light |
+| `--hero-photo-opacity` | strength — `0.36` |
 | `--hero-photo-blur` | `0px`. It was `14px`, which is what made the photograph unreadable |
-| `--hero-photo-filter` | saturation/contrast |
+| `--hero-photo-filter` | `saturate(1.06) contrast(1.08) brightness(0.88)` |
 | `--hero-photo-fade` | mask that ends the photo layer downwards |
-| `--hero-veil` | the two-axis scrim that guarantees text contrast |
+| `--hero-veil` | the two-axis scrim |
 | `--hero-max-height` | ceiling on the band's height |
+| `--hero-copy` / `--hero-copy-quiet` | hero text colours, brighter than the site tokens |
 
-The band fills the width and crops vertically. Showing the image **whole** instead is two
-lines — `height: auto; aspect-ratio: 1366 / 768;` on `.gts-hero-backdrop` plus
+**The two veil gradients multiply.** This is the trap in this component. A horizontal ramp that
+looks reasonable on its own — say `0.74` at the left falling to `0` at the right — combines with
+the vertical one to put the left edge under `~0.92` while the right sits under `~0.70`, so the
+same photograph is visible on one side and *completely gone* on the other at identical height.
+Keep the horizontal axis shallow, and read the measured figures in the comment on `--hero-veil`
+before changing a stop.
+
+**Contrast is bought from the type, not the scrim.** Against the current veil, the site's own
+`--text-secondary` measures 3.0:1 and `--text-muted` 1.6:1 over the photograph — both unusable.
+That is why the hero copy has its own brighter tokens plus a hairline `text-shadow`. Darkening
+the veil to rescue dim grey text would defeat the point of the backdrop; brighten the text
+instead, and re-check the ratios if you lower the veil further.
+
+The band fills the width and crops vertically, centred. Showing the image **whole** instead is
+two lines — `height: auto; aspect-ratio: 16 / 9;` on `.gts-hero-backdrop` plus
 `background-size: contain` on its `::before` — but on a laptop that yields a centred panel
-narrower than the 1180px text column, which reads as a mistake rather than a backdrop. The
-crop is the deliberate choice; see the comment on `.gts-hero-backdrop`.
+narrower than the 1180px text column, which reads as a mistake rather than a backdrop.
+
+### The landing page is dark only
+
+`/` ignores the stored and OS theme preferences and has no theme control. `/box` keeps both the
+toggle and both palettes — light mode is removed from the public page, not from the application.
+
+The page is a single composed surface whose scrim is tuned in measured steps against one
+photograph's luminance. Light mode needed a second, independently tuned set of those values, and
+the two could not be kept honest against each other: every backdrop adjustment silently
+invalidated the other theme's contrast. The workspace is the opposite case — dense, read for
+hours, no photography — so it keeps the choice.
+
+Enforced in three places, and all three are needed:
+
+| where | why |
+| --- | --- |
+| `main.tsx` | applies it **pre-render**, so a visitor whose stored preference is light never sees a white frame |
+| `LandingPage.tsx` | on mount, for client-side navigation back from `/box`; the cleanup restores the *stored* preference |
+| `LandingHeader.tsx` | no `ThemeToggle` — a control that appeared to do nothing would be worse than none |
+
+Neither path writes to storage, so a workspace preference survives a visit to the public page.
+`[data-theme="light"]` no longer defines any `--hero-*` value; to restore a light backdrop,
+re-add those and give the landing page a control again.
 
 ---
 
