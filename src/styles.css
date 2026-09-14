@@ -56,43 +56,62 @@
 
   /* ---- hero backdrop (dark) — see .gts-hero-backdrop ---- *
 
-     The one asset. Referenced from public/ by ABSOLUTE URL on purpose: Vite passes it
-     through without resolving, so a missing file degrades to "no backdrop" instead of
-     failing the build. Swap the filename here and nowhere else. */
-  --hero-image: url("/ghatsila.jpg");
+     The one asset, BUNDLED rather than served from public/. This path is relative to THIS
+     FILE (src/styles.css → src/image/gts.png), which is what makes Vite resolve it at build
+     time: it emits a content-hashed copy into dist/assets/ and rewrites this URL.
+
+     That is a deliberate change from the previous absolute /public URL. The old arrangement
+     was chosen so a MISSING file degraded to "no backdrop" instead of breaking the build —
+     sensible while the asset lived outside the repo, but it also meant a wrong filename
+     failed SILENTLY, as a 404 the page could not report. Now that the image is committed,
+     build-time resolution is strictly better: a bad path is a loud build error, and the
+     content hash makes the asset cacheable forever with no stale-cache risk on replacement.
+
+     To swap the photograph: replace src/image/gts.png (or point this at a new file) and
+     update --hero-image-native-height below. Nothing else references it. */
+  --hero-image: url("./image/gts.png");
 
   /* Legible now rather than blurred, so it is held FAINTER than a blurred wash could be: a
      recognisable photograph behind a headline carries much further than a field of averaged
      colour at the same opacity, and it is still a backdrop, never the subject. */
   --hero-photo-opacity: 0.42;
 
-  /* SOFT, NOT BLURRED.
-     This was 14px. That existed to dissolve the contact sheet's grid — cropped into the
-     middle of a ten-photo sheet, the seams read as hard vertical bands marching across the
-     header and looked like a rendering fault. That problem is now solved GEOMETRICALLY
-     instead: the whole sheet is shown, edge to edge (see .gts-hero-backdrop), so the grid
-     reads as a deliberate contact sheet rather than as stripes through an arbitrary crop.
-     What remains is a hair of blur — enough to take the digital edge off the JPEG and stop
-     fine detail competing with the type, not enough to lose a subject. Set 0 for fully
-     sharp; nothing else here depends on it. */
-  --hero-photo-blur: 1.5px;
+  /* NOT BLURRED. This was 14px, which is why the photograph was unreadable.
+     The blur was not decoration: it existed to dissolve the contact sheet's grid, because a
+     tight crop into the middle of a ten-photo sheet turns the seams into hard vertical bands
+     marching across the header, and that looks like a rendering fault. It is safe to remove
+     now for two reasons — the crop is far more generous (see .gts-hero-backdrop, which is
+     sized so most of the sheet survives), and the photo is held at a low enough opacity under
+     the scrim that a seam reads as part of the composition rather than as a defect.
+     Zero, not "a little": at this opacity, blur only costs definition. */
+  --hero-photo-blur: 0px;
   /* The saturation lift is gone with the heavy blur that needed it (blur averages colour and
      flattens it, so it had to be pushed back up). Contrast eased a touch instead, which is
      what makes a sharp photo recede behind copy. */
   --hero-photo-filter: saturate(1.02) contrast(0.98);
 
-  /* The entire image is shown, so its own bottom edge lands INSIDE the backdrop element
-     whenever --hero-image-aspect is not exact. This fades that edge out, so a wrong ratio
-     degrades to a soft finish instead of a hard line ruled across the page. */
-  --hero-photo-fade: linear-gradient(to bottom, #000 0%, #000 64%, transparent 100%);
+  /* Fades the PHOTO layer out downwards, independently of the scrim painted by ::after.
+     The scrim ends the backdrop by painting page colour OVER it; this ends the photograph
+     itself. Two mechanisms because they fail differently: the scrim depends on matching --bg
+     exactly, while the mask is colour-agnostic and so still lands cleanly if the palette is
+     ever retuned. */
+  --hero-photo-fade: linear-gradient(to bottom, #000 0%, #000 58%, transparent 100%);
 
-  /* THE SOURCE IMAGE'S OWN ASPECT RATIO — width / height.
-     The backdrop element is sized to this, which is what lets `contain` fit the whole
-     collage with no crop at any viewport width. Read the real numbers off the file:
-         identify -format "%w / %h\n" public/ghatsila.jpg
-     A wrong value here is not a breakage — the image still shows whole, it just letterboxes
-     inside the element, and --hero-photo-fade keeps that from showing as an edge. */
-  --hero-image-aspect: 5 / 2;
+  /* THE SOURCE IS ONLY 1366 x 768 — A KNOWN LIMIT, NOT SOMETHING CSS CAN FIX.
+     Full-bleed means the photograph is scaled to the viewport width, so on anything wider than
+     1366px it is being UPSCALED: about 1.4x on a 1920px display, 1.9x on 2560px. Upscaling is
+     softness, which is the exact quality this change set out to remove, and no property here
+     can undo it — `cover`, `contain` and every filter operate on the pixels that exist.
+     Two mitigations are in play. The photo sits at low opacity under a scrim, which hides a
+     great deal of interpolation. And the band is height-capped below, so it never grows to the
+     point where the upscale is the first thing the eye lands on.
+     THE ACTUAL FIX IS A BIGGER SOURCE FILE: a ~2400px-wide export would render natively on
+     every common display. Nothing in this stylesheet needs to change to accept one. */
+
+  /* Ceiling on the band's height. Not an upscale guard — with `cover`, scale is driven by
+     whichever axis needs more, and on a wide viewport that is always the width. This exists so
+     a very tall window does not hand the photograph the whole first screen. */
+  --hero-max-height: 880px;
 
   /* Two axes, in one paint.
        1st gradient — vertical: transparent at the top, solid --bg at the bottom, so the
@@ -987,16 +1006,26 @@ table {
 .gts-hero-backdrop {
   position: absolute;
   inset: 0 0 auto 0;
-  /* HEIGHT FOLLOWS THE IMAGE, not an arbitrary clamp. With the element carrying the source's
-     own aspect ratio, `background-size: contain` fits the whole collage exactly — no crop,
-     no dead band — at every viewport width. That is what makes this responsive by
-     construction rather than tuned for one screen size.
-     The bounds only stop the ratio being absurd at the extremes: min-height keeps a backdrop
-     behind the header on a narrow viewport, max-height keeps it gone before the pillars on a
-     very wide display, whose hairline rules must stay crisp against flat background. */
-  aspect-ratio: var(--hero-image-aspect);
-  min-height: 320px;
-  max-height: 820px;
+  /* THE GEOMETRY, AND THE COMPROMISE IN IT — worth understanding before retuning.
+     The source is 16:9 (1366x768). This band is full-bleed and much wider than 16:9 — roughly
+     2.6:1 on a laptop — so the image CANNOT be shown both whole and full-width here: filling
+     the width of a 1366px viewport at 16:9 would need 768px of height, which is more than the
+     entire first screen and would put photography behind the pillars, whose hairline rules
+     have to sit on flat background.
+
+     So it fills the width and accepts a vertical crop, rather than letterboxing into a
+     centred panel narrower than the 1180px text column — which is what showing it whole would
+     mean, and it would read as a mistake rather than as a backdrop.
+
+     The height is therefore pushed as FAR as the layout allows, to keep the crop as small as
+     possible: 78vh rather than the previous 68vh. The bottom fifth is under a near-solid
+     scrim, so the extra reach costs nothing visually and buys roughly a sixth of the sheet
+     back. Both rows of the collage survive at every size.
+
+     To show the whole image instead and accept the centred panel, this is the entire change:
+         height: auto;  aspect-ratio: 1366 / 768;
+     plus `background-size: contain` on ::before. */
+  height: clamp(400px, 78vh, var(--hero-max-height));
   overflow: hidden;
   pointer-events: none;
   /* z-index 0 with the siblings lifted to 1, deliberately NOT z-index -1.
@@ -1021,15 +1050,16 @@ table {
      boundary — the exact opposite of showing all of it. */
   inset: 0;
   background-image: var(--hero-image);
-  /* CONTAIN, NOT COVER — this is the change that shows the whole picture.
-     `cover` fills the box by cropping away whatever does not fit, so a wide collage in a
-     shortish header band meant most of the sheet was never on screen at all. `contain` fits
-     the entire image inside the box instead: nothing is cropped, at any viewport width. */
-  background-size: contain;
-  /* Top-anchored. The element is sized to the image, so this only bites when the ratio is
-     inexact or the min/max bounds clamp it — and in that case the photo should sit up under
-     the header rather than float in the middle of the band. */
-  background-position: center top;
+  /* COVER, so the photograph is edge-to-edge with no letterbox bars and no image edges
+     landing inside the band — which is what would produce the hard seams this is trying to
+     avoid. The vertical crop it implies is the documented compromise on .gts-hero-backdrop. */
+  background-size: cover;
+  /* Centred vertically, not top-anchored. With a two-row contact sheet, an even crop takes a
+     strip off the top of the upper row and the bottom of the lower one, leaving both rows
+     legible; anchoring to the top would spend the whole crop on the lower row and cut it in
+     half. 46% is a shade above centre because the upper row (fields, boat, sky) is the calmer
+     half and is what should sit behind the headline. */
+  background-position: center 46%;
   background-repeat: no-repeat;
   opacity: var(--hero-photo-opacity);
   filter: var(--hero-photo-filter) blur(var(--hero-photo-blur));
@@ -3237,17 +3267,23 @@ table {
   }
 
   /* ---- hero backdrop on a phone ----
-     There is deliberately NO `height` and NO `background-position` override here any more.
-     Both existed to manage a crop, and there is no crop left to manage: the element is on the
-     image's aspect ratio and the image is `contain`ed, so a narrower viewport already yields a
-     proportionally shorter backdrop showing the same whole picture. Setting `height` here
-     would fight `aspect-ratio` and reintroduce exactly the letterboxing this replaced.
-     Only the lower bound relaxes, so a phone letterboxes less than the desktop floor would
-     force. The horizontal scrim still flattens out below: on one column there is no "beside
-     the text" left to clear, so the veil becomes vertical only and simply guarantees contrast
-     for the full width of the copy. */
+     A phone viewport is TALLER than it is wide, so a full-bleed 16:9 source is at its most
+     cropped here — the reverse of the desktop problem. Left alone it would keep only a narrow
+     vertical slice of the sheet's middle and stop reading as a collage at all.
+     So the band gets shorter in absolute terms but much closer to the source's own proportions
+     relative to the width: at 390px wide, 300px of height is a 1.3:1 box against a 1.78:1
+     image, which crops the sides rather than gutting the rows. Pulled slightly higher up the
+     sheet too, where the landscape frames are, so what survives is sky and field rather than
+     half a wall.
+     The horizontal scrim also flattens out below: on one column there is no "beside the text"
+     left to clear, so the veil becomes vertical only and simply guarantees contrast for the
+     full width of the copy. */
   .gts-hero-backdrop {
-    min-height: 200px;
+    height: clamp(260px, 42vh, 420px);
+  }
+
+  .gts-hero-backdrop::before {
+    background-position: center 38%;
   }
 
   .gts-hero-backdrop::after {

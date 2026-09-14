@@ -154,45 +154,85 @@ works on a phone.
 The landing page carries one photographic backdrop — a collage of Ghatsila — behind the header
 and hero, fading into the page background before the pillars.
 
-**The asset is not in git.** Drop it in as:
+**The asset is in git and bundled**, at:
 
 ```
-public/ghatsila.jpg
+src/image/gts.png
 ```
 
-That is the only place the filename appears outside CSS; to rename it, change `--hero-image`
-in `src/styles.css` and nothing else.
+`src/styles.css` references it with a path relative to itself (`url("./image/gts.png")`), so
+Vite resolves it at build time and emits a content-hashed copy into `dist/assets/`. That is the
+only place the filename appears; to swap the photograph, change `--hero-image` there and
+nothing else.
 
-**Preparing the file.** Export it *wider than it looks like it needs to be* — the backdrop is
-`background-size: cover`, so on a 2560px display a 1024px-wide source is upscaled 2.5× and
-goes visibly soft:
+It previously lived at an absolute `/public` URL, chosen so a *missing* file degraded to "no
+backdrop" rather than breaking the build. That mattered while the asset was outside the repo,
+but it also meant a wrong filename failed **silently**, as a 404 the page could not report —
+which is exactly how the backdrop spent its first release invisible. Now that the file is
+committed, build-time resolution is strictly better: a bad path is a loud build error, and the
+content hash makes the asset permanently cacheable with no stale-cache risk when it changes.
 
-| | |
-| --- | --- |
-| width | **2400–2800px** (16:9, so ~2560×1440) |
-| format | JPEG, quality 72–78 |
-| target size | **under ~350 KB** — it is decoration on a public page, not content |
-| content | keep the calmer landscape frames in the upper band; that is the part that survives a wide crop, and on a phone it is nearly all that is visible |
+**The current file is undersized and overweight.** `src/image/gts.png` is **1366×768 and
+2.35 MB**. Both numbers are wrong for the job, in opposite directions:
 
-**If the file is absent the page still renders correctly**, with no backdrop, no broken-image
-glyph, no layout shift and no build error. That is why it is a CSS `background-image` pointing
-at an absolute `/public` URL rather than an `<img>` or a bundler-resolved `import` — either of
-those would fail the build or paint a broken icon in production.
+| | current | should be |
+| --- | --- | --- |
+| width | 1366px | **2400–2800px** (16:9, so ~2560×1440) |
+| format | PNG | **JPEG**, quality 72–78 |
+| size | 2.35 MB | **under ~350 KB** — decoration on a public page, not content |
+
+At 1366px wide the backdrop is upscaled about 1.4× on a 1920px display and 1.9× on 2560px, and
+upscaling is softness that no CSS can undo. PNG is the wrong container for a photograph and is
+what makes a small image this heavy — the same picture as JPEG q76 is roughly a tenth the size.
+Replacing it is a drop-in: nothing in the stylesheet needs to change.
+
+```bash
+# from a larger original, ideally ~2560px wide
+magick original.png -resize 2560x -quality 76 src/image/gts.jpg
+```
+
+**Content note:** keep the calmer landscape frames in the upper band. The backdrop is
+`background-size: cover` in a band far wider than 16:9, so it is cropped vertically — most on a
+phone, where the sides go too.
+
+**A missing file is now a build failure, by design.** The trade is deliberate: a loud error at
+build time is worth more than a silent 404 in production. If you need the old
+degrade-to-nothing behaviour, move the file back to `public/` and use an absolute URL.
 
 **It is decorative and yields to the user.** It is an empty `aria-hidden` element, so it is
 never announced; and it is removed entirely under `prefers-contrast: more`,
 `forced-colors: active`, `prefers-reduced-transparency: reduce`, and when printing.
 
 Optional, once you have modern formats to hand — swap one line in `src/styles.css` for
-automatic AVIF/WebP selection (only add formats whose files actually exist, or they will 404):
+automatic AVIF/WebP selection. Every file listed must exist, or the build now fails rather than
+404ing:
 
 ```css
 --hero-image: image-set(
-  url("/ghatsila.avif") type("image/avif"),
-  url("/ghatsila.webp") type("image/webp"),
-  url("/ghatsila.jpg")  type("image/jpeg")
+  url("./image/gts.avif") type("image/avif"),
+  url("./image/gts.webp") type("image/webp"),
+  url("./image/gts.jpg")  type("image/jpeg")
 );
 ```
+
+### Retuning the backdrop
+
+Every knob is a custom property at the top of `src/styles.css`, per theme:
+
+| property | does |
+| --- | --- |
+| `--hero-photo-opacity` | strength. `0.42` dark, `0.24` light |
+| `--hero-photo-blur` | `0px`. It was `14px`, which is what made the photograph unreadable |
+| `--hero-photo-filter` | saturation/contrast |
+| `--hero-photo-fade` | mask that ends the photo layer downwards |
+| `--hero-veil` | the two-axis scrim that guarantees text contrast |
+| `--hero-max-height` | ceiling on the band's height |
+
+The band fills the width and crops vertically. Showing the image **whole** instead is two
+lines — `height: auto; aspect-ratio: 1366 / 768;` on `.gts-hero-backdrop` plus
+`background-size: contain` on its `::before` — but on a laptop that yields a centred panel
+narrower than the 1180px text column, which reads as a mistake rather than a backdrop. The
+crop is the deliberate choice; see the comment on `.gts-hero-backdrop`.
 
 ---
 
