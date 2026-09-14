@@ -71,10 +71,14 @@
      update --hero-image-native-height below. Nothing else references it. */
   --hero-image: url("./image/gts.png");
 
-  /* Legible now rather than blurred, so it is held FAINTER than a blurred wash could be: a
+  /* Legible rather than blurred, so it is held FAINTER than a blurred wash could be: a
      recognisable photograph behind a headline carries much further than a field of averaged
-     colour at the same opacity, and it is still a backdrop, never the subject. */
-  --hero-photo-opacity: 0.42;
+     colour at the same opacity, and it is still a backdrop, never the subject.
+     0.42 -> 0.30: at 0.42 the top of the page read as a LIGHT band above a near-black page,
+     which is the wrong impression for a dark theme — the eye went to the photograph before the
+     headline. Strength is now taken out here and in brightness() below, i.e. from the
+     photograph itself, rather than by veiling it more — see --hero-veil for why that matters. */
+  --hero-photo-opacity: 0.30;
 
   /* NOT BLURRED. This was 14px, which is why the photograph was unreadable.
      The blur was not decoration: it existed to dissolve the contact sheet's grid, because a
@@ -85,17 +89,27 @@
      the scrim that a seam reads as part of the composition rather than as a defect.
      Zero, not "a little": at this opacity, blur only costs definition. */
   --hero-photo-blur: 0px;
-  /* The saturation lift is gone with the heavy blur that needed it (blur averages colour and
-     flattens it, so it had to be pushed back up). Contrast eased a touch instead, which is
-     what makes a sharp photo recede behind copy. */
-  --hero-photo-filter: saturate(1.02) contrast(0.98);
+  /* DARKER AND CRISPER, in one pass.
+     brightness(0.82) is what fixes "too light": it dims the PHOTOGRAPH, where the old fix
+     would have been a heavier scrim — and a scrim is directional, so it dims unevenly and is
+     exactly what erased the lower-left corner. Dimming the source is uniform.
+     contrast(1.10) then buys the definition back. Lowering opacity and brightness both flatten
+     local contrast, so without this the photo would go dim AND mushy; with it, dim and sharp.
+     A caveat worth knowing: this is apparent sharpness, not true sharpening. CSS has no
+     unsharp mask, and contrast() cannot add detail that upscaling destroyed. Past roughly 1.15
+     it starts crushing the shadows in the night frames into flat black instead of looking
+     sharper. Real sharpness needs a higher-resolution source — see the note below. */
+  --hero-photo-filter: saturate(1.06) contrast(1.10) brightness(0.82);
 
   /* Fades the PHOTO layer out downwards, independently of the scrim painted by ::after.
      The scrim ends the backdrop by painting page colour OVER it; this ends the photograph
      itself. Two mechanisms because they fail differently: the scrim depends on matching --bg
      exactly, while the mask is colour-agnostic and so still lands cleanly if the palette is
      ever retuned. */
-  --hero-photo-fade: linear-gradient(to bottom, #000 0%, #000 58%, transparent 100%);
+  /* 58% -> 76%: the fade started too high up. Together with the vertical veil it was removing
+     the photograph well before the band ended, so the lower third — the collage's bottom row —
+     was being rendered and then wiped. Starting the fade lower lets that row register. */
+  --hero-photo-fade: linear-gradient(to bottom, #000 0%, #000 76%, transparent 100%);
 
   /* THE SOURCE IS ONLY 1366 x 768 — A KNOWN LIMIT, NOT SOMETHING CSS CAN FIX.
      Full-bleed means the photograph is scaled to the viewport width, so on anything wider than
@@ -116,31 +130,51 @@
   /* Two axes, in one paint.
        1st gradient — vertical: transparent at the top, solid --bg at the bottom, so the
                       backdrop ENDS rather than being cut off by a hard edge.
-       2nd gradient — horizontal: heaviest under the copy column on the left, clearing to
-                      the right so the photography is actually visible somewhere. */
+       2nd gradient — horizontal: still heavier under the copy column, but only slightly.
+
+     WHY THE HORIZONTAL AXIS WAS FLATTENED (0.74 -> 0.56 at the left, 0 -> 0.20 at the right).
+     The two gradients MULTIPLY. At a depth where the vertical veil is ~0.70, the left edge sat
+     under a combined ~0.92 while the right edge sat under ~0.70 — so the same photograph was
+     comfortably visible on the right and completely gone on the left, at identical height. That
+     is not a subtle imbalance, it reads as the lower-left corner of the image being missing.
+     A steep horizontal ramp is only safe when the vertical one is shallow; this one is not.
+     Flattened, the field is even and both bottom corners carry image. Text contrast is no
+     longer paid for by this axis — it comes from the photo's own lower opacity and brightness,
+     which is uniform and therefore cannot leave a hole in one corner.
+
+     MEASURED, sampling `opacity x (1 - combined scrim) x mask x brightness` before and after:
+         behind the headline (35% depth, left)   0.080 -> 0.081   unchanged
+         upper-middle of the band (20%, centre)  0.200 -> 0.120   -40%   ("too light")
+         lower-left (70% depth, x=0)            0.027 -> 0.056   +106%  ("not there")
+         lower-left (85% depth, x=0)            0.006 -> 0.022   +247%
+         lower-right (70% depth, x=100%)        0.104 -> 0.101   unchanged
+         left/right imbalance at 70% depth      3.85x -> 1.82x
+     So the band is substantially dimmer overall, the missing corner is back, and contrast
+     behind the copy is held exactly where it was. Retune with those four numbers in view —
+     raising the left stop of the horizontal ramp is what silently kills the corner again. */
   --hero-veil:
     linear-gradient(
       to bottom,
-      rgba(6, 7, 8, 0.10) 0%,
-      rgba(6, 7, 8, 0.30) 42%,
-      rgba(6, 7, 8, 0.78) 80%,
+      rgba(6, 7, 8, 0.12) 0%,
+      rgba(6, 7, 8, 0.28) 42%,
+      rgba(6, 7, 8, 0.56) 80%,
       #060708 100%
     ),
     linear-gradient(
       to right,
-      rgba(6, 7, 8, 0.74) 0%,
-      rgba(6, 7, 8, 0.60) 32%,
-      rgba(6, 7, 8, 0.24) 66%,
-      rgba(6, 7, 8, 0) 100%
+      rgba(6, 7, 8, 0.56) 0%,
+      rgba(6, 7, 8, 0.48) 32%,
+      rgba(6, 7, 8, 0.32) 66%,
+      rgba(6, 7, 8, 0.20) 100%
     );
   /* Single-column viewports: vertical only, and heavier, because the copy now spans the
      full width and there is no clear side to leave uncovered. */
   --hero-veil-narrow:
     linear-gradient(
       to bottom,
-      rgba(6, 7, 8, 0.52) 0%,
-      rgba(6, 7, 8, 0.68) 40%,
-      rgba(6, 7, 8, 0.90) 78%,
+      rgba(6, 7, 8, 0.46) 0%,
+      rgba(6, 7, 8, 0.58) 40%,
+      rgba(6, 7, 8, 0.74) 78%,
       #060708 100%
     );
 
@@ -252,33 +286,38 @@
      Held MUCH fainter and washed with the page colour rather than darkened. These are
      saturated, mostly dark photographs: at dark mode's strength they would fight #111418
      body copy and look like a mistake. Light mode wants a tint, not a picture. */
-  --hero-photo-opacity: 0.24;
+  --hero-photo-opacity: 0.22;
   /* Lifted and de-saturated rather than dimmed: on a #f6f7f8 page the goal is a pale wash of
      the same colours, so the photo brightens INTO the background instead of punching holes in
-     it. Held fainter than before for the same reason dark mode is — the photo is sharp now,
-     so it reads at a lower opacity than the old blurred wash needed. */
-  --hero-photo-filter: saturate(0.80) contrast(0.92) brightness(1.18);
+     it. The brightness lift is eased (1.18 -> 1.08) and contrast raised (0.92 -> 1.06) for the
+     same reason as dark mode: on a light page a hard brightness lift is what makes a photograph
+     look washed out and faded rather than restrained. Less lift plus more contrast reads as a
+     deliberately pale image instead of a degraded one. */
+  --hero-photo-filter: saturate(0.88) contrast(1.06) brightness(1.08);
+  /* Horizontal axis flattened for the same multiplication reason documented on the dark veil —
+     0.82 at the left against 0.08 at the right guaranteed one bottom corner survived and the
+     other did not. */
   --hero-veil:
     linear-gradient(
       to bottom,
-      rgba(246, 247, 248, 0.42) 0%,
-      rgba(246, 247, 248, 0.58) 42%,
-      rgba(246, 247, 248, 0.88) 80%,
+      rgba(246, 247, 248, 0.40) 0%,
+      rgba(246, 247, 248, 0.52) 42%,
+      rgba(246, 247, 248, 0.72) 80%,
       #f6f7f8 100%
     ),
     linear-gradient(
       to right,
-      rgba(246, 247, 248, 0.82) 0%,
-      rgba(246, 247, 248, 0.70) 32%,
-      rgba(246, 247, 248, 0.34) 66%,
-      rgba(246, 247, 248, 0.08) 100%
+      rgba(246, 247, 248, 0.64) 0%,
+      rgba(246, 247, 248, 0.56) 32%,
+      rgba(246, 247, 248, 0.38) 66%,
+      rgba(246, 247, 248, 0.26) 100%
     );
   --hero-veil-narrow:
     linear-gradient(
       to bottom,
-      rgba(246, 247, 248, 0.74) 0%,
-      rgba(246, 247, 248, 0.82) 40%,
-      rgba(246, 247, 248, 0.94) 78%,
+      rgba(246, 247, 248, 0.66) 0%,
+      rgba(246, 247, 248, 0.74) 40%,
+      rgba(246, 247, 248, 0.86) 78%,
       #f6f7f8 100%
     );
 
