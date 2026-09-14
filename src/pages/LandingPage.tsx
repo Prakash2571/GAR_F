@@ -22,6 +22,8 @@ import PasscodeModal from "../auth/PasscodeModal.tsx";
 import { useAccess } from "../auth/AccessGate.tsx";
 import { navigate, useLocation } from "../app/router.ts";
 import { ROUTE_PATHS, readQueryParam } from "../lib/routing.ts";
+import { applyTheme, readStoredTheme } from "../ThemeToggle.tsx";
+import { LANDING_THEME } from "../lib/theme.ts";
 import Button from "../components/ui/Button.tsx";
 
 /** The three things the project actually does. One sentence each. */
@@ -44,6 +46,22 @@ export default function LandingPage() {
   const { state, authenticated } = useAccess();
   const location = useLocation();
   const [passcodeOpen, setPasscodeOpen] = useState(false);
+
+  /**
+   * THIS PAGE IS DARK ONLY — see LANDING_THEME in lib/theme.ts for the reasoning.
+   *
+   * `main.tsx` already applies it before the first paint, so this is not what handles a cold
+   * load; it handles ARRIVING BACK from the workspace by client-side navigation, where no
+   * reload occurs and /box may have left the document in light mode.
+   *
+   * The cleanup restores the STORED preference rather than forcing dark onward, so a visitor
+   * who chose light for the workspace still gets it when they go there. Nothing here writes to
+   * storage: the public page must not overwrite a preference it does not offer a way to set.
+   */
+  useEffect(() => {
+    applyTheme(LANDING_THEME);
+    return () => applyTheme(readStoredTheme());
+  }, []);
 
   /**
    * `/?auth=1` opens the dialog automatically.
@@ -98,11 +116,13 @@ export default function LandingPage() {
        * otherwise miss, so announcing it would be noise. The text over it is unchanged and
        * keeps its own colours; the scrim in `.gts-hero-backdrop` is what protects contrast.
        *
-       * WHY NOT AN <img>. The asset lives in `public/` and is referenced by absolute URL from
-       * CSS, so if it is absent the layer paints nothing and the page renders exactly as it
-       * did before. An <img> would show a broken-image glyph, and a bundler-resolved import
-       * would fail the BUILD — neither is an acceptable outcome for decoration on the public
-       * page of a trading project. See the `--hero-image` variable in styles.css.
+       * WHY NOT AN <img>. It carries no meaning, has no caption and is never referred to, so
+       * it is not content — it is a surface treatment, and a CSS background is what a surface
+       * treatment should be. Keeping it out of the markup also keeps it out of the document
+       * flow entirely, so it cannot shift the headline while it loads.
+       *
+       * The file itself is `src/image/gts2.jpg`, bundled and content-hashed by Vite. See the
+       * `--hero-image` variable in styles.css, which is the only place it is named.
        */}
       <div className="gts-hero-backdrop" aria-hidden="true" />
 

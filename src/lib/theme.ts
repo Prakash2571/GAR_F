@@ -38,6 +38,24 @@ export const THEME_COLOR: Record<Theme, string> = {
 export const DEFAULT_THEME: Theme = "dark";
 
 /**
+ * THE PUBLIC LANDING PAGE IS DARK ONLY. It has no theme control and ignores both the stored
+ * preference and the OS one.
+ *
+ * The page is a single composed surface — one photographic backdrop, one headline, a scrim
+ * tuned in measured steps against that photograph's luminance. Light mode required a second,
+ * separately tuned set of those values, and the two could not be kept honest against each
+ * other: every adjustment to the backdrop silently invalidated the other theme's contrast.
+ * The workspace at /box is different — it is dense, long-lived, read for hours, and carries no
+ * photography — so it KEEPS the toggle and both palettes. Light mode is not removed from the
+ * application, only from this one page.
+ *
+ * Applied WITHOUT persisting, so a visitor who chose light for the workspace still gets it
+ * there. See `main.tsx` (pre-render, to avoid a flash) and `LandingPage.tsx` (on mount, for
+ * client-side navigation back from /box).
+ */
+export const LANDING_THEME: Theme = "dark";
+
+/**
  * Interpret a raw stored value.
  *
  * Only the two exact strings are honoured. Anything else — absent, empty, "Dark", a
