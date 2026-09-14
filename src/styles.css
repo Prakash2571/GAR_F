@@ -61,20 +61,38 @@
      failing the build. Swap the filename here and nowhere else. */
   --hero-image: url("/ghatsila.jpg");
 
-  /* Dark mode can carry the photo relatively strongly — it is competing with a near-black
-     page, so this is what makes it visible at all rather than what makes it loud. */
-  --hero-photo-opacity: 0.58;
+  /* Legible now rather than blurred, so it is held FAINTER than a blurred wash could be: a
+     recognisable photograph behind a headline carries much further than a field of averaged
+     colour at the same opacity, and it is still a backdrop, never the subject. */
+  --hero-photo-opacity: 0.42;
 
-  /* THE BLUR IS THE POINT, NOT A SOFTENER.
-     The source is a CONTACT SHEET — ten unrelated photographs butted together — so at full
-     sharpness its grid reads as hard vertical seams marching across the header, which looks
-     like a rendering fault rather than a design. Blurring past the seam width dissolves the
-     grid into a single field of colour that still says "fields, river, sunset, festival"
-     without asking the eye to parse ten pictures behind a headline.
-     Set blur(0) to show the collage sharp; everything else here still holds. */
-  --hero-photo-blur: 14px;
-  /* Saturation pushed slightly UP because the blur averages colour and flattens it. */
-  --hero-photo-filter: saturate(1.14) contrast(1.02);
+  /* SOFT, NOT BLURRED.
+     This was 14px. That existed to dissolve the contact sheet's grid — cropped into the
+     middle of a ten-photo sheet, the seams read as hard vertical bands marching across the
+     header and looked like a rendering fault. That problem is now solved GEOMETRICALLY
+     instead: the whole sheet is shown, edge to edge (see .gts-hero-backdrop), so the grid
+     reads as a deliberate contact sheet rather than as stripes through an arbitrary crop.
+     What remains is a hair of blur — enough to take the digital edge off the JPEG and stop
+     fine detail competing with the type, not enough to lose a subject. Set 0 for fully
+     sharp; nothing else here depends on it. */
+  --hero-photo-blur: 1.5px;
+  /* The saturation lift is gone with the heavy blur that needed it (blur averages colour and
+     flattens it, so it had to be pushed back up). Contrast eased a touch instead, which is
+     what makes a sharp photo recede behind copy. */
+  --hero-photo-filter: saturate(1.02) contrast(0.98);
+
+  /* The entire image is shown, so its own bottom edge lands INSIDE the backdrop element
+     whenever --hero-image-aspect is not exact. This fades that edge out, so a wrong ratio
+     degrades to a soft finish instead of a hard line ruled across the page. */
+  --hero-photo-fade: linear-gradient(to bottom, #000 0%, #000 64%, transparent 100%);
+
+  /* THE SOURCE IMAGE'S OWN ASPECT RATIO — width / height.
+     The backdrop element is sized to this, which is what lets `contain` fit the whole
+     collage with no crop at any viewport width. Read the real numbers off the file:
+         identify -format "%w / %h\n" public/ghatsila.jpg
+     A wrong value here is not a breakage — the image still shows whole, it just letterboxes
+     inside the element, and --hero-photo-fade keeps that from showing as an edge. */
+  --hero-image-aspect: 5 / 2;
 
   /* Two axes, in one paint.
        1st gradient — vertical: transparent at the top, solid --bg at the bottom, so the
@@ -91,9 +109,9 @@
     ),
     linear-gradient(
       to right,
-      rgba(6, 7, 8, 0.86) 0%,
-      rgba(6, 7, 8, 0.72) 32%,
-      rgba(6, 7, 8, 0.28) 66%,
+      rgba(6, 7, 8, 0.74) 0%,
+      rgba(6, 7, 8, 0.60) 32%,
+      rgba(6, 7, 8, 0.24) 66%,
       rgba(6, 7, 8, 0) 100%
     );
   /* Single-column viewports: vertical only, and heavier, because the copy now spans the
@@ -215,10 +233,11 @@
      Held MUCH fainter and washed with the page colour rather than darkened. These are
      saturated, mostly dark photographs: at dark mode's strength they would fight #111418
      body copy and look like a mistake. Light mode wants a tint, not a picture. */
-  --hero-photo-opacity: 0.30;
+  --hero-photo-opacity: 0.24;
   /* Lifted and de-saturated rather than dimmed: on a #f6f7f8 page the goal is a pale wash of
      the same colours, so the photo brightens INTO the background instead of punching holes in
-     it. Blur is shared with dark mode — the contact-sheet grid is a property of the source. */
+     it. Held fainter than before for the same reason dark mode is — the photo is sharp now,
+     so it reads at a lower opacity than the old blurred wash needed. */
   --hero-photo-filter: saturate(0.80) contrast(0.92) brightness(1.18);
   --hero-veil:
     linear-gradient(
@@ -230,10 +249,10 @@
     ),
     linear-gradient(
       to right,
-      rgba(246, 247, 248, 0.90) 0%,
-      rgba(246, 247, 248, 0.78) 32%,
-      rgba(246, 247, 248, 0.40) 66%,
-      rgba(246, 247, 248, 0.12) 100%
+      rgba(246, 247, 248, 0.82) 0%,
+      rgba(246, 247, 248, 0.70) 32%,
+      rgba(246, 247, 248, 0.34) 66%,
+      rgba(246, 247, 248, 0.08) 100%
     );
   --hero-veil-narrow:
     linear-gradient(
@@ -968,9 +987,16 @@ table {
 .gts-hero-backdrop {
   position: absolute;
   inset: 0 0 auto 0;
-  /* Tall enough to sit behind the header and the whole hero, short enough to be gone
-     before the pillars — their hairline rules must stay crisp against flat background. */
-  height: clamp(460px, 68vh, 820px);
+  /* HEIGHT FOLLOWS THE IMAGE, not an arbitrary clamp. With the element carrying the source's
+     own aspect ratio, `background-size: contain` fits the whole collage exactly — no crop,
+     no dead band — at every viewport width. That is what makes this responsive by
+     construction rather than tuned for one screen size.
+     The bounds only stop the ratio being absurd at the extremes: min-height keeps a backdrop
+     behind the header on a narrow viewport, max-height keeps it gone before the pillars on a
+     very wide display, whose hairline rules must stay crisp against flat background. */
+  aspect-ratio: var(--hero-image-aspect);
+  min-height: 320px;
+  max-height: 820px;
   overflow: hidden;
   pointer-events: none;
   /* z-index 0 with the siblings lifted to 1, deliberately NOT z-index -1.
@@ -989,19 +1015,28 @@ table {
 }
 
 .gts-hero-backdrop::before {
-  /* Bled OUTWARD past the element on every side. A blurred layer fades to transparent at its
-     own edges, which would otherwise draw a soft light band down the sides and across the top;
-     overflowing the clip boundary by more than the blur radius keeps the field solid to the
-     edge. The parent's `overflow: hidden` trims the excess. */
-  inset: -40px;
+  /* NO outward bleed. The old -40px existed only because a 14px blur fades to transparent at
+     its own edges and drew a soft light band down the sides and across the top. At 1.5px
+     there is nothing to hide, and a bleed would now push part of the image outside the clip
+     boundary — the exact opposite of showing all of it. */
+  inset: 0;
   background-image: var(--hero-image);
-  background-size: cover;
-  /* Biased ABOVE centre: the collage's upper row (fields, boat, sky) is the calmer half,
-     and it is the half that survives a wide crop. */
-  background-position: center 32%;
+  /* CONTAIN, NOT COVER — this is the change that shows the whole picture.
+     `cover` fills the box by cropping away whatever does not fit, so a wide collage in a
+     shortish header band meant most of the sheet was never on screen at all. `contain` fits
+     the entire image inside the box instead: nothing is cropped, at any viewport width. */
+  background-size: contain;
+  /* Top-anchored. The element is sized to the image, so this only bites when the ratio is
+     inexact or the min/max bounds clamp it — and in that case the photo should sit up under
+     the header rather than float in the middle of the band. */
+  background-position: center top;
   background-repeat: no-repeat;
   opacity: var(--hero-photo-opacity);
   filter: var(--hero-photo-filter) blur(var(--hero-photo-blur));
+  /* Fades the image's own lower edge out — see --hero-photo-fade. Masking the PHOTO layer
+     and not the element keeps this independent of the scrim painted by ::after. */
+  -webkit-mask-image: var(--hero-photo-fade);
+  mask-image: var(--hero-photo-fade);
 }
 
 /* The scrim. Painted over the photo, under the type. */
@@ -3202,18 +3237,17 @@ table {
   }
 
   /* ---- hero backdrop on a phone ----
-     A 16:9 collage cropped to a tall narrow viewport keeps only a sliver of its middle, so
-     the two-row grid stops reading as a collage at all. Shorter, and pulled to the upper
-     band where the landscape frames are, so what survives the crop is sky and field rather
-     than half a wall. The horizontal scrim also flattens out: on one column there is no
-     "beside the text" left to clear, so the veil becomes vertical only and simply guarantees
-     contrast for the full width of the copy. */
+     There is deliberately NO `height` and NO `background-position` override here any more.
+     Both existed to manage a crop, and there is no crop left to manage: the element is on the
+     image's aspect ratio and the image is `contain`ed, so a narrower viewport already yields a
+     proportionally shorter backdrop showing the same whole picture. Setting `height` here
+     would fight `aspect-ratio` and reintroduce exactly the letterboxing this replaced.
+     Only the lower bound relaxes, so a phone letterboxes less than the desktop floor would
+     force. The horizontal scrim still flattens out below: on one column there is no "beside
+     the text" left to clear, so the veil becomes vertical only and simply guarantees contrast
+     for the full width of the copy. */
   .gts-hero-backdrop {
-    height: clamp(360px, 46vh, 520px);
-  }
-
-  .gts-hero-backdrop::before {
-    background-position: center 22%;
+    min-height: 200px;
   }
 
   .gts-hero-backdrop::after {
