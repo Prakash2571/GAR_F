@@ -246,10 +246,26 @@ That is why the hero copy has its own brighter tokens plus a hairline `text-shad
 the veil to rescue dim grey text would defeat the point of the backdrop; brighten the text
 instead, and re-check the ratios if you lower the veil further.
 
-The band fills the width and crops vertically, centred. Showing the image **whole** instead is
-two lines — `height: auto; aspect-ratio: 16 / 9;` on `.gts-hero-backdrop` plus
-`background-size: contain` on its `::before` — but on a laptop that yields a centred panel
-narrower than the 1180px text column, which reads as a mistake rather than a backdrop.
+**The backdrop spans the whole page, not a band.** `inset: 0` on `.gts-hero-backdrop`, header to
+footer. This is what makes the photograph actually visible: as a 66vh band, `cover` discarded
+about 38% of the image, and no gradient adjustment could recover pixels that were never painted.
+
+| viewport | as a band | full page |
+| --- | --- | --- |
+| 1024 × 512 | 63% of the image height | **89%** |
+| 1366 × 700 | 60% | **91%** |
+| 1440 × 900 | 73% | **100%** |
+| 1920 × 1080 | 66% | **100%** |
+
+Two consequences worth knowing before changing it:
+
+- **Every paragraph on the page now sits over photography**, not just the hero. That is why the
+  pillars and footer use the hero copy tokens and the hairlines use `--hero-rule` — `--border`
+  (`#1b1f24`) is invisible over a photograph.
+- **Phones opt out** (`bottom: auto` in the `max-width: 640px` block). A phone page is ~4× taller
+  than it is wide, so `cover` on a full-page box scales to the *height* and crops ~86% of the
+  *width* — one narrow strip stretched down the page. They keep a band, which crops height
+  instead: the cheap direction to lose on a portrait screen.
 
 ### The landing page is dark only
 
