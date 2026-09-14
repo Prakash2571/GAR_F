@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run verify:assets",
+    "verify:assets": "node scripts/verify-dist-assets.mjs",
     "contract:verify": "node contract/verify.mjs",
     "contract:types": "node contract/generate-types.mjs",
     "contract:types:check": "node contract/generate-types.mjs && git diff --exit-code -- src/api/contract.generated.ts",
