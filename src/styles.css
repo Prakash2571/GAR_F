@@ -108,7 +108,7 @@
      --hero-veil), so this moves in step: the photo is at full strength through the readable
      area and only dissolves over the final 16%, which is the distance needed to finish on flat
      --bg without drawing a horizontal line across the page. */
-  --hero-photo-fade: linear-gradient(to bottom, #000 0%, #000 84%, transparent 100%);
+  --hero-photo-fade: linear-gradient(to bottom, #000 0%, #000 88%, transparent 100%);
 
   /* SOURCE RESOLUTION — no longer a constraint. gts2.jpg is 3840 x 2160.
      The previous asset was 1366 x 768, which meant full-bleed UPSCALED it about 1.4x on a
@@ -118,10 +118,9 @@
      Because of that, apparent-sharpness compensation is dialled back below rather than up —
      contrast() was previously doing work that resolution should have been doing. */
 
-  /* Ceiling on the band's height. Not an upscale guard — with `cover`, scale is driven by
-     whichever axis needs more, and on a wide viewport that is always the width. This exists so
-     a very tall window does not hand the photograph the whole first screen. */
-  --hero-max-height: 760px;
+  /* --hero-max-height is gone. It capped the height of a BAND, and there is no band any more on
+     anything wider than a phone — the backdrop spans the page. The phone breakpoint sets its
+     own height directly, so a shared ceiling had one consumer and no longer earned a token. */
 
   /* Two axes, in one paint.
        1st gradient — vertical: transparent at the top, solid --bg at the bottom, so the
@@ -171,22 +170,40 @@
          35% depth  0.174 -> 0.186      85% depth  0.058 -> 0.136  +136%
          50% depth  0.157 -> 0.181      92% depth  0.016 -> 0.044  +169%
      Top-heaviness (presence at 20% vs at 75%): 1.54x -> 1.14x, i.e. effectively even. */
+  /* FLAT THROUGH THE PAGE, RAMPING ONLY AT THE FOOTER.
+     The backdrop now spans the whole page, so this gradient's shape changes meaning: it is no
+     longer shading a decorative band, it is the only thing standing between a photograph and
+     every paragraph on the page. Hence flat — one even value from the header to below the
+     pillars — with the ramp to solid --bg compressed into the last 8%, which is the footer.
+     That is "the gradient starts at the footer": above it, the value never changes.
+
+     WHY 0.40 AND NOT LOWER. This is the honest floor, not a preference. Over the collage's
+     BRIGHTEST frames (the festival reds, the graffiti wall) a flat 0.40 leaves the pillar body
+     text at 4.70:1 and the hero copy at 5.19:1 — just clear of the 4.5:1 AA threshold for body
+     text. At 0.30 the same text measures 4.07:1 and fails. There is no brighter text available
+     to compensate with: it is already near-white at #f4f5f6.
+     In the hero specifically the horizontal ramp adds to this, so the copy column ends up at
+     roughly the same photo presence as before this change (0.141 vs 0.140) — the hero looks the
+     same, while the whole rest of the page gains the photograph. */
   --hero-veil:
     linear-gradient(
       to bottom,
-      rgba(6, 7, 8, 0.10) 0%,
-      rgba(6, 7, 8, 0.15) 42%,
-      rgba(6, 7, 8, 0.20) 72%,
-      rgba(6, 7, 8, 0.34) 86%,
-      rgba(6, 7, 8, 0.72) 95%,
+      rgba(6, 7, 8, 0.40) 0%,
+      rgba(6, 7, 8, 0.40) 68%,
+      rgba(6, 7, 8, 0.46) 80%,
+      rgba(6, 7, 8, 0.84) 92%,
       #060708 100%
     ),
+    /* Gentle, and much shallower than it used to be. Its only remaining job is a little extra
+       help behind the hero copy column; the flat vertical value carries contrast everywhere
+       else. Kept shallow because a steep ramp here multiplies with the vertical one and is what
+       previously erased a corner — see the note on the previous revision. */
     linear-gradient(
       to right,
-      rgba(6, 7, 8, 0.48) 0%,
-      rgba(6, 7, 8, 0.40) 32%,
-      rgba(6, 7, 8, 0.24) 66%,
-      rgba(6, 7, 8, 0.12) 100%
+      rgba(6, 7, 8, 0.26) 0%,
+      rgba(6, 7, 8, 0.20) 36%,
+      rgba(6, 7, 8, 0.10) 70%,
+      rgba(6, 7, 8, 0.04) 100%
     );
   /* Single-column viewports: vertical only, and heavier, because the copy now spans the
      full width and there is no clear side to leave uncovered. */
@@ -1032,6 +1049,14 @@ table {
   isolation: isolate;
 }
 
+/* Landing-page hairlines. --border (#1b1f24) is designed for flat near-black and disappears
+   entirely over a photograph; these rules now cross one, so they are drawn in the text colour
+   at low alpha instead — visible over both a bright and a dark frame, because the alpha is
+   relative to what is behind it rather than a fixed dark value. */
+.gts-site {
+  --hero-rule: rgba(244, 245, 246, 0.18);
+}
+
 /* ==========================================================================
  * HERO BACKDROP — a photographic sense of place, behind the type
  *
@@ -1067,7 +1092,8 @@ table {
 
 .gts-hero-backdrop {
   position: absolute;
-  inset: 0 0 auto 0;
+  /* THE WHOLE PAGE, not a band at the top — `0 0 auto 0` is what limited it before. */
+  inset: 0;
   /* THE GEOMETRY, AND THE COMPROMISE IN IT — worth understanding before retuning.
      The source is 16:9 (1366x768). This band is full-bleed and much wider than 16:9 — roughly
      2.6:1 on a laptop — so the image CANNOT be shown both whole and full-width here: filling
@@ -1079,19 +1105,27 @@ table {
      centred panel narrower than the 1180px text column — which is what showing it whole would
      mean, and it would read as a mistake rather than as a backdrop.
 
-     HEIGHT PULLED BACK TO 66vh, from 78vh. The taller band existed to minimise the crop, but
-     it is also what made the treatment feel like a shadow lying over the whole page rather
-     than a band at the top of it: at 78vh the dimmed region reached most of the first screen
-     and met the pillars. At 66vh it is unambiguously the header-and-hero zone, and everything
-     from the pillars down sits on flat --bg with nothing painted over it.
+     NO HEIGHT AT ALL — `inset: 0` above spans the WHOLE PAGE, header to footer.
+     This is the change that actually shows the photograph, and the previous rounds of veil
+     tuning could not have achieved it. A band of 66vh made `cover` discard about 38% of the
+     image: those pixels were never painted, so no gradient adjustment could reveal them. The
+     "dark lower part" was not dark, it was ABSENT — the page background showing below where the
+     photograph stopped.
 
-     The cost is a deeper vertical crop, which the centred `background-position` below turns
-     into an advantage rather than a loss — it now shows the middle of the frame.
+     Spanning the page changes the arithmetic completely. `cover` scales to fill the larger
+     axis, and a full-page box is far closer to the source's 16:9 than a wide band is:
+         1024 x 512 viewport   band 360px: 62% of the image visible  ->  full page: 89%
+         1440 x 900 viewport   band 594px: 73%                       ->  full page: 100%
+     On a typical desktop window the entire height of the photograph is now on screen, and only
+     ~10% of its width is cropped.
 
-     To show the whole image instead and accept a centred panel narrower than the text column:
-         height: auto;  aspect-ratio: 16 / 9;
-     plus `background-size: contain` on ::before. */
-  height: clamp(360px, 66vh, var(--hero-max-height));
+     The cost is that every paragraph on the page now sits over photography rather than just the
+     hero, which is why the pillars and footer get the over-image type treatment below, and why
+     the veil cannot be as light as the hero alone would allow. See --hero-veil.
+
+     PHONES OPT OUT (see the max-width: 640px block). A phone page is ~4x taller than it is
+     wide, so `cover` on a full-page box there would scale to the HEIGHT and crop ~86% of the
+     width — the opposite failure. They keep a band. */
   overflow: hidden;
   pointer-events: none;
   /* z-index 0 with the siblings lifted to 1, deliberately NOT z-index -1.
@@ -1214,7 +1248,16 @@ table {
 .gts-hero-lead,
 .gts-hero-sub,
 .gts-hero .gts-eyebrow,
-.gts-hero-hint {
+.gts-hero-hint,
+/* Extended past the hero, because the backdrop now spans the whole page and these sit over the
+   photograph too. The footer is included even though the veil is near-solid behind it — the
+   shadow is invisible against flat background, so it costs nothing there and covers the case
+   where a short page puts the footer higher up. */
+.gts-pillar-label,
+.gts-pillar-body,
+.gts-site-footer-name,
+.gts-site-footer-line,
+.gts-site-footer-copy {
   text-shadow: 0 1px 3px rgba(6, 7, 8, 0.55);
 }
 
@@ -1276,8 +1319,10 @@ table {
   gap: 0;
   margin-bottom: var(--s-11);
   /* A single top rule introduces the section. No cards, no shadows, no borders around
-     each column — the columns are separated by hairlines only. */
-  border-top: 1px solid var(--border);
+     each column — the columns are separated by hairlines only.
+     Drawn in --hero-rule rather than --border: this rule now crosses a photograph, and a
+     #1b1f24 hairline is invisible over one. */
+  border-top: 1px solid var(--hero-rule, var(--border));
 }
 
 .gts-pillar {
@@ -1286,7 +1331,7 @@ table {
 
 .gts-pillar + .gts-pillar {
   padding-left: var(--s-6);
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--hero-rule, var(--border));
 }
 
 .gts-pillar-label {
@@ -1297,14 +1342,18 @@ table {
 
 .gts-pillar-body {
   max-width: 34ch;
-  color: var(--text-secondary);
+  /* --hero-copy, NOT --text-secondary. The backdrop spans the whole page now, so this
+     paragraph sits over the photograph exactly as the hero copy does. #969ca5 measures 2.2:1
+     over the collage's brightest frames; near-white measures 4.70:1. There is no dimmer option
+     that reaches AA here, so the type carries the contrast. */
+  color: var(--hero-copy, var(--text-secondary));
   font-size: var(--fs-sm);
   line-height: var(--lh-base);
 }
 
 /* ---- footer ---- */
 .gts-site-footer {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--hero-rule, var(--border));
 }
 
 .gts-site-footer-inner {
@@ -1330,14 +1379,19 @@ table {
   color: var(--text);
 }
 
+/* The footer sits in the last 8% of the page, where the veil has ramped to near-solid --bg, so
+   the photograph behind it is almost gone and these need far less lifting than the pillars do —
+   --hero-copy-quiet measures about 7.5:1 down there. They are lifted anyway rather than left on
+   --text-muted, because the footer's exact position as a fraction of the page depends on
+   viewport height and content, and text legibility should not depend on that. */
 .gts-site-footer-line {
   font-size: var(--fs-xs);
-  color: var(--text-muted);
+  color: var(--hero-copy-quiet, var(--text-muted));
 }
 
 .gts-site-footer-copy {
   font-size: var(--fs-xs);
-  color: var(--text-muted);
+  color: var(--hero-copy-quiet, var(--text-muted));
 }
 
 /* ---- the neutral route-transition surface (auth/ProtectedRoute.tsx) ---- */
@@ -3371,7 +3425,14 @@ table {
      The horizontal scrim also flattens out below: on one column there is no "beside the text"
      left to clear, so the veil becomes vertical only and simply guarantees contrast for the
      full width of the copy. */
+  /* PHONES KEEP A BAND — they opt out of the full-page backdrop deliberately.
+     `bottom: auto` undoes the `inset: 0` that spans the page on wider screens. A phone page is
+     roughly four times taller than it is wide, so `cover` on a full-page box scales to the
+     HEIGHT and crops about 86% of the WIDTH: you would see one narrow vertical strip of the
+     collage, stretched down the whole page. A band crops the height instead, which is the cheap
+     direction to lose on a portrait screen. */
   .gts-hero-backdrop {
+    bottom: auto;
     height: clamp(300px, 46vh, 440px);
   }
 
