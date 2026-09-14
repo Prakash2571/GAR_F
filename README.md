@@ -131,7 +131,11 @@ near-black to lifted greys. The choice persists across reloads, and falls back t
 Both surfaces share one language, with opposite briefs:
 
 - **the public page** is spacious: negative space, a restrained type hierarchy, no
-  illustrations, no gradients, no chart imagery;
+  chart imagery, and exactly ONE photographic element — the Ghatsila hero backdrop described
+  below. That is a deliberate, single exception to the otherwise illustration-free brief: the
+  project is *from* Ghatsila, and a sense of place is the one thing type alone cannot say. It
+  is treated as atmosphere, not as a subject — held behind a two-axis scrim, and it never
+  changes a text colour;
 - **the workspace** is dense: hairline rules, compact rows, tabular numerals, sticky table
   headers, and horizontal scrolling for wide financial tables — because compressing seventeen
   columns of rupee amounts to avoid a scrollbar produces a table nobody can read.
@@ -144,6 +148,51 @@ greyscale screenshot. Motion is 100–200 ms, opacity and transform only, and re
 
 Primary target is a desktop trading workstation (1366×768 → 2560×1440). The public page also
 works on a phone.
+
+### The Ghatsila hero backdrop
+
+The landing page carries one photographic backdrop — a collage of Ghatsila — behind the header
+and hero, fading into the page background before the pillars.
+
+**The asset is not in git.** Drop it in as:
+
+```
+public/ghatsila.jpg
+```
+
+That is the only place the filename appears outside CSS; to rename it, change `--hero-image`
+in `src/styles.css` and nothing else.
+
+**Preparing the file.** Export it *wider than it looks like it needs to be* — the backdrop is
+`background-size: cover`, so on a 2560px display a 1024px-wide source is upscaled 2.5× and
+goes visibly soft:
+
+| | |
+| --- | --- |
+| width | **2400–2800px** (16:9, so ~2560×1440) |
+| format | JPEG, quality 72–78 |
+| target size | **under ~350 KB** — it is decoration on a public page, not content |
+| content | keep the calmer landscape frames in the upper band; that is the part that survives a wide crop, and on a phone it is nearly all that is visible |
+
+**If the file is absent the page still renders correctly**, with no backdrop, no broken-image
+glyph, no layout shift and no build error. That is why it is a CSS `background-image` pointing
+at an absolute `/public` URL rather than an `<img>` or a bundler-resolved `import` — either of
+those would fail the build or paint a broken icon in production.
+
+**It is decorative and yields to the user.** It is an empty `aria-hidden` element, so it is
+never announced; and it is removed entirely under `prefers-contrast: more`,
+`forced-colors: active`, `prefers-reduced-transparency: reduce`, and when printing.
+
+Optional, once you have modern formats to hand — swap one line in `src/styles.css` for
+automatic AVIF/WebP selection (only add formats whose files actually exist, or they will 404):
+
+```css
+--hero-image: image-set(
+  url("/ghatsila.avif") type("image/avif"),
+  url("/ghatsila.webp") type("image/webp"),
+  url("/ghatsila.jpg")  type("image/jpeg")
+);
+```
 
 ---
 
