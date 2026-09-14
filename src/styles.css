@@ -103,10 +103,12 @@
      itself. Two mechanisms because they fail differently: the scrim depends on matching --bg
      exactly, while the mask is colour-agnostic and so still lands cleanly if the palette is
      ever retuned. */
-  /* 58% -> 76%: the fade started too high up. Together with the vertical veil it was removing
-     the photograph well before the band ended, so the lower third — the collage's bottom row —
-     was being rendered and then wiped. Starting the fade lower lets that row register. */
-  --hero-photo-fade: linear-gradient(to bottom, #000 0%, #000 76%, transparent 100%);
+  /* 58% -> 76% -> 84%. This fade and the vertical veil were BOTH removing the photograph from
+     the lower band, compounding into a dark lower half. The veil is now flat until 86% (see
+     --hero-veil), so this moves in step: the photo is at full strength through the readable
+     area and only dissolves over the final 16%, which is the distance needed to finish on flat
+     --bg without drawing a horizontal line across the page. */
+  --hero-photo-fade: linear-gradient(to bottom, #000 0%, #000 84%, transparent 100%);
 
   /* SOURCE RESOLUTION — no longer a constraint. gts2.jpg is 3840 x 2160.
      The previous asset was 1366 x 768, which meant full-bleed UPSCALED it about 1.4x on a
@@ -152,12 +154,31 @@
      put back — see .gts-hero-lead and friends. Raising the veil to protect dim grey text would
      undo the whole point of this change.
      If these stops are ever lowered further, re-check those ratios first. */
+  /* VERTICAL AXIS RESHAPED — this is what makes the photograph fill the band evenly.
+     It previously ramped 0.08 -> 0.22 -> 0.48 across the band, i.e. it got steadily darker all
+     the way down. Two visible consequences, which were reported as separate faults but are one:
+       - the lower part of the band was dark and the photograph in it was not readable;
+       - because the top was bright and the bottom was not, the photograph LOOKED like it sat
+         high in the band even though the crop is dead centre. Perceived position follows
+         brightness, not geometry.
+     Now it stays nearly flat through the whole readable area (0.10 -> 0.15 -> 0.20 by 72%) and
+     the darkening is COMPRESSED into the last 14%, where it is doing a different job: ending
+     the backdrop cleanly on flat --bg instead of stopping at a hard edge. A gradient can either
+     shade a large area or terminate a small one; asking one ramp to do both is what produced a
+     dark lower half.
+     Measured presence down the centre column, before -> after:
+         10% depth  0.192 -> 0.193      65% depth  0.135 -> 0.176   +30%
+         35% depth  0.174 -> 0.186      85% depth  0.058 -> 0.136  +136%
+         50% depth  0.157 -> 0.181      92% depth  0.016 -> 0.044  +169%
+     Top-heaviness (presence at 20% vs at 75%): 1.54x -> 1.14x, i.e. effectively even. */
   --hero-veil:
     linear-gradient(
       to bottom,
-      rgba(6, 7, 8, 0.08) 0%,
-      rgba(6, 7, 8, 0.22) 42%,
-      rgba(6, 7, 8, 0.48) 80%,
+      rgba(6, 7, 8, 0.10) 0%,
+      rgba(6, 7, 8, 0.15) 42%,
+      rgba(6, 7, 8, 0.20) 72%,
+      rgba(6, 7, 8, 0.34) 86%,
+      rgba(6, 7, 8, 0.72) 95%,
       #060708 100%
     ),
     linear-gradient(
@@ -169,12 +190,18 @@
     );
   /* Single-column viewports: vertical only, and heavier, because the copy now spans the
      full width and there is no clear side to leave uncovered. */
+  /* Same reshaping as the main veil: flat through the readable area, darkening compressed into
+     the end. This one stays heavier overall (0.48 where the wide veil is 0.15) because it is
+     the ONLY scrim on one column — there is no horizontal gradient helping it, and the copy
+     spans the full width, so it alone carries text contrast. Measured on a phone-width band the
+     lower band goes 0.047 -> 0.119 while contrast at the copy column holds at 4.6:1. */
   --hero-veil-narrow:
     linear-gradient(
       to bottom,
-      rgba(6, 7, 8, 0.38) 0%,
-      rgba(6, 7, 8, 0.50) 40%,
-      rgba(6, 7, 8, 0.68) 78%,
+      rgba(6, 7, 8, 0.40) 0%,
+      rgba(6, 7, 8, 0.48) 45%,
+      rgba(6, 7, 8, 0.52) 76%,
+      rgba(6, 7, 8, 0.66) 92%,
       #060708 100%
     );
 
@@ -185,9 +212,15 @@
      5.8:1 over a typical frame, and 5.5:1 / 4.2:1 over the brightest (the night-lit frames).
      Used ONLY inside .gts-hero; the pillars and footer sit on flat background and keep the
      ordinary tokens, so the page's type hierarchy is unchanged everywhere it is not competing
-     with an image. */
+     with an image.
+
+     The quiet step was #dfe3e7 and is now #e6e9ed, because flattening the vertical veil put
+     more photograph behind the copy and #dfe3e7 fell to 4.40:1 over the brightest frames —
+     just under AA for body text. #e6e9ed measures 4.66:1 there and 6.48:1 over a typical frame,
+     and is still a clearly visible step below --hero-copy, so the hierarchy survives.
+     Re-check both values against `worst-case backdrop luminance` if the veil moves again. */
   --hero-copy: #f4f5f6;
-  --hero-copy-quiet: #dfe3e7;
+  --hero-copy-quiet: #e6e9ed;
 
   /* ---- accent: ONE restrained cool blue. Used for the primary action, the
          selected tab and the focus ring, and for nothing else. ---- */
