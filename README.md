@@ -257,7 +257,25 @@ about 38% of the image, and no gradient adjustment could recover pixels that wer
 | 1440 × 900 | 73% | **100%** |
 | 1920 × 1080 | 66% | **100%** |
 
-Two consequences worth knowing before changing it:
+**The footer terminates it, not the gradient.** `.gts-site-footer` paints its own opaque
+`var(--bg)`, so the footer is solid black regardless of what the backdrop is doing — that is the
+guarantee, and it cannot drift. Above it, two things anchored to the same variables make the
+transition deliberate:
+
+| piece | role |
+| --- | --- |
+| `--hero-footer-clear` (112px, 144px on phones) | the footer's measured height; the photo layer's `inset` bottom, so the picture ends where the footer begins |
+| `--hero-footer-fade` (32px) | the run of the fade-to-black, used by both the photo layer's mask and `.gts-site-footer::before` |
+
+Because of this the veil's vertical axis is now **perfectly flat** — one value from header to
+footer, so photo presence measures 0.149 at every depth. It no longer has to double as a
+terminator, which is what previously made the bottom fifth of the page murky.
+
+Stated in pixels rather than percentages on purpose: the fade must land a fixed short distance
+above the footer, and the same percentage stop is 38px above it on a laptop and 86px on a large
+monitor.
+
+Two further consequences worth knowing before changing it:
 
 - **Every paragraph on the page now sits over photography**, not just the hero. That is why the
   pillars and footer use the hero copy tokens and the hairlines use `--hero-rule` — `--border`
