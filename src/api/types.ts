@@ -1425,6 +1425,62 @@ export interface BrokerSelectResponse {
   blockers: string[];
 }
 
+/* ============================= In-app broker login ============================= */
+
+/**
+ * POST /api/broker/{broker}/login/start.
+ *
+ * `login_url` is the BROKER'S OWN consent page, built server-side. The frontend never
+ * constructs it: doing so would mean shipping broker hostnames (and an api key) into a
+ * public bundle, which the origin scan in CI correctly forbids. The client's only job is
+ * to navigate to whatever the backend returns.
+ *
+ * `expires_at` is when the pending-login attempt stops being claimable, so the UI can say
+ * "that sign-in attempt lapsed, start again" instead of leaving a dead button.
+ *
+ * There is no token, consent secret or nonce to store here — the nonce round-trips through
+ * the broker and is verified server-side, so the browser holds NOTHING between the two legs
+ * of the flow. That is why no `localStorage` write is needed (and none is permitted).
+ */
+export interface BrokerLoginStart {
+  broker: BrokerId;
+  login_url: string;
+  expires_at: string;
+}
+
+/** POST /api/broker/{broker}/logout — scoped to ONE broker; the other is untouched. */
+export interface BrokerLogoutResponse {
+  ok: boolean;
+  broker: BrokerId;
+}
+
+/**
+ * Why an in-app login round-trip ended without a session.
+ *
+ * These are the backend's STABLE codes, arriving on the workspace URL as
+ * `?broker_login={broker}&status=failed&reason={code}`. They are a closed set so the UI can
+ * explain each one in the operator's terms; an unrecognised value is still rendered (as
+ * itself) rather than swallowed, because a silent failure is worse than an ugly one.
+ */
+export type BrokerLoginFailureReason =
+  | "no_pending_login"
+  | "login_expired"
+  | "state_mismatch"
+  | "state_missing"
+  | "not_ready"
+  | "not_configured"
+  | "broker_denied"
+  | "missing_credential"
+  | "exchange_failed";
+
+/** The outcome of a login round-trip, as read off the workspace URL after the redirect. */
+export interface BrokerLoginOutcome {
+  broker: BrokerId;
+  status: "connected" | "failed";
+  /** Present only when `status === "failed"`. */
+  reason: string | null;
+}
+
 /* ======================= Runtime + export status readouts ===================== */
 
 /**

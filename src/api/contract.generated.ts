@@ -78,6 +78,12 @@ export type BoxTradesHistoryContract = { dbEnabled: boolean; scope: "all"; sourc
 /** Redacted broker health descriptor (from contract/schemas/broker-health.schema.json) */
 export interface BrokerHealthContract { broker: "zerodha" | "dhan"; authenticated: boolean; data_ready: boolean; trading_ready: boolean; problems: string[]; }
 
+/** POST /api/broker/{broker}/login/start (200) (from contract/schemas/broker-login-start.schema.json) */
+export interface BrokerLoginStartContract { broker: "zerodha" | "dhan"; login_url: string; expires_at: string; }
+
+/** POST /api/broker/{broker}/logout (200) (from contract/schemas/broker-logout.schema.json) */
+export interface BrokerLogoutContract { ok: true; broker: "zerodha" | "dhan"; }
+
 /** Per-broker runtime status element (from contract/schemas/broker-runtime-status.schema.json) */
 export interface BrokerRuntimeStatusContract { broker: "zerodha" | "dhan"; token_state: "waiting" | "polling" | "ready" | "invalid" | "configuration_error"; ist_day: string | null; last_attempt_at: string | null; last_success_at: string | null; last_error: string | null; feed_connected: boolean; wanted_token_count: number; subscribed_token_count: number; last_depth_age_ms: number | null; reconnect_count: number; }
 
