@@ -23,6 +23,9 @@ function wiringLabel(w: OrderStreamBrokerStatus["wiring"]): string {
     case "not_wired": return "not wired";
     case "gated_off": return "not armed";
     case "armed": return "armed";
+    // Neutral on purpose: a paper backend builds no consumer BY DESIGN, so this is the expected
+    // configuration rather than a shortcoming.
+    case "not_applicable_paper": return "not applicable (paper)";
   }
 }
 
@@ -31,17 +34,36 @@ function wiringLabel(w: OrderStreamBrokerStatus["wiring"]): string {
  *
  * `armed` + stream-observed is the only good state. `not_wired` is treated as a WARNING rather
  * than neutral, because the capability looks present in the code but delivers nothing.
+ *
+ * PAPER IS NEUTRAL, NOT BAD. This function used to end in `return "is-bad"`, so a paper deployment
+ * — which has no consumer by construction — was painted red for not running a component it must
+ * never run. Simulated fills are a healthy, chosen state, so they get the neutral treatment.
  */
-function severity(b: OrderStreamBrokerStatus): "is-good" | "is-warn" | "is-bad" {
+function severity(b: OrderStreamBrokerStatus): "is-good" | "is-warn" | "is-bad" | "is-muted" {
   if (b.fills_observed_by === "stream_primary_rest_reconcile") return "is-good";
+  if (b.wiring === "not_applicable_paper") return "is-muted";
   if (b.wiring === "not_wired") return "is-warn";
   return "is-bad";
 }
 
 function mechanismLabel(m: OrderStreamBrokerStatus["fills_observed_by"]): string {
-  return m === "stream_primary_rest_reconcile"
-    ? "stream first, REST reconciles"
-    : "REST polling only";
+  switch (m) {
+    case "stream_primary_rest_reconcile":
+      return "stream first, REST reconciles";
+    // NOT "REST polling only": nothing is polled for an order that was never sent to a broker.
+    case "simulated_paper_fills":
+      return "Simulated fills";
+    case "rest_polling_only":
+      return "REST polling only";
+  }
+}
+
+/** True when every published broker is in the paper/not-applicable state. */
+function allPaper(orderStream: OrderStreamStatus): boolean {
+  return (
+    orderStream.brokers.length > 0 &&
+    orderStream.brokers.every((b) => b.wiring === "not_applicable_paper")
+  );
 }
 
 function ago(at: number | null): string {
@@ -61,8 +83,21 @@ export function BoxOrderStreamStatus({ orderStream }: { orderStream: OrderStream
     <section className="box-exec-health">
       <h3 className="box-exec-health-title">
         Order-update stream{" "}
-        <span className={`box-exec-mode ${orderStream.any_stream_live ? "is-good" : "is-warn"}`}>
-          {orderStream.any_stream_live ? "live" : "REST polling"}
+        {/*
+          The headline must not say "REST polling" in paper mode. No order reaches the broker, so
+          there is nothing to poll for — and an inactive-by-design stream is reported as inactive,
+          never as broken.
+        */}
+        <span
+          className={`box-exec-mode ${
+            orderStream.any_stream_live ? "is-good" : allPaper(orderStream) ? "is-muted" : "is-warn"
+          }`}
+        >
+          {orderStream.any_stream_live
+            ? "live"
+            : allPaper(orderStream)
+              ? "not applicable · simulated fills"
+              : "REST polling"}
         </span>
       </h3>
 
@@ -110,6 +145,18 @@ export function BoxOrderStreamStatus({ orderStream }: { orderStream: OrderStream
           it, so it cannot deliver a fill. Fill-observation latency is bounded by the REST polling
           cadence and the broker pacing floor. Requires supervised live validation before it is
           relied upon.
+        </p>
+      )}
+
+      {/*
+        PAPER, stated plainly and without alarm. This is the counterpart to the warning above: the
+        same "no consumer" fact, but for a deployment where having one would be the bug.
+      */}
+      {allPaper(orderStream) && (
+        <p className="box-exec-note">
+          This deployment simulates execution, so no order is sent to a broker and no broker
+          order-update stream applies. Fills are produced by the backend&apos;s execution simulator
+          against real streamed quotes — they are simulated, never broker-confirmed.
         </p>
       )}
     </section>

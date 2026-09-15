@@ -280,7 +280,15 @@ export interface OrderStreamHealthSnapshot {
 
 export interface OrderStreamBrokerStatus {
   broker: BrokerId;
-  wiring: "not_built" | "not_wired" | "gated_off" | "armed";
+  /**
+   * `not_applicable_paper` — this deployment SIMULATES execution, so no order is sent to the broker
+   * and the broker has no order to report on. A paper backend constructs no order-stream consumer
+   * BY DESIGN (building one implies a live order manager). This must render as inactive / not
+   * applicable, NEVER as broken: before this value existed, paper fell through to `not_wired`,
+   * whose documented meaning is "this should be running and is not", so every paper deployment
+   * permanently showed a broken fast fill path that was never meant to exist.
+   */
+  wiring: "not_built" | "not_wired" | "gated_off" | "armed" | "not_applicable_paper";
   /** Variable NAME only — never a value. */
   gate_env_var: string;
   gate_enabled: boolean;
@@ -291,7 +299,17 @@ export interface OrderStreamBrokerStatus {
    * SAME state rather than from two holders that drifted apart.
    */
   lifecycle: OrderStreamLifecycle | null;
-  fills_observed_by: "rest_polling_only" | "stream_primary_rest_reconcile";
+  /**
+   * `simulated_paper_fills` — the backend's LOCAL execution simulator produces the fill against
+   * real streamed quotes. A broker cannot emit an order-update event for an order it never
+   * received, so rendering paper fills as "REST polling only" was not a conservative
+   * understatement but false: it implied a broker round trip and a fill confirmation that do not
+   * exist. Render this as "Simulated fills".
+   */
+  fills_observed_by:
+    | "rest_polling_only"
+    | "stream_primary_rest_reconcile"
+    | "simulated_paper_fills";
   detail: string;
 }
 
@@ -595,6 +613,32 @@ export interface OperationalReadiness {
     ready_instruments: number;
     backlog: boolean;
     usable_for_entry: boolean;
+
+    /*
+     * THE SIX DISTINCT FACTS THIS UI MUST NOT COLLAPSE.
+     *
+     * With only `state` available, "is the socket up?" and "is there executable depth?" could not be
+     * told apart on screen. Each of these is separately observable, so the display can show exactly
+     * how far along the chain the feed actually got.
+     */
+    /** Where quotes come from. `rest_snapshot_fallback` is a documented fallback, NOT executable depth. */
+    source: "broker_websocket" | "rest_snapshot_fallback" | "none";
+    socket_connected: boolean;
+    authenticated: boolean;
+    subscriptions_requested: boolean;
+    /** Instruments holding a currently usable executable book. */
+    usable_books: number;
+    /**
+     * Whether ANY frame arrived in the current generation.
+     *
+     * THE ONLY field that licenses the "Real broker WebSocket quotes" label. An open socket alone
+     * must never produce it.
+     */
+    ticks_observed: boolean;
+    frames_observed: number;
+    /** Keep-alives. Prove the socket is alive; prove NOTHING about any book's freshness. */
+    heartbeats_observed: number;
+    depth_observations: number;
   };
   order_stream: {
     lifecycle: OrderStreamLifecycle;
@@ -610,12 +654,38 @@ export interface OperationalReadiness {
     stream_assisted: boolean;
     detail: string;
   };
+  /**
+   * HOW EXECUTION IS ACTUALLY PERFORMED, separate from any broker order stream.
+   *
+   * Present in every payload so the UI never has to decide whether an order-stream field applies.
+   * When `simulated` is true, fills come from the backend's simulator and no broker confirmation
+   * exists or is possible — a normal, healthy state, not a degraded one.
+   */
+  paper_execution: {
+    simulated: boolean;
+    /** The paper profile in force (e.g. `paper_latency`), or null under live. */
+    profile: string | null;
+    /** True only when depth has ACTUALLY been observed — never inferred from an open socket. */
+    using_streamed_quotes: boolean;
+    /** Backend-authored plain language. Render VERBATIM; the backend is the authority. */
+    detail: string;
+  };
   /** Ages of the evidence behind the decision. NULL = NEVER OBSERVED — must not render as 0. */
   evidence: {
     market_data_frame_age_ms: number | null;
     market_data_heartbeat_age_ms: number | null;
     market_data_depth_age_ms: number | null;
     order_stream_event_age_ms: number | null;
+    /** WALL-CLOCK (epoch ms) stamps for display. NEVER the basis of an age. */
+    market_data_last_frame_at: number | null;
+    market_data_last_depth_at: number | null;
+    /**
+     * Which clock produced the market-data ages, so this UI can VERIFY the domains were not mixed
+     * rather than trust that they were not. The backend defect this documents: monotonic stamps were
+     * subtracted from a wall-clock `now`, producing ages of ~55 years that could only render as
+     * garbage or as "never observed" — while ticks were in fact arriving normally.
+     */
+    market_data_age_clock: "monotonic";
   };
   reconciliation: {
     pending: boolean;

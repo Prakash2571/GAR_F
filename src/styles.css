@@ -2607,6 +2607,20 @@ table {
   background: var(--negative-quiet);
 }
 
+/*
+ * NEUTRAL, for a capability that is INACTIVE BY DESIGN rather than failing.
+ *
+ * A paper deployment has no broker order-update stream because it sends no order. That is the
+ * chosen configuration, so it must read as "not applicable" — deliberately NOT the warning or
+ * negative colour, which would report a fault the operator did not have.
+ */
+.box-exec-mode.is-muted,
+.box-exec-stat.is-muted .box-exec-stat-v {
+  color: var(--text-muted, var(--text-secondary));
+  border-color: var(--border);
+  background: transparent;
+}
+
 /* ---- mode selector ---- */
 .box-exec-modes {
   display: grid;

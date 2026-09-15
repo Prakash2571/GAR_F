@@ -21,23 +21,23 @@
     "brokers": [
       {
         "broker": "zerodha",
-        "wiring": "not_wired",
+        "wiring": "not_applicable_paper",
         "gate_env_var": "ZERODHA_ORDER_STREAM_ENABLED",
         "gate_enabled": false,
         "health": null,
-        "fills_observed_by": "rest_polling_only",
-        "detail": "An order-update stream for zerodha is implemented and unit-tested, but NO running component is consuming it, so it cannot deliver a fill. Fills are observed by REST polling only. ZERODHA_ORDER_STREAM_ENABLED is also unset. This requires supervised live validation before it is relied upon.",
-        "lifecycle": null
+        "lifecycle": null,
+        "fills_observed_by": "simulated_paper_fills",
+        "detail": "This deployment simulates execution, so no order is sent to zerodha and zerodha has no order to report on. Fills are produced by the local execution simulator against real streamed quotes. A broker order-update stream is NOT APPLICABLE here — this is the expected configuration, not a fault, and ZERODHA_ORDER_STREAM_ENABLED is irrelevant while paper is in force."
       },
       {
         "broker": "dhan",
-        "wiring": "not_wired",
+        "wiring": "not_applicable_paper",
         "gate_env_var": "DHAN_ORDER_STREAM_ENABLED",
         "gate_enabled": false,
         "health": null,
-        "fills_observed_by": "rest_polling_only",
-        "detail": "An order-update stream for dhan is implemented and unit-tested, but NO running component is consuming it, so it cannot deliver a fill. Fills are observed by REST polling only. DHAN_ORDER_STREAM_ENABLED is also unset. This requires supervised live validation before it is relied upon.",
-        "lifecycle": null
+        "lifecycle": null,
+        "fills_observed_by": "simulated_paper_fills",
+        "detail": "This deployment simulates execution, so no order is sent to dhan and dhan has no order to report on. Fills are produced by the local execution simulator against real streamed quotes. A broker order-update stream is NOT APPLICABLE here — this is the expected configuration, not a fault, and DHAN_ORDER_STREAM_ENABLED is irrelevant while paper is in force."
       }
     ]
   },
@@ -109,7 +109,7 @@
     }
   },
   "economic_admission": null,
-  "market_data_state": "DISABLED",
+  "market_data_state": "DISCONNECTED",
   "market_data_health": {
     "state": "DISABLED",
     "generation": 0,
@@ -406,7 +406,7 @@
       "boot_ordinal": 12,
       "started_at": 1757745600000
     },
-    "decision_version": "1.6.0",
+    "decision_version": "1.7.0",
     "decided_at": 1789048047769,
     "identity": {
       "broker": "zerodha",
@@ -417,32 +417,50 @@
       "deployment_live_capable": false
     },
     "market_data": {
-      "state": "DISABLED",
+      "state": "DISCONNECTED",
       "generation": 0,
       "desired_instruments": 0,
       "ready_instruments": 0,
       "backlog": false,
-      "usable_for_entry": false
+      "usable_for_entry": false,
+      "source": "none",
+      "socket_connected": false,
+      "authenticated": true,
+      "subscriptions_requested": false,
+      "usable_books": 0,
+      "ticks_observed": false,
+      "frames_observed": 0,
+      "heartbeats_observed": 0,
+      "depth_observations": 0
     },
     "order_stream": {
       "lifecycle": "DISABLED",
       "published_state": "DISABLED",
-      "wiring": "not_wired",
+      "wiring": "not_applicable_paper",
       "gate_enabled": false,
       "connected": false,
       "authorised": false,
       "disconnects": 0
     },
     "fill_observation": {
-      "mechanism": "rest_polling_only",
+      "mechanism": "simulated_paper_fills",
       "stream_assisted": false,
-      "detail": "REST polling is observing fills. Fill-observation latency is bounded by the polling cadence and the pacing floor, not by broker push latency."
+      "detail": "The local execution simulator is producing fills against streamed quotes. No order reaches the broker, so there is no broker confirmation to wait for and nothing is being polled — fill timing is the simulator's modelled latency, not broker latency."
+    },
+    "paper_execution": {
+      "simulated": true,
+      "profile": "paper_latency",
+      "using_streamed_quotes": false,
+      "detail": "Simulated execution (paper_latency). Quotes are NOT coming from a broker WebSocket (source: none), so any fill simulated now is priced off fallback data and must not be read as executable."
     },
     "evidence": {
       "market_data_frame_age_ms": null,
       "market_data_heartbeat_age_ms": null,
       "market_data_depth_age_ms": null,
-      "order_stream_event_age_ms": null
+      "order_stream_event_age_ms": null,
+      "market_data_last_frame_at": null,
+      "market_data_last_depth_at": null,
+      "market_data_age_clock": "monotonic"
     },
     "reconciliation": {
       "pending": false,
@@ -452,9 +470,9 @@
       "permitted": false,
       "reasons": [
         {
-          "code": "market_data_not_configured",
-          "scope": "both",
-          "detail": "Market data is not armed, so there is no pricing basis for any decision."
+          "code": "market_data_disconnected",
+          "scope": "entry",
+          "detail": "The market-data socket is closed or half-open. New entry is stopped; protective cancel and exposure management continue."
         },
         {
           "code": "scanner_stopped",
@@ -470,13 +488,13 @@
     },
     "exposure_management": {
       "exit_and_reduce": false,
-      "protective_cancel": false,
-      "manage_working_orders": false,
+      "protective_cancel": true,
+      "manage_working_orders": true,
       "blocked_reasons": [
         {
-          "code": "market_data_not_configured",
+          "code": "market_data_disconnected",
           "scope": "reduction",
-          "detail": "Market data is not armed, so a reduction cannot be priced at all."
+          "detail": "The market-data socket is closed, so no current book exists to price a reduction against. Protective cancellation still reduces exposure and remains permitted."
         }
       ],
       "limitations": [
