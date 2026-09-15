@@ -108,7 +108,35 @@
      --hero-veil), so this moves in step: the photo is at full strength through the readable
      area and only dissolves over the final 16%, which is the distance needed to finish on flat
      --bg without drawing a horizontal line across the page. */
-  --hero-photo-fade: linear-gradient(to bottom, #000 0%, #000 88%, transparent 100%);
+  /* ---- where the photograph stops, in PIXELS rather than percentages ----
+     Percentages were wrong for this job. The fade has to land a fixed short distance above the
+     footer, and a percentage of the page height means that distance changes with every viewport:
+     the same "92%" stop is 38px above the footer on a laptop and 86px on a large monitor.
+
+     --hero-footer-clear is the footer's own height, so the photo layer ends exactly where the
+     footer begins. Measured, not guessed: 24px padding x2 + a 60px identity block + 1px border =
+     109px, rounded up for margin. The phone breakpoint overrides it because the footer stacks
+     into a column there (139px).
+     This costs NO image. `cover` is width-driven at these proportions — the page box is about
+     2.1:1 against a 1.78:1 source — so shortening the layer does not change the scale at all; it
+     only re-centres which slice of the photograph is shown, and centres it on the area that is
+     actually visible instead of on an area a third of which sits behind the footer. */
+  --hero-footer-clear: 112px;
+
+  /* The run of the fade-to-black immediately above the footer. */
+  --hero-footer-fade: 32px;
+
+  /* Fades the photo layer's own bottom edge over the last --hero-footer-fade pixels, so the
+     photograph dissolves into the footer's black instead of being cut off by it. Paired with
+     .gts-site-footer::before, which paints the matching darkening over the same strip — one ends
+     the image, the other establishes the background, and both are anchored to the same
+     variable so they cannot drift apart. */
+  --hero-photo-fade: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 calc(100% - var(--hero-footer-fade)),
+    transparent 100%
+  );
 
   /* SOURCE RESOLUTION — no longer a constraint. gts2.jpg is 3840 x 2160.
      The previous asset was 1366 x 768, which meant full-bleed UPSCALED it about 1.4x on a
@@ -170,40 +198,43 @@
          35% depth  0.174 -> 0.186      85% depth  0.058 -> 0.136  +136%
          50% depth  0.157 -> 0.181      92% depth  0.016 -> 0.044  +169%
      Top-heaviness (presence at 20% vs at 75%): 1.54x -> 1.14x, i.e. effectively even. */
-  /* FLAT THROUGH THE PAGE, RAMPING ONLY AT THE FOOTER.
-     The backdrop now spans the whole page, so this gradient's shape changes meaning: it is no
-     longer shading a decorative band, it is the only thing standing between a photograph and
-     every paragraph on the page. Hence flat — one even value from the header to below the
-     pillars — with the ramp to solid --bg compressed into the last 8%, which is the footer.
-     That is "the gradient starts at the footer": above it, the value never changes.
+  /* COMPLETELY FLAT NOW — the terminal ramp has moved out of this gradient entirely.
+     It used to darken from 0.46 at 80% to 0.84 at 92% to end the backdrop, which meant the
+     bottom fifth of the page was progressively murky: dark enough to spoil the photograph, not
+     dark enough to read as an intentional black. Termination is now the footer's job
+     (.gts-site-footer::before plus the footer's own opaque background), anchored in pixels to
+     --hero-footer-fade, so this gradient can hold ONE value from the header all the way down.
+     The photograph is therefore at full, even strength across every part of the page where it is
+     visible at all.
 
-     WHY 0.40 AND NOT LOWER. This is the honest floor, not a preference. Over the collage's
-     BRIGHTEST frames (the festival reds, the graffiti wall) a flat 0.40 leaves the pillar body
-     text at 4.70:1 and the hero copy at 5.19:1 — just clear of the 4.5:1 AA threshold for body
-     text. At 0.30 the same text measures 4.07:1 and fails. There is no brighter text available
-     to compensate with: it is already near-white at #f4f5f6.
-     In the hero specifically the horizontal ramp adds to this, so the copy column ends up at
-     roughly the same photo presence as before this change (0.141 vs 0.140) — the hero looks the
-     same, while the whole rest of the page gains the photograph. */
+     WHY 0.40 AND NOT LOWER. The honest floor, not a preference. The photograph is behind every
+     paragraph on the page, so this is the only thing between it and all of the text. Over the
+     collage's BRIGHTEST frames (the festival reds, the graffiti wall) a flat 0.40 leaves the
+     pillar body at 4.87:1 and the hero copy at 5.16:1 — just clear of AA's 4.5:1 for body text.
+     At 0.30 the same text measures 4.07:1 and fails, and there is nothing brighter to compensate
+     with: it is already near-white at #f4f5f6. */
   --hero-veil:
     linear-gradient(
       to bottom,
       rgba(6, 7, 8, 0.40) 0%,
-      rgba(6, 7, 8, 0.40) 68%,
-      rgba(6, 7, 8, 0.46) 80%,
-      rgba(6, 7, 8, 0.84) 92%,
-      #060708 100%
+      rgba(6, 7, 8, 0.40) 100%
     ),
     /* Gentle, and much shallower than it used to be. Its only remaining job is a little extra
        help behind the hero copy column; the flat vertical value carries contrast everywhere
        else. Kept shallow because a steep ramp here multiplies with the vertical one and is what
        previously erased a corner — see the note on the previous revision. */
+    /* Note the FLOOR of 0.16 at the right edge, raised from 0.04. With the vertical gradient now
+       perfectly flat it no longer contributes anything extra lower down the page, and the right
+       column's pillar body measured 4.39:1 over the brightest frames on 0.04 — marginally under
+       AA. The floor is what carries it back to 4.7:1. This is the trade for a flat vertical
+       axis: the horizontal one can no longer taper to nothing, because nothing else is left to
+       protect the right-hand column. */
     linear-gradient(
       to right,
-      rgba(6, 7, 8, 0.26) 0%,
-      rgba(6, 7, 8, 0.20) 36%,
-      rgba(6, 7, 8, 0.10) 70%,
-      rgba(6, 7, 8, 0.04) 100%
+      rgba(6, 7, 8, 0.28) 0%,
+      rgba(6, 7, 8, 0.24) 36%,
+      rgba(6, 7, 8, 0.18) 70%,
+      rgba(6, 7, 8, 0.16) 100%
     );
   /* Single-column viewports: vertical only, and heavier, because the copy now spans the
      full width and there is no clear side to leave uncovered. */
@@ -1144,11 +1175,12 @@ table {
 }
 
 .gts-hero-backdrop::before {
-  /* NO outward bleed. The old -40px existed only because a 14px blur fades to transparent at
-     its own edges and drew a soft light band down the sides and across the top. At 1.5px
-     there is nothing to hide, and a bleed would now push part of the image outside the clip
-     boundary — the exact opposite of showing all of it. */
-  inset: 0;
+  /* STOPS AT THE FOOTER, not at the bottom of the page — see --hero-footer-clear. The scrim
+     layer (::after) still spans the full element; only the photograph ends early, so the
+     picture reads as finishing just above the footer rather than sliding underneath it.
+     No outward bleed: the old -40px existed only to hide a 14px blur's edge fade, and at 0px
+     blur it would just push image outside the clip. */
+  inset: 0 0 var(--hero-footer-clear) 0;
   background-image: var(--hero-image);
   /* COVER, so the photograph is edge-to-edge with no letterbox bars and no image edges
      landing inside the band — which is what would produce the hard seams this is trying to
@@ -1249,15 +1281,12 @@ table {
 .gts-hero-sub,
 .gts-hero .gts-eyebrow,
 .gts-hero-hint,
-/* Extended past the hero, because the backdrop now spans the whole page and these sit over the
-   photograph too. The footer is included even though the veil is near-solid behind it — the
-   shadow is invisible against flat background, so it costs nothing there and covers the case
-   where a short page puts the footer higher up. */
+/* Extended past the hero, because the backdrop spans the whole page and these sit over the
+   photograph too. The FOOTER is deliberately not in this list: it paints its own opaque
+   background, so there is no image behind its text and a shadow there would be decoration
+   applied to solve a problem that does not exist. */
 .gts-pillar-label,
-.gts-pillar-body,
-.gts-site-footer-name,
-.gts-site-footer-line,
-.gts-site-footer-copy {
+.gts-pillar-body {
   text-shadow: 0 1px 3px rgba(6, 7, 8, 0.55);
 }
 
@@ -1351,9 +1380,42 @@ table {
   line-height: var(--lh-base);
 }
 
-/* ---- footer ---- */
+/* ---- footer ----
+ *
+ * THE FOOTER IS OPAQUE, AND THAT IS THE GUARANTEE.
+ * `background: var(--bg)` means the footer is solid page-black no matter what the backdrop
+ * behind it is doing. Everything else here — the photo layer stopping at --hero-footer-clear,
+ * the fade strip below — is about making the TRANSITION into it look deliberate. None of it is
+ * load-bearing for "the footer must be black": if --hero-footer-clear were wrong by 40px, the
+ * footer would still be black, because it paints its own background rather than relying on a
+ * gradient to have finished in the right place. That is the difference between a value that has
+ * to be correct and one that only has to be close.
+ */
 .gts-site-footer {
   border-top: 1px solid var(--hero-rule, var(--border));
+  background: var(--bg);
+}
+
+/* The fade-to-black strip, sitting immediately ABOVE the footer (`bottom: 100%`) rather than
+ * inside it, so its height is independent of the footer's own padding and content.
+ * Hardcoded rgba over var(--bg) because a hex custom property cannot be given an alpha channel
+ * in a gradient stop; the landing page is dark-only, so #060708 is not conditional here.
+ * Weighted past the midpoint (0.62 at 58%) so the darkening arrives EARLY and the last few
+ * pixels are already black — a linear ramp reads as a grey haze rather than as an edge. */
+.gts-site-footer::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: var(--hero-footer-fade);
+  background: linear-gradient(
+    to bottom,
+    rgba(6, 7, 8, 0) 0%,
+    rgba(6, 7, 8, 0.62) 58%,
+    #060708 100%
+  );
+  pointer-events: none;
 }
 
 .gts-site-footer-inner {
@@ -1379,19 +1441,18 @@ table {
   color: var(--text);
 }
 
-/* The footer sits in the last 8% of the page, where the veil has ramped to near-solid --bg, so
-   the photograph behind it is almost gone and these need far less lifting than the pillars do —
-   --hero-copy-quiet measures about 7.5:1 down there. They are lifted anyway rather than left on
-   --text-muted, because the footer's exact position as a fraction of the page depends on
-   viewport height and content, and text legibility should not depend on that. */
+/* BACK TO --text-muted. These were lifted to --hero-copy-quiet while the footer sat over the
+   photograph; now that it paints its own opaque background there is nothing to compete with, and
+   the quiet grey the rest of the design uses for de-emphasised metadata is correct again. It
+   measures 5.9:1 on flat --bg, so this is a hierarchy decision rather than a contrast one. */
 .gts-site-footer-line {
   font-size: var(--fs-xs);
-  color: var(--hero-copy-quiet, var(--text-muted));
+  color: var(--text-muted);
 }
 
 .gts-site-footer-copy {
   font-size: var(--fs-xs);
-  color: var(--hero-copy-quiet, var(--text-muted));
+  color: var(--text-muted);
 }
 
 /* ---- the neutral route-transition surface (auth/ProtectedRoute.tsx) ---- */
@@ -3451,6 +3512,16 @@ table {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--s-4);
+  }
+
+  /* The footer is TALLER here because the line above stacks it into a column — the copyright
+     moves below the identity block instead of sitting beside it. Measured: 48px padding + 60px
+     identity + 12px gap + 18px copy + 1px border = 139px, rounded up.
+     --hero-footer-clear has to track that, or the photograph would stop 32px too high and leave
+     a black gap above the footer. This is the one number that must change with the footer's
+     layout, which is why it is a variable and not a literal in three places. */
+  :root {
+    --hero-footer-clear: 144px;
   }
 
   /* The `.gts-site-header-actions .theme-toggle` narrowing that used to sit here is gone with
