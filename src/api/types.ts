@@ -321,6 +321,82 @@ export interface OrderStreamStatus {
 }
 
 /**
+ * How the instrument master load stands. Four states, not a boolean.
+ *
+ * `loading` and `never_attempted` used to be indistinguishable from `failed`, and they are the two
+ * where the correct action is to WAIT rather than investigate.
+ */
+export type InstrumentLoadState = "never_attempted" | "loading" | "loaded" | "failed";
+
+/**
+ * The FIRST unsatisfied stage of the universe → evaluation pipeline.
+ *
+ * Ordered as the pipeline runs, so exactly one blocker is ever reported: everything after the first
+ * failure is unreachable. `evaluating` is the only value meaning the scanner is genuinely working on
+ * real books.
+ */
+export type UniverseStage =
+  | "scanner_stopped"
+  | "not_authenticated"
+  | "instruments_never_loaded"
+  | "instruments_loading"
+  | "instruments_failed"
+  | "instruments_empty"
+  | "no_board_rows"
+  | "no_option_chains"
+  | "no_board_chain_overlap"
+  | "awaiting_spot_prices"
+  | "no_windows_built"
+  | "no_candidates"
+  | "no_desired_subscriptions"
+  | "box_socket_disconnected"
+  | "awaiting_first_tick"
+  | "awaiting_usable_depth"
+  | "evaluating";
+
+/** The universe pipeline diagnosis. Source: backend `src/box/universeReadiness.ts`. */
+export interface UniverseReadiness {
+  /**
+   * Whether the engine can evaluate a candidate against real current-generation books.
+   *
+   * DELIBERATELY NOT the same as `running`. The operator's intent and the engine's capability are
+   * different facts, and rendering only the former is what let `SCANNING` sit above zero underlyings.
+   */
+  readyToEvaluate: boolean;
+  stage: UniverseStage;
+  /** Backend-authored plain language. Render VERBATIM; the backend is the authority. */
+  detail: string;
+  /** True when the correct action is to WAIT rather than investigate. */
+  transient: boolean;
+  counts: {
+    instruments: number;
+    board_rows: number;
+    chains_indexed: number;
+    board_with_chains: number;
+    underlyings_missing_spot: number;
+    windows_built: number;
+    candidates: number;
+    desired_option_subscriptions: number;
+    frames_observed: number;
+    depth_observations: number;
+    usable_books: number;
+  };
+  instrument_load: InstrumentLoadState;
+  instruments_error: string | null;
+  instruments_loaded_at: number | null;
+  instrument_load_failures: number;
+  spot_seed_failed: boolean;
+  spot_seed_error: string | null;
+  last_successful_build_at: number | null;
+  /**
+   * A subscribe frame was WRITTEN. NOT a broker acknowledgement — Zerodha sends none, so this must
+   * never be rendered as "confirmed by the broker". `counts.depth_observations` is the confirmation.
+   */
+  subscriptions_requested: boolean;
+  box_socket_connected: boolean;
+}
+
+/**
  * MARKET-DATA TRANSPORT STATE, distinct from BOTH order-stream health AND the crude
  * `market_data_healthy` boolean.
  *
@@ -358,16 +434,48 @@ export type MarketDataState =
  * and `lastDepthAt` (a usable two-sided book) are three separate clocks, never substituted for one
  * another; `backlog` is the application-ingestion overload signal.
  */
+/**
+ * The driven market-data machine's diagnostics, as published in `box_status.market_data_health`.
+ *
+ * THIS TYPE WAS STALE AND THE UI SILENTLY SUFFERED FOR IT. It used to declare
+ * `lastHeartbeatAt`/`lastFrameAt`/`lastDepthAt`, and the panel rendered them through a
+ * timestamp-to-"ago" helper. The backend stopped publishing those three the moment ages began being
+ * computed inside the monotonic domain that stamps them (raw monotonic timestamps are deliberately
+ * no longer exported at all, so a caller cannot subtract a wall-clock `now` from them). Because
+ * `market_data_health` is an OPEN leaf in the schema and this interface is hand-written, TypeScript
+ * had nothing to object to — the fields were simply `undefined` at runtime and three stats rendered
+ * "never observed" on a perfectly healthy feed.
+ *
+ * The lesson encoded here: ages arrive PRE-COMPUTED as durations, and the wall stamps beside them are
+ * for display only. Never subtract one from the other.
+ */
 export interface MarketDataHealth {
   state: MarketDataState;
   generation: number;
   desired: number;
   confirmed: number;
   readyInstruments: number;
-  lastHeartbeatAt: number | null;
-  lastFrameAt: number | null;
-  lastDepthAt: number | null;
   backlog: boolean;
+  /** Ages in ms, computed in the backend's MONOTONIC domain. `null` means NEVER OBSERVED. */
+  heartbeatAgeMs: number | null;
+  frameAgeMs: number | null;
+  depthAgeMs: number | null;
+  /** Wall-clock (epoch ms) stamps for display only. `null` means never observed. */
+  lastHeartbeatWallAt: number | null;
+  lastFrameWallAt: number | null;
+  lastDepthWallAt: number | null;
+  /** Evidence counters — what separates "connected" from "actually delivering". */
+  heartbeats: number;
+  frames: number;
+  depthObservations: number;
+  /** Coverage over the desired set. Reported, and deliberately NOT a gate. */
+  coverageDesired: number;
+  coverageFresh: number;
+  coverageMissing: number;
+  transportLive: boolean;
+  /** The bounds the backend is enforcing, so the UI states the real thresholds. */
+  bookMaxAgeMs: number;
+  heartbeatMaxAgeMs: number;
 }
 
 /** One denominator-carrying funnel ratio. `rate` is null (never 0) when the denominator is 0. */
@@ -767,7 +875,29 @@ export interface BoxStatus {
   subscribed_option_tokens: number;
   subscribed_spot_tokens: number;
   hub_subscribed: number;
+  /**
+   * The SHARED/FUTURES board lane's socket.
+   *
+   * With `BOX_DEDICATED_MARKET_FEED=true` (the default) this is a DIFFERENT socket from the one
+   * carrying box option depth, so it is NOT evidence that the box lane is connected. Rendering only
+   * this field is why a connected board lane read as a healthy box feed while the box panel showed
+   * zero frames. Use `box_lane_connected`.
+   */
   hub_connected: boolean;
+  /** The BOX lane's own socket — the one carrying the option depth this engine trades on. */
+  box_lane_connected: boolean;
+  /** True when the box lane is physically separate from the shared board feed. */
+  box_lane_dedicated: boolean;
+  /**
+   * WHY THE SCANNER IS OR IS NOT EVALUATING.
+   *
+   * `underlyings` is `windows.size`, which is `0` both when the instrument master came back EMPTY
+   * and when the market is merely quiet — they rendered identically, which is how a scanner with a
+   * completely empty universe displayed SCANNING for a whole session. `stage` names the FIRST
+   * unsatisfied stage of the real pipeline; `counts` republishes the figure behind each stage so the
+   * verdict can be checked rather than trusted.
+   */
+  universe: UniverseReadiness;
   quotes: number;
   quote_updates: number;
   feed_age_ms: number | null;
