@@ -101,11 +101,76 @@ export function stripBrokerLoginParams(search: string): string {
   } catch {
     return "";
   }
-  params.delete(BROKER_LOGIN_PARAM);
-  params.delete(BROKER_LOGIN_STATUS_PARAM);
-  params.delete(BROKER_LOGIN_REASON_PARAM);
+  /**
+   * `status` and `reason` are generic names, so they are removed ONLY when they arrived as
+   * part of a sign-in redirect — which `broker_login` is what identifies. Deleting them
+   * unconditionally would make this function quietly destructive to any unrelated `?status=`
+   * a future surface adds to the workspace URL.
+   */
+  if (params.has(BROKER_LOGIN_PARAM)) {
+    params.delete(BROKER_LOGIN_PARAM);
+    params.delete(BROKER_LOGIN_STATUS_PARAM);
+    params.delete(BROKER_LOGIN_REASON_PARAM);
+  }
   const rest = params.toString();
   return rest ? `?${rest}` : "";
+}
+
+/* ------------------------- capture-once, consume-once ------------------------- */
+
+/**
+ * The outcome of the sign-in this page load returned from, held in MODULE MEMORY until a
+ * component consumes it.
+ *
+ * WHY THIS IS NOT READ STRAIGHT FROM THE URL BY THE PANEL
+ * The panel lives behind the authentication gate, and the gate can navigate away before the
+ * panel ever mounts: `ProtectedRoute` redirects an unauthenticated visitor to `/?auth=1`
+ * with `replace: true`, which DISCARDS the query string. If the session happened to lapse
+ * during the round trip — the operator was away at the broker, so it is the one moment it
+ * plausibly could — the outcome was destroyed before anything could show it. A FAILED
+ * sign-in then produced no notice and no reason at all: the operator was left staring at an
+ * unchanged card with no idea whether it was refused, expired or rejected.
+ *
+ * Capturing at module scope, before the first render, decouples the two: the value survives
+ * every CLIENT-SIDE navigation (the router uses the History API, not page loads), so it is
+ * still there when the panel finally mounts, even on the far side of re-entering the
+ * passcode.
+ *
+ * In memory, deliberately — NOT `sessionStorage`. This must not outlive the page load: a
+ * notice that survived a genuine reload would re-announce a stale result, which is the exact
+ * thing stripping the URL exists to prevent.
+ */
+let capturedOutcome: BrokerLoginOutcome | null = null;
+
+/**
+ * Read the sign-in outcome out of a `location.search` and hold it for the panel.
+ *
+ * Call this ONCE per page load, as early as possible (see `src/main.tsx`). Returns the
+ * cleaned search string — the sign-in parameters removed, everything else preserved — for the
+ * caller to write back with `history.replaceState`, so a reload cannot re-announce a stale
+ * success and a shared URL cannot announce someone else's sign-in.
+ *
+ * Pure apart from the module slot: it touches no DOM, so it is directly testable.
+ */
+export function captureBrokerLoginOutcome(search: string): {
+  outcome: BrokerLoginOutcome | null;
+  cleanedSearch: string;
+} {
+  const outcome = readBrokerLoginOutcome(search);
+  if (outcome) capturedOutcome = outcome;
+  return { outcome, cleanedSearch: stripBrokerLoginParams(search) };
+}
+
+/**
+ * Take the captured outcome, clearing it.
+ *
+ * Consume-once so a remount (StrictMode's double invocation, a route change back to the
+ * workspace) cannot re-announce a sign-in the operator has already been told about.
+ */
+export function takeBrokerLoginOutcome(): BrokerLoginOutcome | null {
+  const outcome = capturedOutcome;
+  capturedOutcome = null;
+  return outcome;
 }
 
 /** Display name for a broker. Kept here so the login surface and the panel agree. */

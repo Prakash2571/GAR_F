@@ -20,10 +20,12 @@ import {
   BROKER_LOGIN_REASON_PARAM,
   BROKER_LOGIN_STATUS_PARAM,
   brokerLabel,
+  captureBrokerLoginOutcome,
   describeBrokerLoginFailure,
   describeBrokerLoginOutcome,
   readBrokerLoginOutcome,
   stripBrokerLoginParams,
+  takeBrokerLoginOutcome,
 } from "../src/lib/brokerLogin.ts";
 
 test("the redirect parameter names are the ones the backend sends", () => {
@@ -84,6 +86,58 @@ test("the sign-in parameters are stripped, and unrelated query state survives", 
   assert.equal(stripBrokerLoginParams("?a=1&broker_login=dhan&b=2&status=failed"), "?a=1&b=2");
   assert.equal(stripBrokerLoginParams(""), "");
   assert.equal(stripBrokerLoginParams("?other=x"), "?other=x");
+  // The auth-gate parameter must survive, or capturing the outcome would break the passcode
+  // dialog it opens.
+  assert.equal(stripBrokerLoginParams("?auth=1&broker_login=dhan&status=connected"), "?auth=1");
+});
+
+test("`status`/`reason` are only stripped when they came from a sign-in redirect", () => {
+  // `status` and `reason` are generic names. Without `broker_login` present they belong to
+  // something else, and deleting them would make this function quietly destructive to any
+  // unrelated query parameter a future surface adds.
+  assert.equal(stripBrokerLoginParams("?status=whatever"), "?status=whatever");
+  assert.equal(stripBrokerLoginParams("?reason=because"), "?reason=because");
+  assert.equal(stripBrokerLoginParams("?status=a&reason=b&x=1"), "?status=a&reason=b&x=1");
+});
+
+test("the outcome is captured once and consumed once", () => {
+  // Captured before the first render (src/main.tsx) because the auth gate can navigate away
+  // and discard the query string before the panel mounts.
+  const { outcome, cleanedSearch } = captureBrokerLoginOutcome(
+    "?broker_login=dhan&status=failed&reason=login_expired&keep=1",
+  );
+  assert.deepEqual(outcome, { broker: "dhan", status: "failed", reason: "login_expired" });
+  assert.equal(cleanedSearch, "?keep=1", "the caller writes this back with replaceState");
+
+  // The panel takes it later — after any number of client-side navigations.
+  assert.deepEqual(takeBrokerLoginOutcome(), {
+    broker: "dhan",
+    status: "failed",
+    reason: "login_expired",
+  });
+  // CONSUMED: a remount must not re-announce a sign-in already reported.
+  assert.equal(takeBrokerLoginOutcome(), null);
+});
+
+test("capturing a non-outcome stores nothing and leaves the search alone", () => {
+  assert.equal(takeBrokerLoginOutcome(), null, "precondition: nothing held");
+  const { outcome, cleanedSearch } = captureBrokerLoginOutcome("?auth=1");
+  assert.equal(outcome, null);
+  assert.equal(cleanedSearch, "?auth=1");
+  assert.equal(takeBrokerLoginOutcome(), null, "and nothing was captured");
+});
+
+test("a later capture does not erase an unconsumed outcome", () => {
+  assert.equal(takeBrokerLoginOutcome(), null, "precondition: nothing held");
+  captureBrokerLoginOutcome("?broker_login=zerodha&status=connected");
+  // A second capture with no outcome in it must not clear what is already held — otherwise a
+  // navigation between the redirect and the panel mounting would lose the notice.
+  captureBrokerLoginOutcome("?auth=1");
+  assert.deepEqual(takeBrokerLoginOutcome(), {
+    broker: "zerodha",
+    status: "connected",
+    reason: null,
+  });
 });
 
 test("every backend failure code maps to an actionable sentence naming the broker", () => {

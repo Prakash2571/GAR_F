@@ -48,8 +48,7 @@ import StatusBadge from "./components/ui/StatusBadge.tsx";
 import {
   brokerLabel,
   describeBrokerLoginOutcome,
-  readBrokerLoginOutcome,
-  stripBrokerLoginParams,
+  takeBrokerLoginOutcome,
 } from "./lib/brokerLogin.ts";
 import type {
   BrokerHealthView,
@@ -148,6 +147,18 @@ export function BrokerStatusPanel({ runtime }: { runtime?: RuntimeStatus | null 
   const [signingOut, setSigningOut] = useState<BrokerId | null>(null);
   /** The result of a sign-in the operator has just returned from, read off the URL. */
   const [loginOutcome, setLoginOutcome] = useState<BrokerLoginOutcome | null>(null);
+  /**
+   * Why a sign-out was refused, per broker.
+   *
+   * Kept separate from `blockers` (which is about SWITCHING) because the two answer different
+   * questions and are shown in different places: switch blockers pre-warn on the standby
+   * card, these appear on whichever card the operator just tried to sign out of — including
+   * the active one, which has no switch button at all.
+   */
+  const [logoutBlockers, setLogoutBlockers] = useState<Record<BrokerId, string[]>>({
+    zerodha: [],
+    dhan: [],
+  });
 
   const load = useCallback(async () => {
     try {
@@ -197,15 +208,35 @@ export function BrokerStatusPanel({ runtime }: { runtime?: RuntimeStatus | null 
    * session state always comes from the `GET /api/broker/status` poll below.
    */
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const outcome = readBrokerLoginOutcome(window.location.search);
+    // Captured in src/main.tsx before the first render, NOT read from the URL here: the
+    // authentication gate can navigate away (discarding the query string) before this
+    // component ever mounts, which used to lose a failed sign-in's reason entirely.
+    // `take` clears it, so a remount cannot re-announce a sign-in already reported.
+    const outcome = takeBrokerLoginOutcome();
     if (!outcome) return;
     setLoginOutcome(outcome);
-    const cleaned = stripBrokerLoginParams(window.location.search);
-    window.history.replaceState({}, "", `${window.location.pathname}${cleaned}${window.location.hash}`);
     // A sign-in changes session state, so refetch rather than waiting up to 5s for the poll.
     void load();
   }, [load]);
+
+  /**
+   * Un-stick the Connect button when the browser restores this page from cache.
+   *
+   * `onConnect` deliberately leaves `connecting` set, because the page is being replaced and
+   * clearing it would only flicker the button. But if the operator presses Back at the
+   * broker's login page, the browser may restore the SPA from the back/forward cache with
+   * React state intact — including `connecting` — leaving the button permanently disabled on
+   * "Opening broker sign-in…" with no way to retry but a manual reload.
+   *
+   * `pageshow` with `persisted` is the bfcache-restore signal. The state is also cleared on a
+   * plain re-show, which is harmless: if the page is visible again, no handoff is in flight.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const clear = () => setConnecting(null);
+    window.addEventListener("pageshow", clear);
+    return () => window.removeEventListener("pageshow", clear);
+  }, []);
 
   /**
    * Hand the operator off to the broker's own login page.
@@ -255,12 +286,30 @@ export function BrokerStatusPanel({ runtime }: { runtime?: RuntimeStatus | null 
       setSigningOut(broker);
       setError(null);
       setLoginOutcome(null);
+      setLogoutBlockers((prev) => ({ ...prev, [broker]: [] }));
       try {
         await logoutBroker(broker);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : `Failed to sign out of ${brokerLabel(broker)}.`,
         );
+        /**
+         * A REFUSAL NEEDS THE REASONS, NOT JUST THE VERDICT.
+         *
+         * The backend refuses a sign-out that would strand exposure, and its message says so
+         * in general terms ("owns exposure or in-flight work"). That is not actionable on its
+         * own, so the specific list is fetched and shown — the same exposure list a broker
+         * switch is refused on, which is why the existing switch-blockers endpoint answers it.
+         *
+         * Best-effort: if this fetch fails the operator still has the message above, so a
+         * failure here must not replace a real refusal with a confusing second error.
+         */
+        try {
+          const detail = await fetchBrokerSwitchBlockers(broker);
+          setLogoutBlockers((prev) => ({ ...prev, [broker]: detail.blockers }));
+        } catch {
+          /* keep the primary message */
+        }
       } finally {
         setSigningOut(null);
         await load();
@@ -376,6 +425,7 @@ export function BrokerStatusPanel({ runtime }: { runtime?: RuntimeStatus | null 
               }
               connecting={connecting === broker}
               signingOut={signingOut === broker}
+              logoutBlockers={logoutBlockers[broker]}
               onConnect={() => void onConnect(broker)}
               onSignOut={() => void onSignOut(broker, isActive)}
             />
@@ -409,6 +459,7 @@ function BrokerCard({
   loginPending,
   connecting,
   signingOut,
+  logoutBlockers,
   onConnect,
   onSignOut,
 }: {
@@ -431,6 +482,8 @@ function BrokerCard({
   loginPending: boolean;
   connecting: boolean;
   signingOut: boolean;
+  /** Why a sign-out was just refused. Empty when none was attempted or it succeeded. */
+  logoutBlockers: string[];
   onConnect: () => void;
   onSignOut: () => void;
 }) {
@@ -511,10 +564,27 @@ function BrokerCard({
         )}
       </div>
 
+      {logoutBlockers.length > 0 && (
+        <>
+          <p className="box-broker-card-hint box-dim">
+            Sign-out refused — {label} still owns exposure or in-flight work:
+          </p>
+          <ul className="box-broker-blockers">
+            {logoutBlockers.map((b) => (
+              <li key={b}>{blockerText(b)}</li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {/* Worded to be TRUE in both token modes. `token_state === "polling"` means "a browser
+          sign-in is in flight" on an in-app deployment, but "the external token service is
+          mid-fetch" on a provider-mode one — so this must not flatly instruct the operator to
+          finish a sign-in that may not exist. */}
       {loginPending && !connected && (
         <p className="box-broker-card-hint box-dim">
-          Waiting for the {label} sign-in to finish in the browser. Complete it at {label}, or
-          start again if the tab was closed.
+          A {label} token is being obtained. If you started the {label} sign-in, finish it
+          there; otherwise this clears on its own.
         </p>
       )}
 
