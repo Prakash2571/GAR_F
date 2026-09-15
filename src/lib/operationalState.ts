@@ -146,6 +146,9 @@ const WIRING_LABEL: Record<OrderStreamBrokerStatus["wiring"], string> = {
   not_wired: "not wired",
   gated_off: "not armed",
   armed: "armed",
+  // Deliberately neutral wording. A paper backend builds no order-stream consumer BY DESIGN, so
+  // this is the expected configuration and must not be phrased as a shortcoming.
+  not_applicable_paper: "not applicable (paper)",
 };
 
 /**
@@ -159,6 +162,17 @@ const WIRING_LABEL: Record<OrderStreamBrokerStatus["wiring"], string> = {
  */
 export function orderStreamBrokerBand(b: OrderStreamBrokerStatus): HealthBand {
   if (b.fills_observed_by === "stream_primary_rest_reconcile") return "ready";
+  /*
+   * PAPER: `absent`, not `paused`.
+   *
+   * `paused` reads as "the fast path is temporarily unavailable", which is a fault-flavoured
+   * statement about something that is not supposed to exist here. A paper backend sends no order to
+   * the broker, so the broker has nothing to stream and there is nothing to be paused. Checked
+   * BEFORE the AUTH_EXPIRED branch is not needed (a paper deployment has no consumer and therefore
+   * no lifecycle), but it is checked before the generic fallthrough so paper never lands on
+   * `paused`.
+   */
+  if (b.wiring === "not_applicable_paper") return "absent";
   // An expired session behind the order stream is BROKEN, not merely paused: reconnecting with a
   // rejected credential cannot succeed, so it will not clear on its own.
   if (b.lifecycle === "AUTH_EXPIRED") return "broken";
@@ -169,7 +183,16 @@ export function orderStreamBrokerBand(b: OrderStreamBrokerStatus): HealthBand {
 }
 
 export function mechanismLabel(m: OrderStreamBrokerStatus["fills_observed_by"]): string {
-  return m === "stream_primary_rest_reconcile" ? "stream first, REST reconciles" : "REST polling only";
+  switch (m) {
+    case "stream_primary_rest_reconcile":
+      return "stream first, REST reconciles";
+    // A broker cannot confirm an order it never received. "REST polling only" would claim a broker
+    // round trip that does not happen in paper.
+    case "simulated_paper_fills":
+      return "Simulated fills";
+    case "rest_polling_only":
+      return "REST polling only";
+  }
 }
 
 export function deriveOrderStreamBroker(b: OrderStreamBrokerStatus): OrderStreamBrokerView {

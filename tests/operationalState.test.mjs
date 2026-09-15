@@ -387,12 +387,86 @@ test("every band has a distinct text glyph so signalling is never colour-alone",
 });
 
 test("the derivations run on the retained box-status fixture (stopped/paper baseline)", () => {
+  /*
+   * THE FIXTURE CHANGED, AND THAT IS THE POINT.
+   *
+   * It used to assert `state === "DISABLED"` and `band === "absent"` for a `paper_latency`
+   * deployment — because that is genuinely what the backend published, and it was the defect: market
+   * data was armed only when `executionMode === "live"`, so every paper deployment reported a
+   * DISABLED market-data lifecycle, generation 0 and no depth evidence however many ticks arrived.
+   *
+   * A paper deployment consuming the real broker quote feed is now READY, so the fixture and these
+   * assertions move with it. The `absent` band is retained below for the ORDER STREAM, where it is
+   * still correct: paper sends no order, so there is genuinely no broker stream.
+   */
+  const r = fixture.operational_readiness;
+
+  // NOT "DISABLED". A paper deployment monitors the real quote feed, so with the exchange shut and
+  // no socket the honest state is DISCONNECTED — a transport fact — rather than "not armed".
   const md = deriveMarketData(fixture);
-  assert.equal(md.state, "DISABLED");
-  assert.equal(md.band, "absent");
+  assert.equal(md.state, "DISCONNECTED");
+  assert.equal(md.dataUsableForEntry, false, "and it is still NOT usable for entry");
+
+  // THE RED EXPOSURE WARNING, pinned. `market_data_not_configured` carries scope `both`, so while
+  // the machine was DISABLED in paper it blocked REDUCTION too and even protective cancel was
+  // reported as refused — purely because live readiness was off.
+  assert.ok(
+    !r.entry.reasons.some((x) => x.code === "market_data_not_configured"),
+    "market data IS configured in paper; that blocker must never appear again",
+  );
+  assert.equal(
+    r.exposure_management.protective_cancel,
+    true,
+    "a protective cancel always reduces exposure and must not be refused in paper",
+  );
+  assert.equal(r.exposure_management.manage_working_orders, true);
+  // exit_and_reduce stays false here, and that is the CORRECT preserved policy: with no socket there
+  // is no book to price a reduction against. The reason given is the honest one.
+  assert.equal(r.exposure_management.exit_and_reduce, false);
+  assert.deepEqual(
+    r.exposure_management.blocked_reasons.map((x) => x.code),
+    ["market_data_disconnected"],
+    "blocked for want of a BOOK, not because market data is unconfigured",
+  );
+
   const os = deriveActiveOrderStream(fixture.order_stream, fixture.broker);
-  assert.equal(os.anyStreamLive, false);
+  assert.equal(os.anyStreamLive, false, "no broker order stream is live — nor should one be");
   assert.equal(os.active.streamObserved, false);
+  // PAPER: absent (inactive by design), NOT paused or broken.
+  assert.equal(os.active.band, "absent");
+  assert.equal(os.active.wiringLabel, "not applicable (paper)");
+  assert.equal(
+    os.active.mechanismLabel,
+    "Simulated fills",
+    "a broker cannot confirm an order it never received — this must not say REST polling",
+  );
+
+  // The paper mechanism is published separately from the order stream — and because this baseline has
+  // NO tick evidence, the "real broker WebSocket quotes" claim must be WITHHELD.
+  assert.equal(r.paper_execution.simulated, true);
+  assert.equal(r.paper_execution.profile, "paper_latency");
+  assert.equal(r.paper_execution.using_streamed_quotes, false);
+  assert.doesNotMatch(
+    r.paper_execution.detail,
+    /Real broker WebSocket quotes/,
+    "no ticks observed ⇒ the streamed-quotes claim must not be made",
+  );
+  assert.equal(r.market_data.ticks_observed, false);
+  assert.equal(r.market_data.source, "none");
+  assert.equal(r.fill_observation.mechanism, "simulated_paper_fills");
+  assert.doesNotMatch(
+    r.fill_observation.detail,
+    /REST polling is observing fills/,
+    "nothing is polled for an order that is never sent",
+  );
+
+  // NEVER OBSERVED stays null — it must never render as a fresh 0 — and the clock domain is
+  // published so a reader can verify the ages were not computed across mixed clocks.
+  assert.equal(r.evidence.market_data_depth_age_ms, null);
+  assert.equal(r.evidence.market_data_frame_age_ms, null);
+  assert.equal(r.evidence.market_data_last_frame_at, null);
+  assert.equal(r.evidence.market_data_age_clock, "monotonic");
+
   const funnel = deriveFunnel(fixture.execution_funnel);
   assert.equal(funnel.chain[0].count, 0);
   // economic_admission is null in the paper baseline — the component must not fabricate figures.

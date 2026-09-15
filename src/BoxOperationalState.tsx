@@ -32,6 +32,7 @@ import {
   deriveEntryGate,
   deriveFunnel,
   deriveMarketData,
+  mechanismLabel,
 } from "./lib/operationalState.ts";
 import { deriveExposure } from "./lib/honestLabels.ts";
 
@@ -280,8 +281,27 @@ function EntryGateBanner({ gate }: { gate: ReturnType<typeof deriveEntryGate> })
         <p className="box-exec-note">
           {gate.protectiveCancelPermitted
             ? "A protective cancel is still accepted — cancelling reduces exposure."
-            : "Even a protective cancel is refused, because the broker itself will reject it on an " +
-              "expired session."}
+            : /*
+               * RENDER THE BACKEND'S REASON. DO NOT INFER ONE.
+               *
+               * This branch used to assert "because the broker itself will reject it on an expired
+               * session" for ANY refused protective cancellation. That is a diagnosis invented from a
+               * single false boolean, and `protective_cancel: false` does not mean the token expired.
+               * In the market-data permission table only AUTH_EXPIRED sets it false, but the
+               * published verdict is the COMBINED table plus reduction-scoped external blockers — so
+               * a PostgreSQL outage, a reservation fault or a recovery hold could all land here and
+               * be reported to the operator as a token problem. Chasing an invented expiry (signing
+               * in again, rotating a token) while the real cause is untouched is exactly the wrong
+               * action, taken under time pressure with open exposure.
+               *
+               * The reduction blockers listed immediately above ARE the backend's own sentences, so
+               * this line points at them instead of competing with them.
+               */
+              gate.reductionBlockedReasons.length > 0
+              ? "Even a protective cancel is refused. The reason or reasons listed above are the " +
+                "backend's own; act on those rather than assuming a session problem."
+              : "Even a protective cancel is refused, and the backend published no reason for it. " +
+                "Treat the cause as UNKNOWN — do not assume the session expired."}
         </p>
       )}
     </div>
@@ -359,11 +379,88 @@ function DecisionBlock({
           cls={decision.order_stream.lifecycle === "READY" ? "is-good" : "is-warn"}
           title="The AUTHORITATIVE lifecycle the entry gate scored, and the state published from it. These two used to be able to disagree — a DEGRADED lifecycle behind a LIVE published state."
         />
+        {/*
+          THE MECHANISM, NAMED FROM THE PAYLOAD.
+          This used to be a boolean ternary that could only say "stream first" or "REST polling
+          only" — so paper mode, where nothing is sent to a broker and nothing is polled for, was
+          reported as REST polling and painted as a warning. The mechanism is now read from
+          `fill_observation.mechanism`, and simulated fills are a healthy chosen state, not a fault.
+        */}
         <Stat
           label="Fills observed by"
-          value={decision.fill_observation.stream_assisted ? "stream first, REST reconciles" : "REST polling only"}
-          cls={decision.fill_observation.stream_assisted ? "is-good" : "is-warn"}
+          value={mechanismLabel(decision.fill_observation.mechanism)}
+          cls={
+            decision.fill_observation.stream_assisted
+              ? "is-good"
+              : decision.fill_observation.mechanism === "simulated_paper_fills"
+                ? "is-muted"
+                : "is-warn"
+          }
           title={decision.fill_observation.detail}
+        />
+        {/*
+          PAPER EXECUTION MECHANISM, published separately from the broker order stream. Backend
+          wording verbatim: it makes the "real broker WebSocket quotes · simulated execution" claim
+          only when tick evidence supports it, and says so plainly when it does not.
+        */}
+        {decision.paper_execution.simulated && (
+          <Stat
+            label="Paper execution"
+            value={
+              decision.paper_execution.using_streamed_quotes
+                ? "simulated · real streamed quotes"
+                : "simulated · NO streamed quotes yet"
+            }
+            cls={decision.paper_execution.using_streamed_quotes ? "is-good" : "is-warn"}
+            title={decision.paper_execution.detail}
+          />
+        )}
+        {/*
+          THE TRANSPORT CHAIN, as separate facts. "Socket open" and "executable depth exists" are
+          different questions, and a single lifecycle badge could not distinguish them — which is how
+          an open socket delivering nothing was read as a healthy feed.
+        */}
+        <Stat
+          label="Quote source"
+          value={
+            decision.market_data.source === "broker_websocket"
+              ? decision.market_data.ticks_observed
+                ? "broker WebSocket · ticks flowing"
+                : "broker WebSocket · NO ticks yet"
+              : decision.market_data.source === "rest_snapshot_fallback"
+                ? "REST snapshot (fallback, NOT executable)"
+                : "none"
+          }
+          cls={
+            decision.market_data.source === "broker_websocket" && decision.market_data.ticks_observed
+              ? "is-good"
+              : "is-warn"
+          }
+          title="Where quotes come from. A REST snapshot is a documented fallback for discovery and last-close views and is NOT equivalent to executable WebSocket depth. The 'ticks flowing' claim requires an actual observed frame — never merely an open socket."
+        />
+        <Stat
+          label="Socket · authenticated · subscribed"
+          value={`${decision.market_data.socket_connected ? "open" : "closed"} · ${
+            decision.market_data.authenticated ? "auth" : "no auth"
+          } · ${decision.market_data.subscriptions_requested ? "requested" : "none"}`}
+          cls={
+            decision.market_data.socket_connected && decision.market_data.authenticated
+              ? ""
+              : "is-warn"
+          }
+          title="Three RAW TRANSPORT facts, deliberately not collapsed into readiness. Subscriptions are 'requested' rather than 'confirmed' because Zerodha sends no subscription acknowledgement — confirmation is evidenced by depth actually arriving."
+        />
+        <Stat
+          label="Desired vs usable books"
+          value={`${decision.market_data.usable_books} usable / ${decision.market_data.desired_instruments} desired`}
+          cls={decision.market_data.usable_books > 0 ? "" : "is-warn"}
+          title="Coverage, reported and deliberately NOT a gate: one illiquid strike that never ticked must not refuse every box. Per-candidate freshness is decided per candidate."
+        />
+        <Stat
+          label="Frames / depth / heartbeats"
+          value={`${decision.market_data.frames_observed} / ${decision.market_data.depth_observations} / ${decision.market_data.heartbeats_observed}`}
+          cls={decision.market_data.depth_observations > 0 ? "" : "is-warn"}
+          title="Evidence counters for the current generation. Frames > 0 with depth = 0 is a real, nameable state: the socket is alive but delivering no executable depth. Heartbeats prove transport liveness ONLY — they can never warm an instrument or refresh a book."
         />
         <Stat
           label="Reconciliation"

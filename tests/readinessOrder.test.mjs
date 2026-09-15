@@ -282,7 +282,29 @@ test("the contract version and the backend pin move TOGETHER", () => {
   // consumes both, so it is a minor bump rather than a patch. Re-vendored, re-pinned to the
   // backend commit that introduced them, and `contract.generated.ts` regenerated; this literal
   // moving is the acknowledgement that all four steps are done.
-  assert.equal(version.contract_version, "1.10.0");
+  //
+  // 1.10.0 -> 1.11.0: PAPER-MODE MARKET-DATA HONESTY. The backend now monitors the real broker
+  // quote feed in every execution mode (market-data monitoring was wrongly gated on
+  // `executionMode === "live"`, leaving paper with a permanently DISABLED lifecycle, generation 0
+  // and no depth evidence at all), and the payload gained the fields needed to report that
+  // truthfully:
+  //   • operational-readiness: a new REQUIRED `paper_execution` block; nine new `market_data`
+  //     fields (source, socket_connected, authenticated, subscriptions_requested, usable_books,
+  //     ticks_observed, frames_observed, heartbeats_observed, depth_observations); three new
+  //     `evidence` fields (market_data_last_frame_at, market_data_last_depth_at, and
+  //     market_data_age_clock, pinned to "monotonic" so a reader can VERIFY the ages were not
+  //     computed by subtracting a monotonic stamp from a wall-clock now — the defect that made
+  //     every age ~55 years and rendered as "never observed").
+  //   • order-stream-status + operational-readiness: `wiring` gained `not_applicable_paper` and
+  //     the fill mechanism gained `simulated_paper_fills`, because a paper deployment builds no
+  //     order-stream consumer BY DESIGN and previously fell through to `not_wired` /
+  //     `rest_polling_only` — reporting a broken fast fill path that was never meant to exist and
+  //     claiming REST polling for orders that are never sent to a broker.
+  // ADDITIVE to existing shapes, but `paper_execution` is REQUIRED and both schemas are
+  // `additionalProperties: false`, so an unbumped frontend would reject the whole response. Hence a
+  // minor bump, a re-vendor, a re-pin and a regenerated `contract.generated.ts`; this literal
+  // moving is the acknowledgement that all four steps are done.
+  assert.equal(version.contract_version, "1.11.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,
