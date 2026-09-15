@@ -1,6 +1,6 @@
 {
   "backend_repo": "Prakash2571/GTSAlgoResearch_B",
-  "backend_sha": "fd13a399871a62063d0628a618d83945a18c0e57",
-  "contract_version": "1.9.0",
-  "schemas_sha256": "a9b94945e6bd89dc44c1e5690ed97768462bdb4f18d006f41ee6cba1316af62f"
+  "backend_sha": "a85e8584f2a7716508f1674fa68af3818c3f12c8",
+  "contract_version": "1.10.0",
+  "schemas_sha256": "1351ec3d32ed4c24ba6a7efb94d485206d7a0fac132bd446ea2546d2232a4f2c"
 }

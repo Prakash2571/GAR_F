@@ -3047,6 +3047,22 @@ table {
   color: var(--text-secondary);
 }
 
+/* Per-broker session controls (Connect / Reconnect / Sign out). Wraps rather than
+   overflowing, because both brokers' cards carry them and the grid column is narrow. */
+.box-broker-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* A quiet, non-alarming hint under the actions — e.g. a sign-in still in flight. It is a
+   transient state, not a problem, so it must not look like the .box-broker-problems list. */
+.box-broker-card-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}
+
 .box-broker-filter {
   display: inline-flex;
   align-items: center;

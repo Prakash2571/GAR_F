@@ -62,11 +62,26 @@ src/
     layout/   LandingHeader.tsx, LandingFooter.tsx, BoxHeader.tsx
     ui/       Button.tsx, Modal.tsx, StatusBadge.tsx
   lib/        routing.ts, theme.ts, boxStream.ts, operationalState.ts, readinessOrder.ts,
-              statusIntegrity.ts, honestLabels.ts, boxSounds.ts
+              statusIntegrity.ts, honestLabels.ts, boxSounds.ts, brokerLogin.ts
   Box*.tsx    the workspace panels (opportunities, positions, history, execution,
               session, risk, readiness, order stream, broker, help)
   styles.css  the whole design system
 ```
+
+**Broker sign-in happens in the app, for both brokers.** `BrokerStatusPanel.tsx` can
+connect Zerodha and Dhan independently and *simultaneously*: each card has its own
+Connect / Reconnect / Sign out controls, and both brokers can hold a live session at once.
+Connecting is deliberately separate from **selecting** — "Make X active" stays the guarded
+control it always was, so signing in never changes which broker trades and never arms live
+trading.
+
+The consent URL is built by the backend and simply followed
+(`window.location.assign`); the frontend cannot construct it, because that would put broker
+hostnames and an api key into a public bundle. The browser stores **nothing** across the
+redirect: the single-use nonce round-trips through the broker and is verified server-side, so
+there is no OAuth state in `localStorage` (and the CI allow-list would reject it anyway). The
+return leg arrives as `/box?broker_login=…&status=…`, which `lib/brokerLogin.ts` parses into a
+notice and then strips from the URL so a reload cannot re-announce a stale result.
 
 **Routing has no dependency.** Two routes, no nested layouts, no route params, no loaders —
 so `app/router.ts` is ~70 lines over the History API and the path decisions live in

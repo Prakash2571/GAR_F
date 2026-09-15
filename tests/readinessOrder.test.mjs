@@ -275,7 +275,14 @@ test("the contract version and the backend pin move TOGETHER", () => {
   // alongside the schemas, so a protocol-constant change moves schemas_sha256 exactly as a
   // schema edit would — hence a version bump, a re-vendor and a re-pin. Updating this literal
   // is the deliberate acknowledgement that step is complete.
-  assert.equal(version.contract_version, "1.9.0");
+  //
+  // 1.9.0 -> 1.10.0: the backend gained IN-APP BROKER LOGIN, adding two response schemas
+  // (broker-login-start, broker-logout) for POST /api/broker/{broker}/login/start and
+  // POST /api/broker/{broker}/logout. ADDITIVE — no existing shape moved — but the frontend
+  // consumes both, so it is a minor bump rather than a patch. Re-vendored, re-pinned to the
+  // backend commit that introduced them, and `contract.generated.ts` regenerated; this literal
+  // moving is the acknowledgement that all four steps are done.
+  assert.equal(version.contract_version, "1.10.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,
