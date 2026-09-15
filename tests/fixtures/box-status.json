@@ -111,15 +111,27 @@
   "economic_admission": null,
   "market_data_state": "DISCONNECTED",
   "market_data_health": {
-    "state": "DISABLED",
+    "state": "DISCONNECTED",
     "generation": 0,
     "desired": 0,
     "confirmed": 0,
     "readyInstruments": 0,
-    "lastHeartbeatAt": null,
-    "lastFrameAt": null,
-    "lastDepthAt": null,
-    "backlog": false
+    "backlog": false,
+    "heartbeatAgeMs": null,
+    "frameAgeMs": null,
+    "depthAgeMs": null,
+    "lastHeartbeatWallAt": null,
+    "lastFrameWallAt": null,
+    "lastDepthWallAt": null,
+    "heartbeats": 0,
+    "frames": 0,
+    "depthObservations": 0,
+    "coverageDesired": 0,
+    "coverageFresh": 0,
+    "coverageMissing": 0,
+    "transportLive": false,
+    "bookMaxAgeMs": 15000,
+    "heartbeatMaxAgeMs": 5000
   },
   "database_healthy": true,
   "daily_risk_seed_healthy": null,
@@ -507,5 +519,35 @@
       "residual_legs": 0,
       "working_orders": 0
     }
+  },
+  "box_lane_connected": false,
+  "box_lane_dedicated": true,
+  "universe": {
+    "readyToEvaluate": false,
+    "stage": "scanner_stopped",
+    "detail": "The scanner is STOPPED, so no universe is built and no candidate is evaluated. Open positions continue to be monitored.",
+    "transient": false,
+    "counts": {
+      "instruments": 0,
+      "board_rows": 0,
+      "chains_indexed": 0,
+      "board_with_chains": 0,
+      "underlyings_missing_spot": 0,
+      "windows_built": 0,
+      "candidates": 0,
+      "desired_option_subscriptions": 0,
+      "frames_observed": 0,
+      "depth_observations": 0,
+      "usable_books": 0
+    },
+    "instrument_load": "never_attempted",
+    "instruments_error": null,
+    "instruments_loaded_at": null,
+    "instrument_load_failures": 0,
+    "spot_seed_failed": false,
+    "spot_seed_error": null,
+    "last_successful_build_at": null,
+    "subscriptions_requested": false,
+    "box_socket_connected": false
   }
 }

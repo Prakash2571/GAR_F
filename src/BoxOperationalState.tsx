@@ -23,7 +23,7 @@
  * backend that omits a field shows nothing there rather than a fabricated green light.
  */
 
-import type { BoxStatus, BrokerId } from "./api";
+import type { BoxStatus, BrokerId, UniverseReadiness } from "./api";
 import {
   bandClass,
   bandGlyph,
@@ -32,7 +32,9 @@ import {
   deriveEntryGate,
   deriveFunnel,
   deriveMarketData,
+  deriveUniverse,
   mechanismLabel,
+  scannerHeadline,
 } from "./lib/operationalState.ts";
 import { deriveExposure } from "./lib/honestLabels.ts";
 
@@ -68,6 +70,11 @@ export function BoxOperationalState({ status }: { status: BoxStatus | undefined 
   const exposure = deriveExposure(decision);
   const funnel = deriveFunnel(status.execution_funnel);
   const health = status.market_data_health;
+  /*
+   * THE UNIVERSE PIPELINE is rendered from `status.universe` directly, and only when the backend
+   * published it — an older backend renders nothing rather than a fabricated "all clear", the same
+   * degrade-to-unknown rule the decision block uses.
+   */
 
   return (
     <section className="box-exec-health" aria-label="Operational state">
@@ -81,6 +88,9 @@ export function BoxOperationalState({ status }: { status: BoxStatus | undefined 
 
       {/* ── THE BACKEND DECISION ITSELF: identity, generation, evidence freshness ─────────── */}
       {decision && <DecisionBlock decision={decision} exposure={exposure} />}
+
+      {/* ── THE UNIVERSE PIPELINE — why the scanner is or is not evaluating ───────────────── */}
+      {status.universe && <UniverseBlock running={status.running} raw={status.universe} />}
 
 
       {/* ── TWO INDEPENDENT HEALTH SIGNALS, side by side but never conflated ──────────────── */}
@@ -117,19 +127,34 @@ export function BoxOperationalState({ status }: { status: BoxStatus | undefined 
               title="Advances on every (re)authentication. A book observed under a superseded socket is not evidence for the new one — all per-instrument readiness is dropped on reconnect."
             />
             <Stat
-              label="Subscriptions confirmed"
-              value={String(health.confirmed)}
-              title="Subscriptions confirmed on the wire this generation."
+              label="Instruments with depth this generation"
+              value={String(health.depthObservations)}
+              cls={health.depthObservations > 0 ? "is-good" : "is-warn"}
+              title="Usable two-sided book observations in the CURRENT generation. `confirmed` counts wire subscriptions; this counts books actually delivered — the only real confirmation, since this broker acknowledges no subscription."
             />
+            {/*
+              AGES, NOT TIMESTAMPS. These used to read `health.lastDepthAt` and friends through an
+              "ago" helper, but the backend now publishes pre-computed ages (in its own monotonic
+              domain) plus wall stamps for display. The old fields were simply undefined at runtime, so
+              three stats rendered "never observed" on a healthy feed — a stale hand-written type that
+              TypeScript could not object to because this payload leaf is deliberately open.
+            */}
             <Stat
               label="Last usable depth"
-              value={ago(health.lastDepthAt)}
-              title="A usable two-sided book for a specific instrument — the ONLY event that makes an instrument fresh. Distinct from a heartbeat or any inbound frame."
+              value={ageMs(health.depthAgeMs)}
+              cls={health.depthAgeMs === null ? "is-warn" : ""}
+              title="A usable two-sided book for a specific instrument — the ONLY event that makes an instrument fresh. Distinct from a heartbeat or any inbound frame. NEVER OBSERVED is shown as such, never as a fresh 0."
             />
             <Stat
               label="Last frame / heartbeat"
-              value={`${ago(health.lastFrameAt)} / ${ago(health.lastHeartbeatAt)}`}
-              title="Transport liveness (any inbound frame; 1-byte keep-alive). Proves the socket is alive — proves NOTHING about any book's freshness."
+              value={`${ageMs(health.frameAgeMs)} / ${ageMs(health.heartbeatAgeMs)}`}
+              cls={health.transportLive ? "" : "is-warn"}
+              title="Transport liveness (any inbound frame; 1-byte keep-alive). Proves the socket is alive — proves NOTHING about any book's freshness. A heartbeat can never refresh a book or warm an instrument."
+            />
+            <Stat
+              label="Freshness bounds enforced"
+              value={`book ${health.bookMaxAgeMs}ms · transport ${health.heartbeatMaxAgeMs}ms`}
+              title="The bounds the backend actually enforces, published so the thresholds are stated rather than assumed. A book older than the book bound stops counting as fresh."
             />
             <Stat
               label="Ingestion backlog"
@@ -304,6 +329,126 @@ function EntryGateBanner({ gate }: { gate: ReturnType<typeof deriveEntryGate> })
                 "Treat the cause as UNKNOWN — do not assume the session expired."}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * THE UNIVERSE PIPELINE, SHOWN AS A PIPELINE.
+ *
+ * WHY THIS BLOCK EXISTS. The panel had `running` and `underlyings` and nothing between them, so a
+ * scanner whose instrument master returned an EMPTY dump looked identical to one watching a quiet
+ * market: `SCANNING` above a `0`. That is exactly what happened —
+ * `ActiveBrokerManager.instruments()` returned `[]` for Zerodha, so the board, the chains, the
+ * windows, the candidates and the subscriptions were all empty, and the box socket was never even
+ * constructed (it is created lazily on the first subscription).
+ *
+ * The headline now states the operator's intent AND the engine's capability, and the stage names
+ * where the pipeline stopped. Every count behind the verdict is shown, so the diagnosis can be
+ * checked rather than believed.
+ */
+function UniverseBlock({ running, raw }: { running: boolean; raw: UniverseReadiness }) {
+  const universe = deriveUniverse(raw);
+  const headline = scannerHeadline(running, raw);
+  const c = universe.counts;
+  return (
+    <div className="box-op-signal" role="group" aria-label={`Scanner pipeline — ${universe.stageLabel}`}>
+      <h4 className="box-exec-sub">
+        Scanner pipeline{" "}
+        <span className={`box-exec-mode ${bandClass(universe.band)}`}>
+          <span aria-hidden="true">{bandGlyph(universe.band)}</span> {universe.stageLabel}
+        </span>
+      </h4>
+      {/*
+        The BACKEND's own sentence, verbatim. It names the stage and what to do about it, and it is
+        the only place the reason is authored — re-phrasing it here would create a second vocabulary
+        that drifts from the enforced logic.
+      */}
+      <p className="box-exec-note">{universe.detail}</p>
+      {!universe.readyToEvaluate && running && (
+        <p className={`box-exec-note ${universe.transient ? "" : "is-warn"}`}>
+          {universe.transient
+            ? "This stage clears on its own — wait rather than restarting or re-authenticating."
+            : "This will NOT clear by itself. The scanner is running but cannot evaluate anything."}
+        </p>
+      )}
+      <div className="box-exec-grid">
+        <Stat
+          label="Scanner"
+          value={headline.text}
+          cls={bandClass(headline.band)}
+          title="The operator's RUN state AND the engine's ability to evaluate, together. `running` alone used to render SCANNING even with a completely empty universe."
+        />
+        <Stat
+          label="Instrument master"
+          value={
+            universe.instrumentLoad === "loaded"
+              ? `${c.instruments.toLocaleString()} instruments`
+              : universe.instrumentLoad
+          }
+          cls={
+            universe.instrumentLoad === "failed"
+              ? "is-bad"
+              : universe.instrumentLoad === "loaded" && c.instruments > 0
+                ? "is-good"
+                : "is-warn"
+          }
+          title={
+            universe.instrumentsError ??
+            "Four states on purpose: never_attempted / loading / loaded / failed. A successful load returning ZERO rows is a broker problem, not a filter problem."
+          }
+        />
+        <Stat
+          label="Board rows → chains → joined"
+          value={`${c.board_rows} → ${c.chains_indexed} → ${c.board_with_chains}`}
+          cls={c.board_with_chains > 0 ? "is-good" : "is-warn"}
+          title="Board rows come from NFO futures joined to a spot row; chains from NFO CE/PE rows. Nonzero on both sides with zero joined means the two key spaces disagree."
+        />
+        <Stat
+          label="Windows / candidates"
+          value={`${c.windows_built} / ${c.candidates}`}
+          cls={c.candidates > 0 ? "is-good" : "is-warn"}
+          title="ATM strike windows built, and the four-leg candidates they produced. A window needs a spot price to be centred on."
+        />
+        <Stat
+          label="Underlyings missing a spot"
+          value={String(c.underlyings_missing_spot)}
+          cls={c.underlyings_missing_spot > 0 ? "is-warn" : "is-good"}
+          title={
+            universe.spotSeedError ??
+            "Spot prices are seeded over REST because a live spot tick needs a subscription that only a window would create. Without a spot, no window is built and nothing is subscribed."
+          }
+        />
+        <Stat
+          label="Desired subscriptions"
+          value={String(c.desired_option_subscriptions)}
+          cls={c.desired_option_subscriptions > 0 ? "is-good" : "is-warn"}
+          title="Option tokens the engine has asked the feed for. Zero here means nothing will ever tick, whatever the socket says."
+        />
+        <Stat
+          label="Subscribe frames written"
+          value={universe.subscriptionsRequested ? "yes" : "no"}
+          cls={universe.subscriptionsRequested ? "" : "is-warn"}
+          title="A subscribe frame was WRITTEN to the socket. This is NOT a broker acknowledgement — this broker sends none. Usable depth is the only real confirmation, shown separately."
+        />
+        <Stat
+          label="Box socket"
+          value={universe.boxSocketConnected ? "connected" : "not connected"}
+          cls={universe.boxSocketConnected ? "is-good" : "is-warn"}
+          title="The BOX lane's own socket, which carries the option depth this engine trades on. A connected shared/board lane is a different socket and is not evidence about this one."
+        />
+        <Stat
+          label="Frames / depth / usable books"
+          value={`${c.frames_observed} / ${c.depth_observations} / ${c.usable_books}`}
+          cls={c.usable_books > 0 ? "is-good" : "is-warn"}
+          title="Frames received, usable two-sided book observations, and instruments currently holding an executable book. Frames without depth means the socket is alive but delivering nothing executable."
+        />
+        <Stat
+          label="Last successful build"
+          value={ago(universe.lastSuccessfulBuildAt)}
+          title="The last universe pass that produced at least one window. Distinguishes 'never worked' from 'worked until N minutes ago'."
+        />
+      </div>
     </div>
   );
 }

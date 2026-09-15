@@ -304,7 +304,27 @@ test("the contract version and the backend pin move TOGETHER", () => {
   // `additionalProperties: false`, so an unbumped frontend would reject the whole response. Hence a
   // minor bump, a re-vendor, a re-pin and a regenerated `contract.generated.ts`; this literal
   // moving is the acknowledgement that all four steps are done.
-  assert.equal(version.contract_version, "1.11.0");
+  //
+  // 1.11.0 -> 1.12.0: THE ZERODHA EMPTY-UNIVERSE FIX AND ITS DIAGNOSTICS.
+  // `ActiveBrokerManager.instruments()` returned `[]` for Zerodha, which starved the board, the
+  // option chains, the ATM windows, the candidates and the desired subscriptions — and therefore the
+  // box-lane socket, which is created lazily on the first subscription. `box-status` published only
+  // `underlyings: windows.size`, so an EMPTY instrument master and a quiet market rendered
+  // identically as `0`, and the header said SCANNING throughout. `box-status` therefore gained:
+  //   • `universe` — the pipeline diagnosis: the FIRST unsatisfied stage (17-value enum), the count
+  //     behind every stage, the four-state instrument-load status with the broker's own error, the
+  //     spot-seed result, the last successful build, and `readyToEvaluate` as a fact SEPARATE from
+  //     `running` (the operator's intent and the engine's capability are not the same bit);
+  //   • `box_lane_connected` / `box_lane_dedicated` — the BOX lane's own socket, because
+  //     `hub_connected` is the shared board feed and a different socket entirely, so publishing only
+  //     it let a connected board lane read as a healthy box feed;
+  //   • `market_data_health` was CORRECTED, not extended: it had been publishing
+  //     `lastHeartbeatAt`/`lastFrameAt`/`lastDepthAt`, which the backend stopped emitting when ages
+  //     began being computed inside the monotonic domain that stamps them. The frontend type was
+  //     hand-written and stale, so three stats silently rendered "never observed" on a healthy feed.
+  // `universe`, `box_lane_connected` and `box_lane_dedicated` are all REQUIRED on an
+  // `additionalProperties: false` schema, so this is again a hard deploy-order dependency.
+  assert.equal(version.contract_version, "1.12.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,
