@@ -51,7 +51,16 @@ import {
 
 const FILTERS: { key: UniverseFilter; label: string; hint: string }[] = [
   { key: "all", label: "All", hint: "Every underlying with a resolved option chain" },
-  { key: "watchable", label: "Watchable", hint: "Not excluded and inside the quantity caps — what discovery will consider" },
+  {
+    key: "watched",
+    label: "Watching",
+    hint: "Underlyings the engine currently holds a live window for — what it is ACTUALLY observing",
+  },
+  {
+    key: "watchable",
+    label: "Eligible",
+    hint: "Not excluded and inside the quantity caps. What nothing forbids — an upper bound, not what is being watched",
+  },
   { key: "excluded", label: "Excluded", hint: "On the blocklist: no new box will be entered" },
   { key: "blocked", label: "Cap-blocked", hint: "Not excluded, but the quantity caps make entry impossible" },
 ];
@@ -65,6 +74,27 @@ function fmtWhen(at: number | null): string {
     hour12: true,
     timeZone: "Asia/Kolkata",
   });
+}
+
+/**
+ * Why a name is not being observed, in operator language.
+ *
+ * `underlying_cap` names the VARIABLE rather than describing the effect, because that is the one an
+ * operator can change and the one that was previously mis-attributed to the token budget.
+ */
+function notWatchedLabel(row: UniverseUnderlying, maxUnderlyings: number): string {
+  switch (row.not_watched_reason) {
+    case "excluded":
+      return "you excluded it";
+    case "underlying_cap":
+      return `BOX_MAX_UNDERLYINGS is ${maxUnderlyings}, and this name fell outside it`;
+    case "token_budget":
+      return "the live-feed token budget ran out before this name";
+    case "discovery_off":
+      return "the scanner is stopped";
+    default:
+      return "no reason reported";
+  }
 }
 
 /** Short label for why a name cannot trade, for the row badge. The full sentence is the tooltip. */
@@ -87,12 +117,24 @@ export function UniversePicker({
   canTrade,
   isFullAdmin,
   persistent,
+  universeBuiltAt,
   onChanged,
 }: {
   canTrade: boolean;
   isFullAdmin: boolean;
   /** From `status.excluded_underlyings.persistent` — false ⇒ nothing can be saved. */
   persistent: boolean;
+  /**
+   * `status.universe_built_at` — the engine's own stamp for its last universe pass.
+   *
+   * THE FIX FOR AN EMPTY PICKER. This component used to fetch once on mount and never again, and the
+   * universe becomes available ASYNCHRONOUSLY: `boot()` fetches ~113k instruments, so a tab opened
+   * during that window got `built: false` and kept showing "no universe pass has completed yet"
+   * forever, while every other panel updated off the status stream. Re-reading when this stamp changes
+   * ties the refresh to the authoritative signal rather than to a blind timer, so the list appears as
+   * soon as there is one and refreshes whenever the engine rebuilds.
+   */
+  universeBuiltAt: number | null;
   /** Hand the authoritative post-write blocklist back to the page. */
   onChanged: (next: BoxExcludedUnderlyings) => void;
 }) {
@@ -124,9 +166,12 @@ export function UniversePicker({
     }
   }, []);
 
+  // Re-read on mount AND whenever the engine completes a universe pass. Staged ticks deliberately
+  // SURVIVE a refresh: `staged` is untouched here, and `stagedDiff` re-derives against the fresh rows,
+  // so a background rebuild cannot silently discard an operator's half-finished screening.
   useEffect(() => {
     if (canTrade) void load();
-  }, [canTrade, load]);
+  }, [canTrade, load, universeBuiltAt]);
 
   const rows = universe?.underlyings ?? [];
 
@@ -224,9 +269,21 @@ export function UniversePicker({
       {universe !== null && (
         <>
           <dl className="box-universe-stats">
+            {/*
+              WATCHED FIRST, and it is not the same as WATCHABLE. This panel originally showed only
+              "watchable" — not excluded and admissible — which reads as "being watched" and is not:
+              it ignores BOX_MAX_UNDERLYINGS and the token budget entirely. On a real deployment it
+              said 215 while exactly ONE underlying had a window.
+            */}
+            <div className={universe.summary.watched === 0 ? "is-warn" : undefined}>
+              <dt>Watching now</dt>
+              <dd title="Underlyings the engine currently holds a live window for — what it is ACTUALLY observing.">
+                {universe.summary.watched}
+              </dd>
+            </div>
             <div>
-              <dt>Watchable</dt>
-              <dd title="Neither excluded nor cap-blocked — what discovery will actually consider.">
+              <dt>Eligible</dt>
+              <dd title="Neither excluded nor cap-blocked. This is what nothing FORBIDS — an upper bound, not what is being watched.">
                 {universe.summary.watchable}
               </dd>
             </div>
@@ -247,10 +304,50 @@ export function UniversePicker({
               <dd>{universe.summary.indices}</dd>
             </div>
             <div>
+              <dt>In board</dt>
+              <dd>{universe.summary.total}</dd>
+            </div>
+            <div>
               <dt>Built</dt>
               <dd className="box-dim">{fmtWhen(universe.built_at)}</dd>
             </div>
           </dl>
+
+          {/*
+            THE GAP BETWEEN ELIGIBLE AND WATCHED, explained by naming the setting responsible.
+            Non-zero means a CAP is deciding what gets looked at, not the market — and this is the
+            banner that answers "so which ones is it actually monitoring?".
+          */}
+          {universe.summary.eligible_not_watched > 0 && (
+            <p className="box-exclusions-msg box-exclusions-msg--warn">
+              {universe.summary.eligible_not_watched} eligible underlying
+              {universe.summary.eligible_not_watched === 1 ? " is" : "s are"} <strong>not</strong>{" "}
+              being observed
+              {universe.max_underlyings > 0 ? (
+                <>
+                  {" "}
+                  because <strong>BOX_MAX_UNDERLYINGS is {universe.max_underlyings}</strong>, which
+                  caps the universe to the first {universe.max_underlyings} name
+                  {universe.max_underlyings === 1 ? "" : "s"} in board order — indices first, then
+                  alphabetical. Set it to <strong>0</strong> for no cap. This is not the token budget
+                  ({universe.max_subscribed_tokens} instruments), which is unaffected.
+                </>
+              ) : (
+                <>
+                  {" "}
+                  — the live-feed token budget ({universe.max_subscribed_tokens} instruments) ran out.
+                  A narrower strike level costs fewer tokens per name.
+                </>
+              )}
+            </p>
+          )}
+
+          {!universe.discovering && (
+            <p className="box-exclusions-msg box-exclusions-msg--warn">
+              The scanner is stopped, so nothing is being observed at all — whatever the caps allow.
+              Counts below describe what <em>would</em> be watched once you press RUN.
+            </p>
+          )}
 
           <p className="box-universe-caps box-dim">
             Judged against per-leg{" "}
@@ -371,6 +468,27 @@ export function UniversePicker({
                     </label>
                     <span className="box-universe-name box-dim">{row.name}</span>
                     {row.is_index && <span className="box-universe-tag">INDEX</span>}
+                    {/*
+                      IS THE ENGINE LOOKING AT THIS ONE? The question the summary counts answer in
+                      aggregate, answered per row so "which one is it monitoring?" is readable rather
+                      than inferred. Deliberately distinct from the cap badge: not-watched is a
+                      universe-membership fact, cap-blocked is a quantity fact.
+                    */}
+                    {row.watched ? (
+                      <span
+                        className="box-universe-live"
+                        title="The engine holds a live window for this underlying and is observing it."
+                      >
+                        WATCHING
+                      </span>
+                    ) : (
+                      <span
+                        className="box-universe-idle"
+                        title={`Not observed: ${notWatchedLabel(row, universe.max_underlyings)}.`}
+                      >
+                        NOT WATCHED
+                      </span>
+                    )}
                     <span
                       className="box-universe-lot box-dim"
                       title={`One lot is ${row.lot_size} unit(s); four legs need ${row.lot_size * 4}.`}

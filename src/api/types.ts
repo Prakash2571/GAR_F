@@ -855,6 +855,19 @@ export type UniverseInadmissibility =
   | "unusable_lot_size";
 
 /**
+ * Why a name that COULD be entered is nonetheless not being OBSERVED.
+ *
+ * A different question from {@link UniverseInadmissibility}: that one is about whether an entry could
+ * ever be submitted, this one about whether the engine is currently looking. A name can be perfectly
+ * admissible and unwatched, because being tradable does not win it a place in the universe.
+ */
+export type UniverseNotWatched =
+  | "excluded"
+  | "underlying_cap"
+  | "token_budget"
+  | "discovery_off";
+
+/**
  * One underlying in the tradable universe, as the PRE-RUN picker shows it.
  *
  * Two INDEPENDENT verdicts, and conflating them would mislead:
@@ -882,6 +895,16 @@ export interface UniverseUnderlying {
   inadmissible_reason: UniverseInadmissibility | null;
   /** One bounded sentence naming the actual numbers. Safe to display verbatim. */
   inadmissible_detail: string | null;
+  /**
+   * Whether the engine currently holds a live window for this name — whether it is OBSERVING it.
+   *
+   * The engine's own record, not a re-derivation. Independent of `admissible`: a perfectly tradable
+   * name can be unwatched because a cap gave its place to something else. An EXCLUDED name carrying
+   * exposure is still watched, because its legs must keep streaming for the monitor to exit it.
+   */
+  watched: boolean;
+  /** Why it is not being observed, or null when it is. */
+  not_watched_reason: UniverseNotWatched | null;
 }
 
 /**
@@ -897,10 +920,21 @@ export interface BoxUniverse {
     total: number;
     indices: number;
     excluded: number;
-    /** Neither excluded nor cap-blocked — what discovery will actually consider. */
+    /**
+     * Not excluded and admissible — ELIGIBLE, which is NOT the same as observed.
+     *
+     * Counts what nothing forbids; ignores BOX_MAX_UNDERLYINGS and the token budget entirely, so it
+     * is an upper bound rather than a promise. Never render this as "underlyings being watched" —
+     * use `watched`. Presenting this as the watched count was a real defect: with
+     * BOX_MAX_UNDERLYINGS=1 and 215 joined names it read 215 while ONE name had a window.
+     */
     watchable: number;
     /** NOT excluded and still unable to trade. These look enabled and are not. */
     blocked_by_caps: number;
+    /** How many the engine is ACTUALLY observing. The number an operator means. */
+    watched: number;
+    /** Eligible and still unobserved — the gap. Non-zero ⇒ a cap is deciding, not the market. */
+    eligible_not_watched: number;
   };
   /** The caps every row was judged against. 0 ⇒ no limit. */
   caps: { max_open_leg_quantity: number; max_gross_open_leg_quantity: number };
@@ -909,6 +943,12 @@ export interface BoxUniverse {
   built_at: number | null;
   /** False ⇒ the backend refuses all new entry regardless of what this list shows. */
   blocklist_readable: boolean;
+  /** BOX_MAX_UNDERLYINGS (0 ⇒ no cap) — the setting to name when it is limiting observation. */
+  max_underlyings: number;
+  /** BOX_MAX_SUBSCRIBED_TOKENS — the other limit that can leave an eligible name unobserved. */
+  max_subscribed_tokens: number;
+  /** False ⇒ the scanner is stopped, so nothing is observed whatever the caps allow. */
+  discovering: boolean;
 }
 
 export interface BoxStatus {
@@ -1013,8 +1053,21 @@ export interface BoxStatus {
   excluded_underlyings: BoxExcludedUnderlyings;
   open_positions: number;
   day_pnl?: BoxDayPnl;
+  /**
+   * Underlyings left unsubscribed because BOX_MAX_SUBSCRIBED_TOKENS ran out — THE TOKEN BUDGET ONLY.
+   *
+   * Names cut by BOX_MAX_UNDERLYINGS used to be merged in here, which made the dashboard announce that
+   * (for example) 214 underlyings were outside a 2200-token feed budget that in fact had hundreds of
+   * tokens to spare, while the setting genuinely responsible went unnamed. Those are now in
+   * `skipped_for_underlying_cap`, and the two must never be added together or described as one limit.
+   */
   skipped_for_budget: number;
   skipped_symbols: string[];
+  /** Left out because BOX_MAX_UNDERLYINGS capped the list — a DIFFERENT limit from the one above. */
+  skipped_for_underlying_cap: number;
+  skipped_underlying_cap_symbols: string[];
+  /** BOX_MAX_UNDERLYINGS as configured. 0 ⇒ no cap. Name this value, don't describe its effect. */
+  max_underlyings: number;
   skipped_indicative_cap?: number;
   skipped_indicative_symbols?: string[];
   indicative_max_underlyings?: number;

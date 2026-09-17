@@ -1170,6 +1170,21 @@ export default function Box({ onLock }: Props) {
           {status.skipped_symbols.length > 0 ? `: ${status.skipped_symbols.join(", ")}…` : "."}
         </div>
       )}
+      {/* A THIRD limit, and it used to be reported as the token budget above — which announced that
+          214 underlyings were outside a 2200-instrument feed budget while that budget had hundreds of
+          tokens spare, and never named BOX_MAX_UNDERLYINGS, the setting actually responsible. Naming
+          the value is the point: "not being scanned" is a symptom, "the cap is 1" is the cause. */}
+      {status && status.skipped_for_underlying_cap > 0 && (
+        <div className="banner banner--warn">
+          {status.skipped_for_underlying_cap} underlying(s) are not being scanned because{" "}
+          <strong>BOX_MAX_UNDERLYINGS is {status.max_underlyings}</strong>, which caps the universe to
+          the first {status.max_underlyings} name(s) in board order — indices first, then alphabetical.
+          This is <strong>not</strong> the token budget, which is unaffected. Set it to 0 for no cap
+          {status.skipped_underlying_cap_symbols.length > 0
+            ? `. Skipped: ${status.skipped_underlying_cap_symbols.join(", ")}…`
+            : "."}
+        </div>
+      )}
       {/* A DIFFERENT limit, and it used to be reported as the one above — which
           blamed the live-feed token budget while the market was shut and nothing
           was streaming at all. This one only trims the read-only preview. */}

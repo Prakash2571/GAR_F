@@ -195,6 +195,9 @@ export function ControlBox({
               canTrade={canTrade}
               isFullAdmin={isFullAdmin}
               persistent={blocklist?.persistent ?? false}
+              // Drives the picker's refresh: it re-reads whenever the engine finishes a universe
+              // pass, which is what stops a tab opened during boot from showing an empty list forever.
+              universeBuiltAt={status?.universe_built_at ?? null}
               onChanged={onBlocklistChanged}
             />
             <BoxExclusions
