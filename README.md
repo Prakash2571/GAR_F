@@ -184,6 +184,19 @@ The earlier `gts.png` (1366 × 768) was removed once this replaced it — nothin
 it was 2.35 MB of dead weight in every checkout. It is still in history:
 `git checkout f02d571 -- src/image/gts.png`.
 
+> **When this asset was absent and referenced by a root-absolute URL, the backdrop was invisible in
+> production and very hard to diagnose — because nothing failed.** `vite build` printed a warning and
+> exited 0 (a root-absolute `url()` is passed through untouched by design — Vite cannot know what will
+> exist at runtime); CI only asserted `dist/index.html` and `dist/assets/*.js`; and `rsync` faithfully
+> published a `dist/` with no image. Then nginx's SPA fallback — `try_files $uri $uri/ /index.html` —
+> found no file and answered the image request with `index.html`, **HTTP 200**,
+> `Content-Type: text/html`. Not a 404. The browser cannot decode HTML as an image, so
+> `background-image` painted nothing, with no console error and no failed request. It looked exactly
+> like a CSS bug.
+>
+> That silence is why `npm run build` now ends with `npm run verify:assets`. See
+> [Asset verification](#asset-verification).
+
 It previously lived at an absolute `/public` URL, chosen so a *missing* file degraded to "no
 backdrop" rather than breaking the build. That mattered while the asset was outside the repo,
 but it also meant a wrong filename failed **silently**, as a 404 the page could not report —
@@ -217,13 +230,50 @@ phone, where the sides go too.
 build time is worth more than a silent 404 in production. If you need the old
 degrade-to-nothing behaviour, move the file back to `public/` and use an absolute URL.
 
+**Build-time strictness and runtime tolerance are different questions, and they get different
+answers.** The build refuses (`verify:assets`, below) so a gap is caught by the person who introduced
+it; a CSS `background-image` still degrades cleanly in the browser — no broken-image glyph, no layout
+shift — so a bad publish never disfigures the live page. Silence was the actual defect, not the
+fallback.
+
 **It is decorative and yields to the user.** It is an empty `aria-hidden` element, so it is
 never announced; and it is removed entirely under `prefers-contrast: more`,
 `forced-colors: active`, `prefers-reduced-transparency: reduce`, and when printing.
 
+**If you decide the page should not have a backdrop at all**, that is a valid choice — remove the
+`--hero-image` declaration from `src/styles.css`. `verify:assets` then has nothing to require and
+passes. The guard forces the decision to be explicit; it does not force the picture.
+
+### Asset verification
+
+`npm run verify:assets` (run automatically at the end of `npm run build`) reads the **built
+output** and proves that every asset it references is actually there:
+
+1. `dist/` exists and contains `index.html`.
+2. Every `url(...)` in the built CSS and every `href`/`src`/`srcset` in the built HTML resolves
+   to a real, non-empty file inside `dist/`. Root-absolute (`/ghatsila.jpg`) and relative
+   (`./inter.woff2`) forms are both handled, as are `?query` strings, `#fragment` suffixes,
+   percent-encoding and `image-set()`. `data:` URIs, `http(s):`, protocol-relative `//host/…`
+   and `url(#svg-filter)` are correctly ignored — none of those are files this build ships.
+3. Everything in `public/` reached `dist/` with an identical byte length, which catches a broken
+   `publicDir`, a partial copy and a truncated file.
+
+Requirements are **derived from the build output**, not from a hand-maintained list, so adding
+`url("/anything.png")` to the CSS tomorrow is covered with no change to the script. A missing
+asset is reported with the referring stylesheet and the exact path to add:
+
+```
+✗ MISSING ASSET  /ghatsila.jpg
+      referenced by:
+      dist/assets/index-B7xK2p.css  →  /ghatsila.jpg
+      NOT IN THE REPOSITORY. Nothing copies it, so nginx's SPA fallback serves index.html
+      for /ghatsila.jpg with HTTP 200 and Content-Type: text/html, and the browser paints nothing.
+      Add the real file at  public/ghatsila.jpg  and commit it.
+```
+
 Optional, once you have modern formats to hand — swap one line in `src/styles.css` for
-automatic AVIF/WebP selection. Every file listed must exist, or the build now fails rather than
-404ing:
+automatic AVIF/WebP selection. Add only formats whose files exist: `verify:assets` will fail the
+build for any variant you reference but do not commit, which is exactly the point.
 
 ```css
 --hero-image: image-set(
@@ -350,7 +400,8 @@ There is deliberately **no frontend variable for the passcode, the session or an
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Vite dev server. |
-| `npm run build` | `tsc -b && vite build` → `dist/`. The typecheck is strict and includes the contract type-assertions. |
+| `npm run build` | `tsc -b && vite build && npm run verify:assets` → `dist/`. The typecheck is strict and includes the contract type-assertions. |
+| `npm run verify:assets` | Prove every asset referenced by the built CSS/HTML is present in `dist/`. Runs at the end of `build`. |
 | `npm run preview` | Serve the built bundle locally. |
 | `npm test` | Every test, under `node:test` with native type-stripping. No bundler, no jsdom. |
 | `npm run contract:verify` | Recompute the vendored contract digest and check it against the pin. |
@@ -378,7 +429,42 @@ Build, then serve `dist/` as static files behind **nginx + HTTPS** — ideally o
 origin** as the API, which is what the frontend defaults to.
 
 ```bash
-npm ci && npm run build      # → dist/
+npm ci && npm run build      # → dist/  (ends with verify:assets)
+```
+
+### Publish the WHOLE of dist/, and delete what is no longer in it
+
+```bash
+sudo rsync -a --delete dist/ /var/www/gts/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+The trailing slash on `dist/` and `--delete` both matter. Vite emits content-hashed asset
+filenames, so without `--delete` the web root accumulates every asset from every past release
+forever; and copying `dist` rather than `dist/` would nest it as `/var/www/gts/dist`. `-a`
+preserves the full tree, which is what carries `public/` files such as `ghatsila.jpg` and
+`favicon.svg` up to the web root alongside `assets/`.
+
+The backend repo's `start.sh` does exactly this (`sync_dir`, with a `tar` fallback when `rsync`
+is absent) and snapshots the previous web root first so a failed `nginx -t` rolls straight back.
+
+### Verify the deploy — check the Content-Type, not just the status code
+
+```bash
+curl -sSI https://gtsalgoresearch.online/ghatsila.jpg | head -3
+```
+
+Expect `HTTP/2 200` **and `content-type: image/jpeg`**. Because of the SPA fallback a missing
+static file also answers **200** — with `content-type: text/html`, because nginx served
+`index.html` instead. So a bare status-code check cannot tell "the image is there" from "the
+image is missing"; only the `Content-Type` can:
+
+```bash
+# The one-liner that actually answers the question:
+curl -sSo /dev/null -w '%{http_code} %{content_type} %{size_download}\n' \
+  https://gtsalgoresearch.online/ghatsila.jpg
+# 200 image/jpeg 284116   → present
+# 200 text/html 1042      → MISSING, masked by the SPA fallback
 ```
 
 ### The SPA fallback is required
