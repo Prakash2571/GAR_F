@@ -58,6 +58,7 @@ import { BoxExecutionAttempts } from "./BoxExecutionAttempts.tsx";
 import { BoxDayPnlStrip } from "./BoxDayPnl.tsx";
 // The four control panels are now mounted by ControlBox, which owns their layout and nothing else.
 import { ControlBox } from "./components/box/ControlBox.tsx";
+import { RunConfirm } from "./components/box/RunConfirm.tsx";
 import { useBoxSounds } from "./useBoxSounds.ts";
 import { BrokerStatusPanel } from "./BrokerStatusPanel.tsx";
 import { RuntimeStatusBanners } from "./RuntimeStatusBanners.tsx";
@@ -233,6 +234,14 @@ export default function Box({ onLock }: Props) {
   /** Closed-history broker filter. Only rendered when both brokers appear. */
   const [brokerFilter, setBrokerFilter] = useState<BrokerFilter>("all");
   const [live, setLive] = useState(false);
+  /**
+   * True while the pre-run confirmation is open.
+   *
+   * Deliberately OUTSIDE runOnce: this only decides whether to ASK, and the confirm handler goes
+   * through the very same toggleScanner() as before, so the synchronous single-flight claim that
+   * stops a double submit is untouched.
+   */
+  const [confirmRun, setConfirmRun] = useState(false);
   /** Execution mode / arming / session / risk. Its own state and its own error line. */
   const [executionControl, setExecutionControl] = useState<BoxExecutionControlView | undefined>(undefined);
   const [executionError, setExecutionError] = useState<string | null>(null);
@@ -924,7 +933,11 @@ export default function Box({ onLock }: Props) {
         soundEnabled={soundEnabled}
         onToggleSound={toggleSound}
         onTestSound={testSound}
-        onToggleScanner={() => void toggleScanner()}
+        // ASYMMETRIC ON PURPOSE. Starting asks first, because the set of underlyings it will act on
+        // is now a ~200-part decision that is otherwise only visible in another tab. STOPPING stays
+        // instant: friction in front of the control that reduces activity is friction in the wrong
+        // place.
+        onToggleScanner={() => (running ? void toggleScanner() : setConfirmRun(true))}
         onStrikeLevel={(level) => void handleStrikeLevel(level)}
         onLock={onLock}
       />
@@ -1889,6 +1902,20 @@ export default function Box({ onLock }: Props) {
           busy={deletingId === deleteTarget.id}
           onConfirm={(reason) => void handleDelete(deleteTarget.id, reason)}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {/* Pre-run confirmation: what is about to be watched, and what will not be. Informational —
+          every real refusal stays with the backend, so this can only decline to proceed. */}
+      {confirmRun && (
+        <RunConfirm
+          live={live}
+          busy={busy}
+          onConfirm={() => {
+            setConfirmRun(false);
+            void toggleScanner();
+          }}
+          onCancel={() => setConfirmRun(false)}
         />
       )}
     </div>

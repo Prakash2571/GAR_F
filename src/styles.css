@@ -2593,6 +2593,247 @@ table {
 }
 
 /* --------------------------------------------------------------------------
+ * THE UNIVERSE PICKER — browse the real F&O board and tick what not to enter.
+ *
+ * The row is a flex line rather than a table because the fields are of wildly
+ * different importance: the symbol and the checkbox are the decision, everything
+ * else is supporting evidence that may wrap away on a narrow screen without
+ * costing the operator anything.
+ *
+ * The list is scroll-capped. ~200 rows in a control panel would push every other
+ * control off the page, and the whole point of the Control Box was to stop making
+ * the operator scroll past three screens to find one thing.
+ * -------------------------------------------------------------------------- */
+
+.box-universe {
+  margin-bottom: var(--s-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.box-universe-reload {
+  margin-left: auto;
+}
+
+.box-universe-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-5);
+  margin: 0;
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+
+.box-universe-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.box-universe-stats dt {
+  font-size: var(--fs-micro);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.box-universe-stats dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+/* Cap-blocked names look enabled and cannot trade, so the count is tinted the
+   moment it is non-zero rather than only inside the explanatory banner. */
+.box-universe-stats > div.is-warn dd {
+  color: var(--warning);
+}
+
+.box-universe-caps {
+  margin: 0;
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+}
+
+.box-universe-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--border);
+}
+
+.box-universe-search {
+  flex: 1 1 18ch;
+  min-width: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.box-universe-filters {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.box-universe-filters .btn.is-active {
+  border-color: var(--accent);
+  background: var(--accent-quiet);
+}
+
+.box-universe-bulk {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: 0 var(--s-4) var(--s-3);
+  font-size: var(--fs-xs);
+}
+
+.box-universe-list {
+  max-height: 22rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+
+.box-universe-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-2) var(--s-4);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+
+.box-universe-row:last-child {
+  border-bottom: none;
+}
+
+/* Excluded reads as receded, not as an error: declining a name is a normal,
+   correct operator action, and colouring it like a fault would discourage the
+   one control on this page that can make the system trade LESS. */
+.box-universe-row.is-excluded .box-universe-sym {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+/* Staged but NOT yet sent. Marked because the commit bar's counts are the only
+   other place this is visible, and an unnoticed staged re-inclusion would
+   re-open entry on a name that was deliberately declined. */
+.box-universe-row.is-staged {
+  border-left: 2px solid var(--accent);
+  background: var(--accent-quiet);
+}
+
+.box-universe-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  cursor: pointer;
+}
+
+.box-universe-pick input {
+  cursor: pointer;
+}
+
+.box-universe-pick input:disabled {
+  cursor: not-allowed;
+}
+
+.box-universe-sym {
+  min-width: 10ch;
+  font-family: var(--font-mono);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+.box-universe-name {
+  flex: 1 1 12ch;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+}
+
+.box-universe-tag {
+  padding: 0 var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--tracking-caps);
+  color: var(--text-muted);
+}
+
+.box-universe-lot,
+.box-universe-exp,
+.box-universe-strikes {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.box-universe-bad {
+  padding: 0 var(--s-2);
+  border: 1px solid var(--warning);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--tracking-caps);
+  color: var(--warning);
+  cursor: help;
+  white-space: nowrap;
+}
+
+.box-universe-why {
+  flex: 1 1 10ch;
+  font-size: var(--fs-xs);
+}
+
+.box-universe-apply {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-xs);
+}
+
+.box-universe-pending {
+  color: var(--accent);
+  font-weight: var(--fw-semibold);
+}
+
+/* The same stat strip inside the pre-run modal, without the panel's own edges. */
+.box-run-stats {
+  border-top: none;
+  border-radius: var(--r-sm);
+  padding: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+
+.box-run-warn {
+  color: var(--warning);
+}
+
+/* --------------------------------------------------------------------------
  * EXCLUDED UNDERLYINGS — the operator blocklist.
  * -------------------------------------------------------------------------- */
 

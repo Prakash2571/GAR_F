@@ -44,6 +44,8 @@ import type {
   BoxOpportunityContract,
   BoxStatusContract,
   BoxExcludedUnderlyingsContract,
+  BoxUniverseContract,
+  UniverseUnderlyingContract,
   BrokerHealthContract,
   BrokerLoginStartContract,
   BrokerLogoutContract,
@@ -64,6 +66,8 @@ import type {
   BoxOpportunity,
   BoxStatus,
   BoxExcludedUnderlyings,
+  BoxUniverse,
+  UniverseUnderlying,
   BrokerHealthView,
   BrokerSessionView,
   BrokerStatus,
@@ -226,6 +230,20 @@ type _BoxExcludedUnderlyings = Assert<
   MutuallyAssignable<BoxExcludedUnderlyingsContract, BoxExcludedUnderlyings>
 >;
 
+/**
+ * GET /api/box/universe — whole-object, both levels, because both schemas are CLOSED.
+ *
+ * Asserted rather than curated for the same reason as the blocklist: this is the surface an operator
+ * screens the universe from before arming, and the two fields whose meaning must not drift are
+ * `admissible` and `inadmissible_reason`. If the backend ever renamed an inadmissibility code, a
+ * curated assertion would let the picker fall through to "no reason given" on a name that can never
+ * trade — silence exactly where an explanation is the whole point. This breaks compilation instead.
+ */
+type _UniverseUnderlying = Assert<
+  MutuallyAssignable<UniverseUnderlyingContract, UniverseUnderlying>
+>;
+type _BoxUniverse = Assert<MutuallyAssignable<BoxUniverseContract, BoxUniverse>>;
+
 // GET /api/box/config — the closed entry-gate economics scalars (excludes the frontend-
 // optional `tunable`, and the frontend-narrowed `execution_mode` enum vs schema `string`).
 type _BoxConfigFields = Assert<
@@ -338,6 +356,9 @@ export type __ContractAssertProof = [
   _BoxStatusFields,
   // contract v1.13.0 — the operator blocklist of underlyings that may never be entered.
   _BoxExcludedUnderlyings,
+  // contract v1.15.0 — the pre-run universe picker.
+  _UniverseUnderlying,
+  _BoxUniverse,
   _BoxConfigFields,
   _BoxExecControlFields,
   _BoxOpportunityFields,

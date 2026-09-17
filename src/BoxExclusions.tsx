@@ -134,7 +134,8 @@ export function BoxExclusions({
       <p className="box-exclusions-sub">
         Never enter a new box on these names — in <strong>every</strong> execution mode, paper and
         live. Exits, reductions and protective cancels are never affected, so excluding a name cannot
-        trap a position that is already open.
+        trap a position that is already open. This is the authoritative list; use the picker above to
+        choose from the actual board, and the field below for a name the board has not resolved yet.
       </p>
 
       {/*
@@ -194,7 +195,7 @@ export function BoxExclusions({
       {writable ? (
         <form className="box-exclusions-form" onSubmit={(e) => void add(e)}>
           <label className="box-exclusions-field">
-            <span className="box-exclusions-k">Underlying</span>
+            <span className="box-exclusions-k">Underlying by name</span>
             <input
               value={symbol}
               onChange={(ev) => setSymbol(ev.target.value)}

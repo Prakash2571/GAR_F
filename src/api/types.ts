@@ -847,6 +847,70 @@ export interface BoxExcludedUnderlyings {
   excluded: ExcludedUnderlying[];
 }
 
+/** Why an underlying cannot trade under the current quantity caps. */
+export type UniverseInadmissibility =
+  | "lot_exceeds_per_leg_cap"
+  | "four_legs_exceed_gross_cap"
+  | "no_paired_strikes"
+  | "unusable_lot_size";
+
+/**
+ * One underlying in the tradable universe, as the PRE-RUN picker shows it.
+ *
+ * Two INDEPENDENT verdicts, and conflating them would mislead:
+ *   `excluded`   — what the operator has already decided.
+ *   `admissible` — whether the current quantity caps permit the name to trade AT ALL.
+ *
+ * A name may be either, both or neither. `admissible: false` is a CONFIGURATION fact, not a market
+ * condition: the name is not quiet, it is impossible, and the backend's refusal happens deep on the
+ * entry path where it reads like an execution fault.
+ */
+export interface UniverseUnderlying {
+  /** Exactly the string the bulk write expects. */
+  symbol: string;
+  /** Display name; falls back to the symbol, so never blank. */
+  name: string;
+  is_index: boolean;
+  /** One lot in units. 0 ⇒ the chain reported no usable lot size. */
+  lot_size: number;
+  expiry: string | null;
+  /** Strikes carrying BOTH a CE and a PE. Below 2 no box can be formed. */
+  paired_strikes: number;
+  excluded: boolean;
+  excluded_reason: string | null;
+  admissible: boolean;
+  inadmissible_reason: UniverseInadmissibility | null;
+  /** One bounded sentence naming the actual numbers. Safe to display verbatim. */
+  inadmissible_detail: string | null;
+}
+
+/**
+ * GET /api/box/universe — every underlying the engine could watch.
+ *
+ * Readable while the engine is IDLE, which is the point: the operator decides what to discover
+ * instead of inferring it afterwards from whichever opportunities happened to appear.
+ */
+export interface BoxUniverse {
+  /** Indices first, then alphabetical — the order the engine keeps names in under a token squeeze. */
+  underlyings: UniverseUnderlying[];
+  summary: {
+    total: number;
+    indices: number;
+    excluded: number;
+    /** Neither excluded nor cap-blocked — what discovery will actually consider. */
+    watchable: number;
+    /** NOT excluded and still unable to trade. These look enabled and are not. */
+    blocked_by_caps: number;
+  };
+  /** The caps every row was judged against. 0 ⇒ no limit. */
+  caps: { max_open_leg_quantity: number; max_gross_open_leg_quantity: number };
+  /** False ⇒ no universe pass has completed. An empty list is then NOT "the universe is empty". */
+  built: boolean;
+  built_at: number | null;
+  /** False ⇒ the backend refuses all new entry regardless of what this list shows. */
+  blocklist_readable: boolean;
+}
+
 export interface BoxStatus {
   running: boolean;
   state: "SCANNING" | "MARKET_CLOSED" | "STOPPED";

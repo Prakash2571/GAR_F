@@ -42,6 +42,7 @@ import { BoxSessionControl } from "../../BoxSessionControl.tsx";
 import { BoxRiskControl } from "../../BoxRiskControl.tsx";
 import { BoxGates } from "../../BoxGates.tsx";
 import { BoxExclusions } from "../../BoxExclusions.tsx";
+import { UniversePicker } from "./UniversePicker.tsx";
 import type {
   BoxConfigView,
   BoxExcludedUnderlyings,
@@ -182,12 +183,27 @@ export function ControlBox({
         )}
 
         {tab === "universe" && (
-          <BoxExclusions
-            blocklist={blocklist}
-            canTrade={canTrade}
-            isFullAdmin={isFullAdmin}
-            onChanged={onBlocklistChanged}
-          />
+          <>
+            {/*
+              THE PICKER FIRST, because browsing the real board is how this decision is actually made.
+              Typing a symbol required the operator to already know every name they might decline,
+              which is unusable once the whole F&O universe is being watched. `BoxExclusions` stays
+              below it as the authoritative list of what IS excluded and as the by-name fallback for a
+              symbol the board has not resolved yet (before the first universe pass, say).
+            */}
+            <UniversePicker
+              canTrade={canTrade}
+              isFullAdmin={isFullAdmin}
+              persistent={blocklist?.persistent ?? false}
+              onChanged={onBlocklistChanged}
+            />
+            <BoxExclusions
+              blocklist={blocklist}
+              canTrade={canTrade}
+              isFullAdmin={isFullAdmin}
+              onChanged={onBlocklistChanged}
+            />
+          </>
         )}
 
         {tab === "risk" && (
