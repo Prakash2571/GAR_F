@@ -145,6 +145,14 @@
   "stopped_at": null,
   "universe_built_at": null,
   "strike_level": 3,
+  "excluded_underlyings": {
+    "readable": true,
+    "persistent": true,
+    "load_state": "loaded",
+    "error": null,
+    "max": 500,
+    "excluded": []
+  },
   "underlyings": 0,
   "candidates": 0,
   "monitored_tokens": 0,

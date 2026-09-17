@@ -2017,6 +2017,15 @@ table {
   background: var(--accent-quiet);
 }
 
+/* The operator blocklist is a DECISION, not a market verdict, so it reads as neutral-but-firm
+   rather than as an error: an excluded row is often perfectly tradable and being declined. */
+.box-badge--excluded {
+  margin-left: var(--s-2);
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+  background: var(--surface-sunken);
+}
+
 .box-badge--warn {
   color: var(--warning);
   border-color: var(--warning);
@@ -2468,6 +2477,7 @@ table {
 .box-session,
 .box-risk,
 .box-gates,
+.box-exclusions,
 .box-exec-health,
 .box-broker-panel,
 .box-op-columns {
@@ -2478,10 +2488,223 @@ table {
   box-shadow: var(--shadow-card);
 }
 
+/* --------------------------------------------------------------------------
+ * THE CONTROL BOX — one frame around the four control panels.
+ *
+ * The nested panels keep their own shell (border + shadow) because they are also
+ * mounted standalone in tests and could be re-used elsewhere. Inside this
+ * container that would double the border, so the last-child margin and the outer
+ * radius are neutralised rather than the panels being restyled.
+ * -------------------------------------------------------------------------- */
+
+.box-controlbox {
+  margin-bottom: var(--s-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.box-controlbox-h {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.box-controlbox-title {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* The headline stays out of the tab body so an armed live state is never behind a tab. */
+.box-controlbox-headline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  margin-left: auto;
+  font-size: var(--fs-xs);
+}
+
+.box-controlbox-headline-k {
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.box-controlbox-headline-v {
+  margin-right: var(--s-3);
+  font-family: var(--font-mono);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+.box-controlbox-tabs {
+  display: flex;
+  gap: var(--s-1);
+  flex-wrap: wrap;
+  padding: 0 var(--s-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.box-controlbox-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* A tab that needs attention says so on its own label, so an operator does not have to
+   open every tab to discover a refusal. */
+.box-controlbox-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25em;
+  padding: 0 0.35em;
+  border-radius: var(--r-pill);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.6;
+}
+
+.box-controlbox-flag--bad {
+  background: var(--negative-quiet);
+  color: var(--negative);
+}
+
+.box-controlbox-body {
+  padding: var(--s-4) var(--s-4) var(--s-1);
+  background: var(--surface);
+}
+
+.box-controlbox-body > :last-child {
+  margin-bottom: var(--s-3);
+}
+
+/* --------------------------------------------------------------------------
+ * EXCLUDED UNDERLYINGS — the operator blocklist.
+ * -------------------------------------------------------------------------- */
+
+.box-exclusions-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.box-exclusions-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-2) var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.box-exclusions-item:last-child {
+  border-bottom: none;
+}
+
+.box-exclusions-sym {
+  min-width: 8ch;
+  font-family: var(--font-mono);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+.box-exclusions-why {
+  flex: 1 1 16ch;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+
+.box-exclusions-meta {
+  font-size: var(--fs-xs);
+}
+
+.box-exclusions-empty,
+.box-exclusions-note {
+  margin: 0;
+  padding: var(--s-3) var(--s-4);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.box-exclusions-form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--border);
+}
+
+.box-exclusions-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  flex: 0 1 14ch;
+}
+
+.box-exclusions-field--wide {
+  flex: 1 1 24ch;
+}
+
+.box-exclusions-k {
+  font-size: var(--fs-micro);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.box-exclusions-field input {
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.box-exclusions-field input[aria-invalid="true"] {
+  border-color: var(--negative);
+}
+
+.box-exclusions-msg {
+  margin: 0;
+  padding: var(--s-3) var(--s-4);
+  font-size: var(--fs-sm);
+}
+
+.box-exclusions-msg--ok {
+  color: var(--positive);
+}
+
+.box-exclusions-msg--warn {
+  color: var(--warning);
+}
+
+.box-exclusions-msg--error {
+  color: var(--negative);
+}
+
 .box-exec-head,
 .box-session-h,
 .box-risk-h,
 .box-gates-summary,
+.box-exclusions-h,
 .box-exec-health-title,
 .box-broker-panel-h,
 .box-exec-arm-h {
@@ -2502,6 +2725,7 @@ table {
 .box-exec-sub,
 .box-session-help,
 .box-risk-hint,
+.box-exclusions-sub,
 .box-gates-hint,
 .box-exec-note,
 .box-session-note,

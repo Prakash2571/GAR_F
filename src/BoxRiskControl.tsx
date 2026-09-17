@@ -162,10 +162,49 @@ export function BoxRiskControl({
         </p>
       </div>
 
-      {/* ── open-box limit, and how it interacts ── */}
+      {/* ── THE INVENTORY CEILING — the mode-independent one, reported FIRST ──
+          Listed above BOX_LIVE_MAX_OPEN_BOXES deliberately: this is the control that actually
+          answers "can a second box open?", and an operator comparing the two needs to reach the
+          enforceable one first. */}
       <div className="box-risk-item">
         <div className="box-risk-item-head">
-          <span className="box-risk-k">Maximum open Boxes</span>
+          <span className="box-risk-k">Box inventory ceiling (all modes)</span>
+          <span
+            className={`box-risk-v${risk.max_open_boxes_all_modes > 0 ? " is-on" : ""}`}
+          >
+            {risk.box_inventory_held} held
+            {risk.max_open_boxes_all_modes > 0 ? ` / ${risk.max_open_boxes_all_modes}` : " · no limit"}
+          </span>
+        </div>
+        <p className="box-risk-hint">
+          {risk.max_open_boxes_all_modes > 0 ? (
+            <>
+              Refused at admission in <strong>every</strong> execution mode, before any exposure
+              exists — so it stops a second Box on <strong>any</strong> underlying, in{" "}
+              <strong>either</strong> direction. "Held" counts committed exposure, not just open
+              positions: an unresolved partial entry, an unreconciled order and an in-flight entry
+              pipeline each occupy a slot, because each is capital at risk.
+            </>
+          ) : (
+            <>
+              <strong>No total limit.</strong> Nothing caps how many Boxes may be held at once in
+              this deployment except the session budgets. Set{" "}
+              <code>BOX_MAX_OPEN_BOXES</code> to bound it.
+            </>
+          )}
+        </p>
+        <p className="box-risk-env">
+          Set with <code>BOX_MAX_OPEN_BOXES</code> (0 = unlimited). Bounds what you{" "}
+          <strong>hold</strong>; <code>BOX_SESSION_MAX_ENTRY_ATTEMPTS</code> bounds what you{" "}
+          <strong>try</strong> — an attempt that filled partially and was unwound leaves no inventory
+          behind, so only the attempt budget catches it. A supervised trial wants both.
+        </p>
+      </div>
+
+      {/* ── the LIVE open-box limit, and how it interacts ── */}
+      <div className="box-risk-item">
+        <div className="box-risk-item-head">
+          <span className="box-risk-k">Maximum open Boxes (live only)</span>
           <span className="box-risk-v">
             {risk.open_boxes} open{risk.max_open_boxes > 0 ? ` / ${risk.max_open_boxes}` : ""}
           </span>
@@ -187,6 +226,12 @@ export function BoxRiskControl({
               lifecycle(s) may run regardless of this cap.
             </>
           )}
+        </p>
+        <p className="box-risk-env">
+          Enforced inside the live order manager, which paper never constructs — so a paper rehearsal
+          does <strong>not</strong> exercise this cap. It is also read from a count refreshed only
+          after a position exists, so it cannot refuse two entries admitted in the same instant. The
+          ceiling above covers both gaps.
         </p>
       </div>
 

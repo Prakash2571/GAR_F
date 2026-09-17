@@ -324,7 +324,43 @@ test("the contract version and the backend pin move TOGETHER", () => {
   //     hand-written and stale, so three stats silently rendered "never observed" on a healthy feed.
   // `universe`, `box_lane_connected` and `box_lane_dedicated` are all REQUIRED on an
   // `additionalProperties: false` schema, so this is again a hard deploy-order dependency.
-  assert.equal(version.contract_version, "1.12.0");
+  //
+  // 1.12.0 -> 1.13.0: THE OPERATOR BLOCKLIST OF UNDERLYINGS THAT MAY NEVER BE ENTERED.
+  // Until now the traded universe came entirely from the broker's instrument dump, and the only ways
+  // to keep a name out were to shrink `BOX_MAX_UNDERLYINGS` (which selects by the board's priority
+  // order, not by name) or to stop the scanner. Neither expresses "this specific name is not
+  // tradable until I say otherwise", which is a REFUSAL rather than a preference. The contract
+  // therefore gained:
+  //   • `excluded-underlying.schema.json` — one blocklisted name with its provenance (symbol, a
+  //     bounded operator note, the operator ROLE that added it, and when). Never a token or account;
+  //   • `box-excluded-underlyings.schema.json` — `GET /api/box/excluded-underlyings`, whose
+  //     `load_state` is part of the contract ON PURPOSE. A blocklist that cannot be READ is not an
+  //     empty blocklist: `readable: false` means the backend is refusing ALL new entry (readiness
+  //     blocker `underlying_exclusions_unreadable`, scope `entry`), because a list it cannot read
+  //     cannot confirm that any name is permitted. A client that rendered that as "nothing is
+  //     excluded" would tell the operator the opposite of what is happening, which is why the state
+  //     is asserted whole-object in contract.assert.ts rather than field-curated;
+  //   • `box-status.excluded_underlyings` — the same block embedded verbatim, so the dashboard can
+  //     badge an excluded row without a second request.
+  // The status field is REQUIRED on an `additionalProperties: false` schema, so this is once more a
+  // hard deploy-order dependency: the backend must ship first, or an unbumped frontend rejects the
+  // whole status response.
+  //
+  // 1.13.0 -> 1.14.0: A TOTAL INVENTORY CEILING THAT PAPER CAN ACTUALLY EXERCISE.
+  // `BOX_LIVE_MAX_OPEN_BOXES` looks like the "only one box" control and is not, for two reasons: it
+  // lives in the live-only order manager (so no paper rehearsal can breach it) and it is read from a
+  // count the engine refreshes only AFTER a position exists (so it cannot refuse the second of two
+  // entries admitted in the same instant). `box-execution-control.risk` therefore gained:
+  //   • `max_open_boxes_all_modes` — BOX_MAX_OPEN_BOXES, enforced in the coordinator's synchronous
+  //     admission prologue in EVERY execution mode and before any exposure exists. 0 = unlimited;
+  //   • `box_inventory_held` — what it counts: open positions + unresolved residual attempts +
+  //     distinct underlyings with unresolved order intents. It can EXCEED `open_boxes`, because a
+  //     half-filled entry that never became a Box is still capital at risk, and the UI must not
+  //     present the two as the same number.
+  // Both are REQUIRED on the `additionalProperties: false` risk block, so this is another hard
+  // deploy-order dependency: the backend ships first or the whole execution-control response is
+  // rejected here.
+  assert.equal(version.contract_version, "1.14.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,
