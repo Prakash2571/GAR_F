@@ -9,7 +9,7 @@
   "emergency_flatten_enabled": false,
   "mode": {
     "selection": "paper_latency",
-    "label": "PAPER · LATENCY",
+    "label": "PAPER \u00b7 LATENCY",
     "runtime_selectable": [
       "paper_latency",
       "paper_legging",
@@ -61,7 +61,9 @@
     "open_boxes": 0,
     "residual_legs": 0,
     "daily_loss_limit": 5000,
-    "realised_pnl_today": null
+    "realised_pnl_today": null,
+    "max_open_boxes_all_modes": 1,
+    "box_inventory_held": 0
   },
   "execution": {
     "live_entry_submit_concurrency": 1,
@@ -99,7 +101,7 @@
       "blockers": [
         {
           "code": "deployment_gate_disabled",
-          "detail": "LIVE UNAVAILABLE — deployment gate disabled: BOX_EXECUTION_MODE=live and BOX_LIVE_TRADING_ENABLED=true are required, and cannot be set from the UI."
+          "detail": "LIVE UNAVAILABLE \u2014 deployment gate disabled: BOX_EXECUTION_MODE=live and BOX_LIVE_TRADING_ENABLED=true are required, and cannot be set from the UI."
         }
       ]
     },
@@ -108,7 +110,7 @@
       "blockers": [
         {
           "code": "deployment_gate_disabled",
-          "detail": "LIVE UNAVAILABLE — deployment gate disabled: BOX_EXECUTION_MODE=live and BOX_LIVE_TRADING_ENABLED=true are required, and cannot be set from the UI."
+          "detail": "LIVE UNAVAILABLE \u2014 deployment gate disabled: BOX_EXECUTION_MODE=live and BOX_LIVE_TRADING_ENABLED=true are required, and cannot be set from the UI."
         }
       ]
     },
@@ -117,7 +119,7 @@
       "blockers": [
         {
           "code": "deployment_gate_disabled",
-          "detail": "LIVE UNAVAILABLE — deployment gate disabled: BOX_EXECUTION_MODE=live and BOX_LIVE_TRADING_ENABLED=true are required, and cannot be set from the UI."
+          "detail": "LIVE UNAVAILABLE \u2014 deployment gate disabled: BOX_EXECUTION_MODE=live and BOX_LIVE_TRADING_ENABLED=true are required, and cannot be set from the UI."
         }
       ]
     }

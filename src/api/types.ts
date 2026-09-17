@@ -1479,7 +1479,23 @@ export interface BoxExecutionControl {
     one_active_box_per_underlying: boolean;
     active_underlyings: BoxActiveUnderlying[];
     claimed_underlyings: string[];
+    /**
+     * `BOX_LIVE_MAX_OPEN_BOXES`. LIVE ONLY, and read from a count refreshed only AFTER a position
+     * exists — so it cannot refuse the second of two entries admitted in the same instant, and no
+     * paper rehearsal exercises it. Prefer `max_open_boxes_all_modes` when reporting a guarantee.
+     */
     max_open_boxes: number;
+    /**
+     * `BOX_MAX_OPEN_BOXES` — the MODE-INDEPENDENT inventory ceiling, enforced at admission in every
+     * execution mode and before any exposure exists. 0 = unlimited.
+     */
+    max_open_boxes_all_modes: number;
+    /**
+     * What that ceiling currently counts: open positions + unresolved residual attempts + distinct
+     * underlyings with unresolved order intents. May exceed `open_boxes` while a partial entry is
+     * unresolved, because a half-filled box is still capital at risk.
+     */
+    box_inventory_held: number;
     open_boxes: number;
     residual_legs: number;
     daily_loss_limit: number;
