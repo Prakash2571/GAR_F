@@ -951,6 +951,55 @@ export interface BoxUniverse {
   discovering: boolean;
 }
 
+/** Why no usable balance figure is being published. Each needs a DIFFERENT operator action. */
+export type FundsUnavailableReason =
+  /** No authenticated broker session — log in. */
+  | "no_session"
+  /** This deployment has no funds reader for the active broker — stop expecting a number. */
+  | "not_supported"
+  /** A read is configured and has not completed yet — wait. */
+  | "never_read"
+  /** The last read errored and there is no earlier figure — see `last_error`. */
+  | "read_failed"
+  /** The broker answered without a finite figure. */
+  | "not_reported"
+  /** The broker's funds semantics are not declared, so the number cannot be called money. */
+  | "semantics_unknown";
+
+/**
+ * `box_status.account_funds` — free capital in the account, right now.
+ *
+ * DISTINCT from `economic_admission.picture.available_funds`, which only exists as a by-product of
+ * live entry admission (null in paper, null with the funding gates off, null before the first entry,
+ * and frozen thereafter). This one is a standing observation on its own timer, in every mode with a
+ * session.
+ *
+ * NULL IS NEVER ZERO. When `free_to_trade_rupees` is null, `unavailable_reason` says why — and the
+ * six reasons are kept apart because they call for different actions. Rendering an unread balance as
+ * ₹0 would tell an operator their account is empty.
+ */
+export interface AccountFunds {
+  /** Spendable rupees, through the same per-broker semantics the live admission gate applies. */
+  free_to_trade_rupees: number | null;
+  /** The broker's raw `available` figure, before semantics. */
+  broker_available_rupees: number | null;
+  /** What the broker says is already blocked. Null is UNKNOWN, not zero. */
+  broker_utilised_rupees: number | null;
+  broker: BrokerId | null;
+  /** How `broker_available_rupees` was interpreted. `net_of_encumbrance` ⇒ utilised NOT subtracted. */
+  semantics: "net_of_encumbrance" | "gross_of_encumbrance" | "unverified" | null;
+  encumbrance_netted: boolean;
+  observed_at: number | null;
+  /** Age at publication. Never negative. */
+  age_ms: number | null;
+  /** Present AND within the freshness bound. A stale figure is still published, with its age. */
+  fresh: boolean;
+  unavailable_reason: FundsUnavailableReason | null;
+  last_error: string | null;
+  /** One sentence on what this figure can and cannot prove. Safe to display verbatim. */
+  note: string;
+}
+
 export interface BoxStatus {
   running: boolean;
   state: "SCANNING" | "MARKET_CLOSED" | "STOPPED";
@@ -999,6 +1048,11 @@ export interface BoxStatus {
   execution_funnel: ExecutionFunnelSnapshot;
   /** The last economic-admission decision (five distinct quantities), or null when no economic control is enabled. */
   economic_admission: EconomicAdmission | null;
+  /**
+   * Free capital, published continuously. NEVER null itself — when no figure is known it carries an
+   * `unavailable_reason`, so an unread balance can never be rendered as an empty account.
+   */
+  account_funds: AccountFunds;
   db_enabled: boolean;
   started_at: number | null;
   stopped_at: number | null;

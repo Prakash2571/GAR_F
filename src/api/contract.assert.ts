@@ -44,6 +44,7 @@ import type {
   BoxOpportunityContract,
   BoxStatusContract,
   BoxExcludedUnderlyingsContract,
+  AccountFundsContract,
   BoxUniverseContract,
   UniverseUnderlyingContract,
   BrokerHealthContract,
@@ -66,6 +67,7 @@ import type {
   BoxOpportunity,
   BoxStatus,
   BoxExcludedUnderlyings,
+  AccountFunds,
   BoxUniverse,
   UniverseUnderlying,
   BrokerHealthView,
@@ -233,6 +235,16 @@ type _BoxExcludedUnderlyings = Assert<
 >;
 
 /**
+ * box_status.account_funds — whole-object, because the schema is CLOSED.
+ *
+ * Asserted rather than curated because the fields that must not drift are `free_to_trade_rupees`
+ * being NULLABLE and `unavailable_reason` being an exhaustive union. If the backend added a seventh
+ * reason, a curated assertion would let the UI fall through to a bare dash on a state that has a
+ * specific operator action — which is the whole point of keeping the six apart.
+ */
+type _AccountFunds = Assert<MutuallyAssignable<AccountFundsContract, AccountFunds>>;
+
+/**
  * GET /api/box/universe — whole-object, both levels, because both schemas are CLOSED.
  *
  * Asserted rather than curated for the same reason as the blocklist: this is the surface an operator
@@ -358,6 +370,8 @@ export type __ContractAssertProof = [
   _BoxStatusFields,
   // contract v1.13.0 — the operator blocklist of underlyings that may never be entered.
   _BoxExcludedUnderlyings,
+  // contract v1.17.0 — free capital, published continuously rather than per entry attempt.
+  _AccountFunds,
   // contract v1.15.0 — the pre-run universe picker.
   _UniverseUnderlying,
   _BoxUniverse,
