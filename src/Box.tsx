@@ -56,10 +56,8 @@ import { BoxOrderStreamStatus } from "./BoxOrderStreamStatus.tsx";
 import { BoxOperationalState } from "./BoxOperationalState.tsx";
 import { BoxExecutionAttempts } from "./BoxExecutionAttempts.tsx";
 import { BoxDayPnlStrip } from "./BoxDayPnl.tsx";
-import { BoxGates } from "./BoxGates.tsx";
-import { BoxExecutionControl } from "./BoxExecutionControl.tsx";
-import { BoxRiskControl } from "./BoxRiskControl.tsx";
-import { BoxSessionControl } from "./BoxSessionControl.tsx";
+// The four control panels are now mounted by ControlBox, which owns their layout and nothing else.
+import { ControlBox } from "./components/box/ControlBox.tsx";
 import { useBoxSounds } from "./useBoxSounds.ts";
 import { BrokerStatusPanel } from "./BrokerStatusPanel.tsx";
 import { RuntimeStatusBanners } from "./RuntimeStatusBanners.tsx";
@@ -772,6 +770,16 @@ export default function Box({ onLock }: Props) {
    * ±3 no matter which level was selected.
    */
   const strikeLevel = status?.strike_level ?? cfg?.strike_level ?? 3;
+  /**
+   * The blocklisted underlyings, as a Set for O(1) lookup per opportunity row.
+   *
+   * Memoised on the array identity rather than rebuilt per render: this table can hold 60 rows and
+   * the page re-renders several times a second off the SSE snapshot.
+   */
+  const excludedSymbols = useMemo(
+    () => new Set((status?.excluded_underlyings.excluded ?? []).map((e) => e.symbol)),
+    [status?.excluded_underlyings.excluded],
+  );
   /** Strike PAIRS in the active window: C(n,2) for n = 2·level+1 strikes. */
   const strikePairs =
     cfg?.max_candidates_per_underlying ??
@@ -1112,41 +1120,33 @@ export default function Box({ onLock }: Props) {
         </div>
       </section>
 
-      {/* ── EXECUTION: what this deployment is doing, and what it is allowed to do ──
-          Placed above the thresholds because "are these real orders?" outranks every other
-          question on the page. The backend is the authority for every value shown. */}
-      <BoxExecutionControl
+      {/* ── CONTROLS: one framed surface for everything that changes what the engine does ──
+          Execution, session, universe and risk/thresholds were four sibling sections stacked down
+          the page with banners interleaved between them. They are the same four components, with
+          the same props and the same single-flight guards; ControlBox only re-parents them behind a
+          tab strip and keeps mode / entry / session armed state visible on every tab, so "are these
+          real orders, and is it armed?" can never be hidden behind a tab. */}
+      <ControlBox
         control={executionControl}
-        canTrade={canTrade}
-        isFullAdmin={isFullAdmin}
-        onChanged={() => {
-          void loadExecutionControl();
-          void loadStatus();
-        }}
-      />
-      {executionError && (
-        <div className="banner banner--warn">
-          {executionError} Prices and positions above are unaffected.
-        </div>
-      )}
-      <BoxSessionControl
-        control={executionControl}
-        canTrade={canTrade}
-        isFullAdmin={isFullAdmin}
-        onChanged={() => {
-          void loadExecutionControl();
-          void loadStatus();
-        }}
-      />
-      <BoxRiskControl control={executionControl} canTrade={canTrade} />
-
-      {/* The two thresholds above that an admin can actually change at runtime. */}
-      <BoxGates
         cfg={cfg}
+        status={status}
+        blocklist={status?.excluded_underlyings}
         canTrade={canTrade}
-        onSaved={(next) => {
+        isFullAdmin={isFullAdmin}
+        executionError={executionError}
+        onControlChanged={() => {
+          void loadExecutionControl();
+          void loadStatus();
+        }}
+        onSettingsSaved={(next) => {
           applyStatus(next.status);
           setNotice(null);
+        }}
+        onBlocklistChanged={() => {
+          // The write already returned the authoritative list, but re-read the status so every other
+          // surface that renders exclusions (the opportunity rows' EXCLUDED badge, the readiness
+          // blockers) moves in the same tick rather than lagging until the next SSE snapshot.
+          void loadStatus();
         }}
       />
 
@@ -1465,6 +1465,18 @@ export default function Box({ onLock }: Props) {
                         >
                           {STATUS_LABEL[o.status]}
                         </span>
+                        {/* The operator blocklist is a separate fact from the market verdict, so it
+                            gets its own badge rather than overwriting `status`. A row can be
+                            perfectly tradable AND excluded — that is exactly the case worth seeing,
+                            because it is the one where an operator is declining real edge. */}
+                        {excludedSymbols.has(o.underlying) && (
+                          <span
+                            className="box-badge box-badge--excluded"
+                            title={`${o.underlying} is on the operator blocklist, so no new box will be entered on it. Any box already open on it is still monitored and will still exit.`}
+                          >
+                            EXCLUDED
+                          </span>
+                        )}
                       </td>
                       <td>
                         <button

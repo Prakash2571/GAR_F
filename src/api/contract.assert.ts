@@ -43,6 +43,7 @@ import type {
   BoxOpenPositionContract,
   BoxOpportunityContract,
   BoxStatusContract,
+  BoxExcludedUnderlyingsContract,
   BrokerHealthContract,
   BrokerLoginStartContract,
   BrokerLogoutContract,
@@ -62,6 +63,7 @@ import type {
   BoxOpenPosition,
   BoxOpportunity,
   BoxStatus,
+  BoxExcludedUnderlyings,
   BrokerHealthView,
   BrokerSessionView,
   BrokerStatus,
@@ -199,6 +201,7 @@ type _BoxStatusFields = Assert<
       | "monitored_tokens" | "hub_subscribed" | "strike_level" | "open_positions" | "started_at"
       | "stopped_at" | "universe_built_at" | "subscribed_option_tokens" | "subscribed_spot_tokens"
       | "feed_age_ms" | "skipped_for_budget" | "skipped_symbols" | "last_error" | "market_data_state"
+      | "excluded_underlyings"
     >,
     Pick<
       BoxStatus,
@@ -207,8 +210,20 @@ type _BoxStatusFields = Assert<
       | "monitored_tokens" | "hub_subscribed" | "strike_level" | "open_positions" | "started_at"
       | "stopped_at" | "universe_built_at" | "subscribed_option_tokens" | "subscribed_spot_tokens"
       | "feed_age_ms" | "skipped_for_budget" | "skipped_symbols" | "last_error" | "market_data_state"
+      | "excluded_underlyings"
     >
   >
+>;
+
+/**
+ * GET /api/box/excluded-underlyings — whole-object, because the schema is CLOSED.
+ *
+ * Worth asserting rather than curating: the blocklist is a safety control, and `load_state` is the
+ * field whose meaning a client must not get wrong. A renamed or re-typed member here breaks
+ * compilation instead of silently degrading a refusal into "nothing is excluded".
+ */
+type _BoxExcludedUnderlyings = Assert<
+  MutuallyAssignable<BoxExcludedUnderlyingsContract, BoxExcludedUnderlyings>
 >;
 
 // GET /api/box/config — the closed entry-gate economics scalars (excludes the frontend-
@@ -321,6 +336,8 @@ export type __ContractAssertProof = [
   _AccessStatus,
   _AccessAuthBranch,
   _BoxStatusFields,
+  // contract v1.13.0 — the operator blocklist of underlyings that may never be entered.
+  _BoxExcludedUnderlyings,
   _BoxConfigFields,
   _BoxExecControlFields,
   _BoxOpportunityFields,

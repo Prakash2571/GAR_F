@@ -817,6 +817,36 @@ export interface OperationalReadiness {
   };
 }
 
+/** One underlying the operator has forbidden new entry on. */
+export interface ExcludedUnderlying {
+  /** Uppercased and trimmed, as the board reports it (NIFTY, RELIANCE, M&M). */
+  symbol: string;
+  /** Bounded operator note, or null when none was recorded — never an empty string. */
+  reason: string | null;
+  /** The operator ROLE that excluded it. Never a token or session identifier. */
+  excluded_by: string | null;
+  excluded_at: number;
+}
+
+/**
+ * GET /api/box/excluded-underlyings, and the `excluded_underlyings` block of GET /api/box/status.
+ *
+ * The load state is part of the contract on purpose. A blocklist that cannot be READ is not an empty
+ * blocklist: `readable: false` REFUSES all new entry backend-side, so the UI must render it as the
+ * reason nothing is trading rather than as "nothing is excluded".
+ */
+export interface BoxExcludedUnderlyings {
+  /** False ⇒ the backend is refusing every new entry because it cannot confirm any name is allowed. */
+  readable: boolean;
+  /** False ⇒ no box persistence, so an exclusion cannot be stored and writes are refused. */
+  persistent: boolean;
+  load_state: "never_loaded" | "loaded" | "failed" | "unpersisted";
+  error: string | null;
+  max: number;
+  /** Ordered by symbol. */
+  excluded: ExcludedUnderlying[];
+}
+
 export interface BoxStatus {
   running: boolean;
   state: "SCANNING" | "MARKET_CLOSED" | "STOPPED";
@@ -909,6 +939,14 @@ export interface BoxStatus {
     samples: number;
   } | null;
   strike_level: number;
+  /**
+   * The operator blocklist of underlyings that may never be ENTERED, in any execution mode.
+   *
+   * `readable: false` is the field that matters: it means the backend could not READ the durable
+   * list, which refuses ALL new entry (readiness blocker `underlying_exclusions_unreadable`). Render
+   * that as the REASON nothing is trading — never as an empty blocklist.
+   */
+  excluded_underlyings: BoxExcludedUnderlyings;
   open_positions: number;
   day_pnl?: BoxDayPnl;
   skipped_for_budget: number;

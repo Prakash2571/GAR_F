@@ -13,6 +13,7 @@ import type {
   BoxChain,
   BoxDeleteResult,
   BoxExecutionAttempt,
+  BoxExcludedUnderlyings,
   BoxExecutionControl,
   BoxHistoryResponse,
   BoxModeTransitionVerdict,
@@ -132,6 +133,55 @@ export async function saveBoxSettings(patch: {
     "Failed to save the box settings",
     { method: "POST", body: patch },
   );
+}
+
+/* --------------------- excluded underlyings (blocklist) ---------------------- */
+
+/**
+ * Read the operator blocklist.
+ *
+ * The Box page normally gets this for free inside `status.excluded_underlyings`; this exists for the
+ * management panel, which needs an authoritative re-read after a write rather than waiting for the
+ * next SSE snapshot.
+ */
+export async function fetchExcludedUnderlyings(): Promise<BoxExcludedUnderlyings> {
+  return request<BoxExcludedUnderlyings>(
+    "/api/box/excluded-underlyings",
+    "Failed to load the excluded underlyings",
+  );
+}
+
+/**
+ * Forbid new entry on an underlying. FULL ADMIN backend-side.
+ *
+ * Takes effect on the next evaluation in every execution mode. A box already OPEN on the symbol is
+ * unaffected — it keeps streaming, keeps being monitored and still exits.
+ */
+export async function excludeUnderlying(
+  symbol: string,
+  reason?: string,
+): Promise<BoxExcludedUnderlyings> {
+  const body = await request<{ ok?: boolean; excluded_underlyings: BoxExcludedUnderlyings }>(
+    "/api/box/excluded-underlyings",
+    `Failed to exclude ${symbol}`,
+    { method: "POST", body: reason === undefined ? { symbol } : { symbol, reason } },
+  );
+  return body.excluded_underlyings;
+}
+
+/**
+ * Allow new entry on an underlying again. FULL ADMIN backend-side.
+ *
+ * Idempotent: the backend answers 200 with `removed: false` for a symbol that was not excluded, so
+ * this never needs to special-case a missing entry.
+ */
+export async function includeUnderlying(symbol: string): Promise<BoxExcludedUnderlyings> {
+  const body = await request<{ ok?: boolean; removed: boolean; excluded_underlyings: BoxExcludedUnderlyings }>(
+    `/api/box/excluded-underlyings/${encodeURIComponent(symbol)}`,
+    `Failed to re-include ${symbol}`,
+    { method: "DELETE" },
+  );
+  return body.excluded_underlyings;
 }
 
 /* ------------------------------ trade actions -------------------------------- */
