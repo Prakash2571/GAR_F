@@ -44,6 +44,8 @@ import type {
   BoxOpportunityContract,
   BoxStatusContract,
   BrokerHealthContract,
+  BrokerLoginStartContract,
+  BrokerLogoutContract,
   BrokerRuntimeStatusContract,
   BrokerSessionContract,
   BrokerStatusContract,
@@ -53,6 +55,8 @@ import type {
   RuntimeStatusContract,
 } from "./contract.generated.ts";
 import type {
+  BrokerLoginStart,
+  BrokerLogoutResponse,
   BoxConfigView,
   BoxExecutionControl,
   BoxOpenPosition,
@@ -155,6 +159,21 @@ type _ExportStatus = Assert<MutuallyAssignable<ExportStatus, ExportStatusContrac
  */
 type _BrokerSession = Assert<MutuallyAssignable<BrokerSessionView, BrokerSessionContract>>;
 type _BrokerStatus = Assert<MutuallyAssignable<BrokerStatus, BrokerStatusContract>>;
+
+/*
+ * IN-APP BROKER LOGIN — contract v1.10.0.
+ *
+ * Both schemas are fully CLOSED (`additionalProperties: false`, every field required) and the
+ * hand-written types match them exactly, so both are asserted WHOLE-OBJECT in both directions.
+ *
+ * `BrokerLogoutResponse.ok` is deliberately `boolean` on the frontend while the schema pins
+ * `const: true`, so that direction is asserted one-way: the contract's `true` is assignable to
+ * `boolean`. Widening it here is intentional — a client that hard-required `true` would crash
+ * rather than render if the backend ever reported a refusal, and `ok` is read as a condition,
+ * not matched as a literal.
+ */
+type _BrokerLoginStart = Assert<MutuallyAssignable<BrokerLoginStart, BrokerLoginStartContract>>;
+type _BrokerLogout = Assert<AssignableTo<BrokerLogoutContract, BrokerLogoutResponse>>;
 
 /* ============================ CURATED-FIELD shapes (open leaves excluded) ============================ */
 /*
@@ -295,6 +314,9 @@ export type __ContractAssertProof = [
   _ExportStatus,
   _BrokerSession,
   _BrokerStatus,
+  // contract v1.10.0 — the in-app broker login surface.
+  _BrokerLoginStart,
+  _BrokerLogout,
   _AccessVerify,
   _AccessStatus,
   _AccessAuthBranch,

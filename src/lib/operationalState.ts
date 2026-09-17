@@ -34,6 +34,8 @@ import type {
   OperationalReadiness,
   OrderStreamBrokerStatus,
   OrderStreamStatus,
+  UniverseReadiness,
+  UniverseStage,
 } from "../api/types.ts";
 
 /**
@@ -146,6 +148,9 @@ const WIRING_LABEL: Record<OrderStreamBrokerStatus["wiring"], string> = {
   not_wired: "not wired",
   gated_off: "not armed",
   armed: "armed",
+  // Deliberately neutral wording. A paper backend builds no order-stream consumer BY DESIGN, so
+  // this is the expected configuration and must not be phrased as a shortcoming.
+  not_applicable_paper: "not applicable (paper)",
 };
 
 /**
@@ -159,6 +164,17 @@ const WIRING_LABEL: Record<OrderStreamBrokerStatus["wiring"], string> = {
  */
 export function orderStreamBrokerBand(b: OrderStreamBrokerStatus): HealthBand {
   if (b.fills_observed_by === "stream_primary_rest_reconcile") return "ready";
+  /*
+   * PAPER: `absent`, not `paused`.
+   *
+   * `paused` reads as "the fast path is temporarily unavailable", which is a fault-flavoured
+   * statement about something that is not supposed to exist here. A paper backend sends no order to
+   * the broker, so the broker has nothing to stream and there is nothing to be paused. Checked
+   * BEFORE the AUTH_EXPIRED branch is not needed (a paper deployment has no consumer and therefore
+   * no lifecycle), but it is checked before the generic fallthrough so paper never lands on
+   * `paused`.
+   */
+  if (b.wiring === "not_applicable_paper") return "absent";
   // An expired session behind the order stream is BROKEN, not merely paused: reconnecting with a
   // rejected credential cannot succeed, so it will not clear on its own.
   if (b.lifecycle === "AUTH_EXPIRED") return "broken";
@@ -169,7 +185,16 @@ export function orderStreamBrokerBand(b: OrderStreamBrokerStatus): HealthBand {
 }
 
 export function mechanismLabel(m: OrderStreamBrokerStatus["fills_observed_by"]): string {
-  return m === "stream_primary_rest_reconcile" ? "stream first, REST reconciles" : "REST polling only";
+  switch (m) {
+    case "stream_primary_rest_reconcile":
+      return "stream first, REST reconciles";
+    // A broker cannot confirm an order it never received. "REST polling only" would claim a broker
+    // round trip that does not happen in paper.
+    case "simulated_paper_fills":
+      return "Simulated fills";
+    case "rest_polling_only":
+      return "REST polling only";
+  }
 }
 
 export function deriveOrderStreamBroker(b: OrderStreamBrokerStatus): OrderStreamBrokerView {
@@ -442,4 +467,110 @@ export function bandGlyph(band: HealthBand): string {
     case "absent":
       return "—";
   }
+}
+
+
+/* ═══════════════════ THE UNIVERSE PIPELINE ═══════════════════ */
+
+/**
+ * How to render the universe diagnosis.
+ *
+ * WHY THIS EXISTS. The panel had `running` and `underlyings` and nothing else, so a scanner whose
+ * instrument master came back EMPTY looked exactly like a scanner watching a quiet market: `SCANNING`
+ * above a `0`. The backend now names the FIRST stage that stopped; this maps that stage onto the
+ * existing health bands so the headline cannot say SCANNING while the engine is incapable of
+ * evaluating anything.
+ *
+ * The band assignment is deliberate:
+ *   - `absent`  — nothing is expected to happen (the scanner is stopped).
+ *   - `paused`  — a stage is legitimately in progress and will clear on its own. WAIT.
+ *   - `broken`  — a real fault that needs investigation; it will NOT clear by itself.
+ *   - `ready`   — evaluating against real books.
+ */
+export function universeBand(u: UniverseReadiness): HealthBand {
+  if (u.stage === "evaluating") return "ready";
+  if (u.stage === "scanner_stopped") return "absent";
+  // `transient` is the backend's own judgement about whether waiting is the right response. Trusting
+  // it here keeps one vocabulary rather than re-deriving a second opinion in the UI.
+  return u.transient ? "paused" : "broken";
+}
+
+/** A short label for the stage, for a badge. The detail sentence carries the explanation. */
+export function universeStageLabel(stage: UniverseStage): string {
+  switch (stage) {
+    case "scanner_stopped": return "stopped";
+    case "not_authenticated": return "not signed in";
+    case "instruments_never_loaded": return "universe not loaded";
+    case "instruments_loading": return "loading instruments";
+    case "instruments_failed": return "instrument load FAILED";
+    case "instruments_empty": return "instrument master EMPTY";
+    case "no_board_rows": return "no board rows";
+    case "no_option_chains": return "no option chains";
+    case "no_board_chain_overlap": return "board/chain mismatch";
+    case "awaiting_spot_prices": return "awaiting spot prices";
+    case "no_windows_built": return "no strike windows";
+    case "no_candidates": return "no candidates";
+    case "no_desired_subscriptions": return "nothing subscribed";
+    case "box_socket_disconnected": return "box socket disconnected";
+    case "awaiting_first_tick": return "awaiting first tick";
+    case "awaiting_usable_depth": return "awaiting usable depth";
+    case "evaluating": return "evaluating";
+  }
+}
+
+export interface UniverseView {
+  band: HealthBand;
+  stageLabel: string;
+  /** The backend's own sentence. Rendered verbatim. */
+  detail: string;
+  readyToEvaluate: boolean;
+  transient: boolean;
+  counts: UniverseReadiness["counts"];
+  instrumentLoad: UniverseReadiness["instrument_load"];
+  instrumentsError: string | null;
+  spotSeedError: string | null;
+  lastSuccessfulBuildAt: number | null;
+  /**
+   * True when a subscribe frame was written. Named `Requested`, never `Confirmed`, because the
+   * protocol supplies no acknowledgement — usable depth is the only confirmation.
+   */
+  subscriptionsRequested: boolean;
+  boxSocketConnected: boolean;
+}
+
+export function deriveUniverse(u: UniverseReadiness): UniverseView {
+  return {
+    band: universeBand(u),
+    stageLabel: universeStageLabel(u.stage),
+    detail: u.detail,
+    readyToEvaluate: u.readyToEvaluate,
+    transient: u.transient,
+    counts: u.counts,
+    instrumentLoad: u.instrument_load,
+    instrumentsError: u.instruments_error,
+    spotSeedError: u.spot_seed_error,
+    lastSuccessfulBuildAt: u.last_successful_build_at,
+    subscriptionsRequested: u.subscriptions_requested,
+    boxSocketConnected: u.box_socket_connected,
+  };
+}
+
+/**
+ * The SCANNER HEADLINE, from the operator's intent AND the engine's capability.
+ *
+ * `running === true` alone used to produce "SCANNING". That is the claim this function refuses to
+ * make on its own: a running scanner that cannot evaluate anything is not scanning, it is stuck, and
+ * the stage says where.
+ */
+export function scannerHeadline(
+  running: boolean,
+  u: UniverseReadiness,
+): { text: string; band: HealthBand } {
+  if (!running) return { text: "STOPPED", band: "absent" };
+  if (u.readyToEvaluate) return { text: "SCANNING", band: "ready" };
+  return {
+    // Named, not merely "SCANNING". The stage label is the whole point.
+    text: `STARTING — ${universeStageLabel(u.stage)}`,
+    band: universeBand(u),
+  };
 }

@@ -23,6 +23,8 @@ import type {
   BoxExecutionSelection,
   BoxSessionView,
   BrokerId,
+  BrokerLoginStart,
+  BrokerLogoutResponse,
   BrokerStatus,
   BrokerSwitchBlockersResponse,
   BrokerSelectResponse,
@@ -282,4 +284,43 @@ export async function selectBroker(broker: BrokerId): Promise<BrokerSelectRespon
     // panel, so a plain rethrow here is sufficient and keeps the message intact.
     throw err instanceof Error ? err : new Error(`Failed to select ${broker}.`);
   }
+}
+
+/* --------------------------- in-app broker login ----------------------------- */
+
+/**
+ * Begin a browser sign-in for ONE broker and return the broker's consent URL.
+ *
+ * SCOPED TO ONE BROKER, ALWAYS. Starting a Zerodha sign-in cannot affect a live Dhan
+ * session (or vice versa): the backend keys its pending-login record by broker and only
+ * touches a feed when the broker being signed into is the ACTIVE one. So an operator can
+ * connect the standby broker mid-session without interrupting trading.
+ *
+ * The caller navigates to `login_url` itself (`window.location.assign`). The URL is built
+ * server-side on purpose — constructing it here would put broker hostnames and the api key
+ * into the public bundle, which CI forbids and which would also be a lie about who owns the
+ * flow.
+ */
+export async function startBrokerLogin(broker: BrokerId): Promise<BrokerLoginStart> {
+  return request<BrokerLoginStart>(
+    `/api/broker/${encodeURIComponent(broker)}/login/start`,
+    `Failed to start the ${broker} sign-in`,
+    { method: "POST" },
+  );
+}
+
+/**
+ * Sign out of ONE broker.
+ *
+ * Drops only that broker's stored session. Signing out of the STANDBY broker leaves the
+ * active broker's session, feed and subscriptions completely untouched; signing out of the
+ * ACTIVE broker fails closed (its feed stops and its books are invalidated) but still does
+ * not touch the other broker's token.
+ */
+export async function logoutBroker(broker: BrokerId): Promise<BrokerLogoutResponse> {
+  return request<BrokerLogoutResponse>(
+    `/api/broker/${encodeURIComponent(broker)}/logout`,
+    `Failed to sign out of ${broker}`,
+    { method: "POST" },
+  );
 }

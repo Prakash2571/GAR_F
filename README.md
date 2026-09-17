@@ -62,11 +62,26 @@ src/
     layout/   LandingHeader.tsx, LandingFooter.tsx, BoxHeader.tsx
     ui/       Button.tsx, Modal.tsx, StatusBadge.tsx
   lib/        routing.ts, theme.ts, boxStream.ts, operationalState.ts, readinessOrder.ts,
-              statusIntegrity.ts, honestLabels.ts, boxSounds.ts
+              statusIntegrity.ts, honestLabels.ts, boxSounds.ts, brokerLogin.ts
   Box*.tsx    the workspace panels (opportunities, positions, history, execution,
               session, risk, readiness, order stream, broker, help)
   styles.css  the whole design system
 ```
+
+**Broker sign-in happens in the app, for both brokers.** `BrokerStatusPanel.tsx` can
+connect Zerodha and Dhan independently and *simultaneously*: each card has its own
+Connect / Reconnect / Sign out controls, and both brokers can hold a live session at once.
+Connecting is deliberately separate from **selecting** — "Make X active" stays the guarded
+control it always was, so signing in never changes which broker trades and never arms live
+trading.
+
+The consent URL is built by the backend and simply followed
+(`window.location.assign`); the frontend cannot construct it, because that would put broker
+hostnames and an api key into a public bundle. The browser stores **nothing** across the
+redirect: the single-use nonce round-trips through the broker and is verified server-side, so
+there is no OAuth state in `localStorage` (and the CI allow-list would reject it anyway). The
+return leg arrives as `/box?broker_login=…&status=…`, which `lib/brokerLogin.ts` parses into a
+notice and then strips from the URL so a reload cannot re-announce a stale result.
 
 **Routing has no dependency.** Two routes, no nested layouts, no route params, no loaders —
 so `app/router.ts` is ~70 lines over the History API and the path decisions live in
@@ -154,47 +169,72 @@ works on a phone.
 The landing page carries one photographic backdrop — a collage of Ghatsila — behind the header
 and hero, fading into the page background before the pillars.
 
-**The asset must be committed to git.** It belongs at:
+**The asset is in git and bundled**, at:
 
 ```
-public/ghatsila.jpg
+src/image/gts2.jpg      3840 × 2160, 2.2 MB
 ```
 
-That is the only place the filename appears outside CSS; to rename it, change `--hero-image`
-in `src/styles.css` and nothing else.
+`src/styles.css` references it with a path relative to itself (`url("./image/gts2.jpg")`), so
+Vite resolves it at build time and emits a content-hashed copy into `dist/assets/`. That is the
+only place the filename appears; to swap the photograph, change `--hero-image` there and
+nothing else.
 
-> **This file being absent is what made the backdrop invisible in production, and why it was
-> hard to diagnose.** Nothing failed. `vite build` prints a warning and exits 0 (a root-absolute
-> `url()` is passed through untouched by design — Vite cannot know what will exist at runtime);
-> CI only asserted `dist/index.html` and `dist/assets/*.js`; and `rsync` faithfully published a
-> `dist/` with no image. Then nginx's SPA fallback — `try_files $uri $uri/ /index.html` — found
-> no file and answered **`/ghatsila.jpg` with `index.html`, HTTP 200, `Content-Type: text/html`**.
-> Not a 404. The browser cannot decode HTML as an image, so `background-image` painted nothing,
-> with no console error and no failed request. It looked exactly like a CSS bug.
+The earlier `gts.png` (1366 × 768) was removed once this replaced it — nothing referenced it and
+it was 2.35 MB of dead weight in every checkout. It is still in history:
+`git checkout f02d571 -- src/image/gts.png`.
+
+> **When this asset was absent and referenced by a root-absolute URL, the backdrop was invisible in
+> production and very hard to diagnose — because nothing failed.** `vite build` printed a warning and
+> exited 0 (a root-absolute `url()` is passed through untouched by design — Vite cannot know what will
+> exist at runtime); CI only asserted `dist/index.html` and `dist/assets/*.js`; and `rsync` faithfully
+> published a `dist/` with no image. Then nginx's SPA fallback — `try_files $uri $uri/ /index.html` —
+> found no file and answered the image request with `index.html`, **HTTP 200**,
+> `Content-Type: text/html`. Not a 404. The browser cannot decode HTML as an image, so
+> `background-image` painted nothing, with no console error and no failed request. It looked exactly
+> like a CSS bug.
 >
-> `npm run build` now ends with `npm run verify:assets`, which fails if any asset referenced by
-> the built CSS or HTML is missing from `dist/`. See [Asset verification](#asset-verification).
+> That silence is why `npm run build` now ends with `npm run verify:assets`. See
+> [Asset verification](#asset-verification).
 
-**Preparing the file.** Export it *wider than it looks like it needs to be* — the backdrop is
-`background-size: cover`, so on a 2560px display a 1024px-wide source is upscaled 2.5× and
-goes visibly soft:
+It previously lived at an absolute `/public` URL, chosen so a *missing* file degraded to "no
+backdrop" rather than breaking the build. That mattered while the asset was outside the repo,
+but it also meant a wrong filename failed **silently**, as a 404 the page could not report —
+which is exactly how the backdrop spent its first release invisible. Now that the file is
+committed, build-time resolution is strictly better: a bad path is a loud build error, and the
+content hash makes the asset permanently cacheable with no stale-cache risk when it changes.
 
-| | |
-| --- | --- |
-| width | **2400–2800px** (16:9, so ~2560×1440) |
-| format | JPEG, quality 72–78 |
-| target size | **under ~350 KB** — it is decoration on a public page, not content |
-| content | keep the calmer landscape frames in the upper band; that is the part that survives a wide crop, and on a phone it is nearly all that is visible |
+**Resolution is now correct; weight is not.** At 3840px wide the backdrop is *downscaled* on
+every display in normal use, which is the condition under which a CSS background looks genuinely
+crisp — the previous 1366px source was upscaled ~1.4× at 1920px and ~1.9× at 2560px, and
+upscaling is softness no filter can undo.
 
-**In the browser, a missing file degrades cleanly** — no backdrop, no broken-image glyph, no
-layout shift. That is why it is a CSS `background-image` pointing at an absolute `/public` URL
-rather than an `<img>` or a bundler-resolved `import`, and it is worth keeping: if a deploy ever
-publishes an incomplete `dist/`, visitors get a plain page instead of a broken one.
+The remaining issue is transfer size: **2.2 MB for decoration on a public page.** 4K is more
+resolution than the backdrop can use, since it is cropped to a band and sits under a scrim. A
+2560px export at q76 would look identical and cost roughly a tenth:
 
-Runtime tolerance is not a reason to tolerate it at build time, though. Those are two different
-questions, and they now get two different answers: **the build refuses** (`verify:assets`, below)
-so the gap is caught by the person who introduced it, while **the runtime still degrades** so a
-bad publish never disfigures the live page. Silence was the actual defect, not the fallback.
+```bash
+magick src/image/gts2.jpg -resize 2560x -quality 76 src/image/gts2.jpg
+```
+
+| | current | target |
+| --- | --- | --- |
+| width | 3840px | 2400–2800px |
+| size | 2.2 MB | under ~350 KB |
+
+**Content note:** keep the calmer landscape frames in the upper band. The backdrop is
+`background-size: cover` in a band far wider than 16:9, so it is cropped vertically — most on a
+phone, where the sides go too.
+
+**A missing file is now a build failure, by design.** The trade is deliberate: a loud error at
+build time is worth more than a silent 404 in production. If you need the old
+degrade-to-nothing behaviour, move the file back to `public/` and use an absolute URL.
+
+**Build-time strictness and runtime tolerance are different questions, and they get different
+answers.** The build refuses (`verify:assets`, below) so a gap is caught by the person who introduced
+it; a CSS `background-image` still degrades cleanly in the browser — no broken-image glyph, no layout
+shift — so a bad publish never disfigures the live page. Silence was the actual defect, not the
+fallback.
 
 **It is decorative and yields to the user.** It is an empty `aria-hidden` element, so it is
 never announced; and it is removed entirely under `prefers-contrast: more`,
@@ -237,11 +277,101 @@ build for any variant you reference but do not commit, which is exactly the poin
 
 ```css
 --hero-image: image-set(
-  url("/ghatsila.avif") type("image/avif"),
-  url("/ghatsila.webp") type("image/webp"),
-  url("/ghatsila.jpg")  type("image/jpeg")
+  url("./image/gts.avif") type("image/avif"),
+  url("./image/gts.webp") type("image/webp"),
+  url("./image/gts.jpg")  type("image/jpeg")
 );
 ```
+
+### Retuning the backdrop
+
+Every knob is a custom property at the top of `src/styles.css`. There is now **one** set, not
+one per theme — see "The landing page is dark only" below.
+
+| property | does |
+| --- | --- |
+| `--hero-photo-opacity` | strength — `0.36` |
+| `--hero-photo-blur` | `0px`. It was `14px`, which is what made the photograph unreadable |
+| `--hero-photo-filter` | `saturate(1.06) contrast(1.08) brightness(0.88)` |
+| `--hero-photo-fade` | mask that ends the photo layer downwards |
+| `--hero-veil` | the two-axis scrim |
+| `--hero-max-height` | ceiling on the band's height |
+| `--hero-copy` / `--hero-copy-quiet` | hero text colours, brighter than the site tokens |
+
+**The two veil gradients multiply.** This is the trap in this component. A horizontal ramp that
+looks reasonable on its own — say `0.74` at the left falling to `0` at the right — combines with
+the vertical one to put the left edge under `~0.92` while the right sits under `~0.70`, so the
+same photograph is visible on one side and *completely gone* on the other at identical height.
+Keep the horizontal axis shallow, and read the measured figures in the comment on `--hero-veil`
+before changing a stop.
+
+**Contrast is bought from the type, not the scrim.** Against the current veil, the site's own
+`--text-secondary` measures 3.0:1 and `--text-muted` 1.6:1 over the photograph — both unusable.
+That is why the hero copy has its own brighter tokens plus a hairline `text-shadow`. Darkening
+the veil to rescue dim grey text would defeat the point of the backdrop; brighten the text
+instead, and re-check the ratios if you lower the veil further.
+
+**The backdrop spans the whole page, not a band.** `inset: 0` on `.gts-hero-backdrop`, header to
+footer. This is what makes the photograph actually visible: as a 66vh band, `cover` discarded
+about 38% of the image, and no gradient adjustment could recover pixels that were never painted.
+
+| viewport | as a band | full page |
+| --- | --- | --- |
+| 1024 × 512 | 63% of the image height | **89%** |
+| 1366 × 700 | 60% | **91%** |
+| 1440 × 900 | 73% | **100%** |
+| 1920 × 1080 | 66% | **100%** |
+
+**The footer terminates it, not the gradient.** `.gts-site-footer` paints its own opaque
+`var(--bg)`, so the footer is solid black regardless of what the backdrop is doing — that is the
+guarantee, and it cannot drift. Above it, two things anchored to the same variables make the
+transition deliberate:
+
+| piece | role |
+| --- | --- |
+| `--hero-footer-clear` (112px, 144px on phones) | the footer's measured height; the photo layer's `inset` bottom, so the picture ends where the footer begins |
+| `--hero-footer-fade` (32px) | the run of the fade-to-black, used by both the photo layer's mask and `.gts-site-footer::before` |
+
+Because of this the veil's vertical axis is now **perfectly flat** — one value from header to
+footer, so photo presence measures 0.149 at every depth. It no longer has to double as a
+terminator, which is what previously made the bottom fifth of the page murky.
+
+Stated in pixels rather than percentages on purpose: the fade must land a fixed short distance
+above the footer, and the same percentage stop is 38px above it on a laptop and 86px on a large
+monitor.
+
+Two further consequences worth knowing before changing it:
+
+- **Every paragraph on the page now sits over photography**, not just the hero. That is why the
+  pillars and footer use the hero copy tokens and the hairlines use `--hero-rule` — `--border`
+  (`#1b1f24`) is invisible over a photograph.
+- **Phones opt out** (`bottom: auto` in the `max-width: 640px` block). A phone page is ~4× taller
+  than it is wide, so `cover` on a full-page box scales to the *height* and crops ~86% of the
+  *width* — one narrow strip stretched down the page. They keep a band, which crops height
+  instead: the cheap direction to lose on a portrait screen.
+
+### The landing page is dark only
+
+`/` ignores the stored and OS theme preferences and has no theme control. `/box` keeps both the
+toggle and both palettes — light mode is removed from the public page, not from the application.
+
+The page is a single composed surface whose scrim is tuned in measured steps against one
+photograph's luminance. Light mode needed a second, independently tuned set of those values, and
+the two could not be kept honest against each other: every backdrop adjustment silently
+invalidated the other theme's contrast. The workspace is the opposite case — dense, read for
+hours, no photography — so it keeps the choice.
+
+Enforced in three places, and all three are needed:
+
+| where | why |
+| --- | --- |
+| `main.tsx` | applies it **pre-render**, so a visitor whose stored preference is light never sees a white frame |
+| `LandingPage.tsx` | on mount, for client-side navigation back from `/box`; the cleanup restores the *stored* preference |
+| `LandingHeader.tsx` | no `ThemeToggle` — a control that appeared to do nothing would be worse than none |
+
+Neither path writes to storage, so a workspace preference survives a visit to the public page.
+`[data-theme="light"]` no longer defines any `--hero-*` value; to restore a light backdrop,
+re-add those and give the landing page a control again.
 
 ---
 
