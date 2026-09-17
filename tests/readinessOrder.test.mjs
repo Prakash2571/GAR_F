@@ -399,7 +399,44 @@ test("the contract version and the backend pin move TOGETHER", () => {
   // frontend consumes both new shapes, so it is a minor bump rather than a patch, and unlike the four
   // bumps above it is NOT a hard deploy-order dependency — an unbumped frontend would keep working,
   // it simply could not show the picker.
-  assert.equal(version.contract_version, "1.15.0");
+  //
+  // 1.15.0 -> 1.16.0: "WATCHABLE" WAS NOT WHAT IS WATCHED, AND TWO CAPS WERE REPORTED AS ONE.
+  // The universe payload above shipped with only `watchable` — not excluded AND admissible — which a
+  // picker naturally renders as "underlyings being watched". It is not: it counts what nothing
+  // FORBIDS, and says nothing about `BOX_MAX_UNDERLYINGS` or the token budget, either of which can
+  // leave a perfectly eligible name unobserved. On the live deployment that was maximally misleading —
+  // `BOX_MAX_UNDERLYINGS=1` with 215 joined names reported 215 watchable while exactly ONE underlying
+  // held a window. Compounding it, `refreshUniverse` pushed BOTH the `BOX_MAX_UNDERLYINGS` cut and the
+  // token-budget cut into one `skipped` array published as `skipped_for_budget`, so the dashboard
+  // announced that 214 names were "outside the live-feed token budget (2200 instruments)" while that
+  // budget had hundreds of tokens to spare and the setting actually responsible went unnamed — the
+  // same conflation `skippedForIndicativeCap` had already been split out to fix, recurring elsewhere.
+  // The contract therefore gained:
+  //   • universe-underlying: `watched`, taken from the engine's OWN window map rather than re-derived
+  //     from the caps (a second implementation of "who won a place in the universe" would be free to
+  //     disagree with the one that actually built the windows), plus `not_watched_reason`
+  //     (excluded | underlying_cap | token_budget | discovery_off) naming the cause. Note an EXCLUDED
+  //     name that still holds a window reports `watched: true`, because its legs keep streaming so the
+  //     monitor can exit it — the count reflects what the feed carries, not what the blocklist prefers;
+  //   • box-universe: `summary.watched` and `summary.eligible_not_watched` (a non-zero gap means a CAP
+  //     is deciding what gets looked at, not the market), plus `max_underlyings`,
+  //     `max_subscribed_tokens` and `discovering` so a client can NAME the setting to change instead
+  //     of describing the symptom;
+  //   • box-status: `skipped_for_underlying_cap`, `skipped_underlying_cap_symbols` and
+  //     `max_underlyings`. `skipped_for_budget` now means ONLY the token budget, and the two must
+  //     never be summed or described as one limit.
+  // The three box-status additions are REQUIRED on an `additionalProperties: false` schema, so this is
+  // once again a hard deploy-order dependency: the backend ships first or an unbumped frontend rejects
+  // the whole status response.
+  //
+  // 1.16.0 -> 1.16.1: `watched` and `not_watched_reason` were added to universe-underlying but LEFT OUT
+  // of its `required` array, so they generated as optional. That defeats the point — a payload silently
+  // missing `watched` would validate and a client would treat an unobserved name as UNKNOWN rather
+  // than being told the contract was broken. The backend could not catch it (it validates a payload
+  // that HAS both fields, and an optional field validates when present); it surfaced here, as a
+  // MutuallyAssignable failure between `watched?: boolean` and the hand-written `watched: boolean`.
+  // Tightening only: no shape changed and both fields were always emitted.
+  assert.equal(version.contract_version, "1.16.1");
   assert.equal(
     pin.contract_version,
     version.contract_version,

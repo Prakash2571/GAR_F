@@ -37,6 +37,10 @@ function row(symbol, over = {}) {
     admissible: over.admissible ?? true,
     inadmissible_reason: over.inadmissible_reason ?? null,
     inadmissible_detail: over.inadmissible_detail ?? null,
+    // Default to OBSERVED, so the staging cases stay about staging. The watch semantics get their own
+    // cases below, where it is set explicitly.
+    watched: over.watched ?? true,
+    not_watched_reason: over.not_watched_reason ?? null,
   };
 }
 
@@ -171,4 +175,66 @@ test("search and filter compose rather than overriding each other", () => {
   // TATASTEEL matches the query but is cap-blocked, so the watchable filter must still exclude it.
   assert.deepEqual(filterUniverse(ROWS, "TATA", "watchable"), []);
   assert.deepEqual(filterUniverse(ROWS, "TATA", "blocked").map((r) => r.symbol), ["TATASTEEL"]);
+});
+
+
+/* ─────────────────── watched is not watchable ─────────────────── */
+
+/*
+ * These exist because the first version of this surface offered only an "eligible" slice, and an
+ * operator reading it concluded the engine was watching 215 underlyings when it was watching one.
+ * Eligibility is what nothing forbids; being watched is what the engine actually holds a window for.
+ * The two filters must stay distinct, and the `watched` slice must come from the engine's own record.
+ */
+
+test("the WATCHED filter reports what the engine holds a window for, not what is eligible", () => {
+  const rows = [
+    row("BANKNIFTY", { is_index: true, watched: true }),
+    row("NIFTY", { is_index: true, watched: false, not_watched_reason: "underlying_cap" }),
+    row("RELIANCE", { watched: false, not_watched_reason: "underlying_cap" }),
+  ];
+  // All three are eligible — nothing forbids any of them.
+  assert.deepEqual(filterUniverse(rows, "", "watchable").map((r) => r.symbol), [
+    "BANKNIFTY",
+    "NIFTY",
+    "RELIANCE",
+  ]);
+  // Exactly one is being looked at. This is the answer to "so which one IS it monitoring?".
+  assert.deepEqual(filterUniverse(rows, "", "watched").map((r) => r.symbol), ["BANKNIFTY"]);
+});
+
+test("an EXCLUDED name that still holds a window appears under WATCHED", () => {
+  // Excluding a name never strands exposure: its legs keep streaming so the monitor can exit it. The
+  // watched slice has to reflect what the feed is really carrying, not what the blocklist prefers.
+  const rows = [row("HASPOSITION", { excluded: true, watched: true })];
+  assert.deepEqual(filterUniverse(rows, "", "watched").map((r) => r.symbol), ["HASPOSITION"]);
+  assert.deepEqual(filterUniverse(rows, "", "watchable"), [], "excluded is never eligible");
+});
+
+test("a cap-blocked name that is somehow still watched is reported honestly by both filters", () => {
+  // Its legs can stream while its lot makes entry impossible — two independent facts, and neither
+  // filter may quietly override the other.
+  const rows = [
+    row("BIGLOT", { admissible: false, inadmissible_reason: "lot_exceeds_per_leg_cap", watched: true }),
+  ];
+  assert.deepEqual(filterUniverse(rows, "", "watched").map((r) => r.symbol), ["BIGLOT"]);
+  assert.deepEqual(filterUniverse(rows, "", "blocked").map((r) => r.symbol), ["BIGLOT"]);
+  assert.deepEqual(filterUniverse(rows, "", "watchable"), []);
+});
+
+test("search composes with the WATCHED filter", () => {
+  const rows = [
+    row("BANKNIFTY", { watched: true }),
+    row("NIFTY", { watched: false, not_watched_reason: "token_budget" }),
+  ];
+  assert.deepEqual(filterUniverse(rows, "nifty", "watched").map((r) => r.symbol), ["BANKNIFTY"]);
+  assert.deepEqual(filterUniverse(rows, "banknifty", "watched").map((r) => r.symbol), ["BANKNIFTY"]);
+});
+
+test("staging is unaffected by whether a name is being watched", () => {
+  // Excluding a name you are not currently watching is legitimate — it stops it being entered if a
+  // cap later lets it back in. So `watched` must not leak into the diff.
+  const unwatched = row("LATER", { watched: false, not_watched_reason: "underlying_cap" });
+  const staged = stageMany(new Map(), [unwatched], true);
+  assert.deepEqual(stagedDiff([unwatched], staged), { toExclude: ["LATER"], toInclude: [] });
 });

@@ -20,8 +20,14 @@
 
 import type { UniverseUnderlying } from "../api/types.ts";
 
-/** Which slice of the universe the picker is showing. */
-export type UniverseFilter = "all" | "watchable" | "excluded" | "blocked";
+/**
+ * Which slice of the universe the picker is showing.
+ *
+ * `watched` and `watchable` are DIFFERENT slices and both are needed. `watchable` is what nothing
+ * forbids; `watched` is what the engine actually holds a window for. Offering only the former is what
+ * let a deployment watching one underlying present itself as watching 215.
+ */
+export type UniverseFilter = "all" | "watched" | "watchable" | "excluded" | "blocked";
 
 /** symbol → DESIRED excluded state. Absent means "leave whatever the server says". */
 export type StagedExclusions = ReadonlyMap<string, boolean>;
@@ -93,6 +99,10 @@ export function filterUniverse(
   return rows.filter((row) => {
     if (q !== "" && !row.symbol.includes(q) && !row.name.toUpperCase().includes(q)) return false;
     switch (filter) {
+      case "watched":
+        // Ground truth from the engine, including excluded names that keep a window because they
+        // carry exposure — the feed is genuinely carrying them.
+        return row.watched;
       case "watchable":
         return !row.excluded && row.admissible;
       case "excluded":

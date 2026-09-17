@@ -2790,6 +2790,31 @@ table {
   white-space: nowrap;
 }
 
+/* Observed vs not. Positive tint for WATCHING because it is the state the operator is
+   looking for; NOT WATCHED is muted rather than red — it is usually a deliberate cap,
+   not a fault, and colouring it as an error would cry wolf on 214 of 215 rows. */
+.box-universe-live {
+  padding: 0 var(--s-2);
+  border: 1px solid var(--positive);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--tracking-caps);
+  color: var(--positive);
+  cursor: help;
+  white-space: nowrap;
+}
+
+.box-universe-idle {
+  padding: 0 var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--tracking-caps);
+  color: var(--text-muted);
+  cursor: help;
+  white-space: nowrap;
+}
+
 .box-universe-bad {
   padding: 0 var(--s-2);
   border: 1px solid var(--warning);

@@ -204,7 +204,8 @@ type _BoxStatusFields = Assert<
       | "feed_healthy" | "quotes" | "quote_updates" | "underlyings" | "candidates"
       | "monitored_tokens" | "hub_subscribed" | "strike_level" | "open_positions" | "started_at"
       | "stopped_at" | "universe_built_at" | "subscribed_option_tokens" | "subscribed_spot_tokens"
-      | "feed_age_ms" | "skipped_for_budget" | "skipped_symbols" | "last_error" | "market_data_state"
+      | "feed_age_ms" | "skipped_for_budget" | "skipped_symbols" | "skipped_for_underlying_cap"
+      | "skipped_underlying_cap_symbols" | "max_underlyings" | "last_error" | "market_data_state"
       | "excluded_underlyings"
     >,
     Pick<
@@ -213,7 +214,8 @@ type _BoxStatusFields = Assert<
       | "feed_healthy" | "quotes" | "quote_updates" | "underlyings" | "candidates"
       | "monitored_tokens" | "hub_subscribed" | "strike_level" | "open_positions" | "started_at"
       | "stopped_at" | "universe_built_at" | "subscribed_option_tokens" | "subscribed_spot_tokens"
-      | "feed_age_ms" | "skipped_for_budget" | "skipped_symbols" | "last_error" | "market_data_state"
+      | "feed_age_ms" | "skipped_for_budget" | "skipped_symbols" | "skipped_for_underlying_cap"
+      | "skipped_underlying_cap_symbols" | "max_underlyings" | "last_error" | "market_data_state"
       | "excluded_underlyings"
     >
   >
