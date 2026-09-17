@@ -360,7 +360,46 @@ test("the contract version and the backend pin move TOGETHER", () => {
   // Both are REQUIRED on the `additionalProperties: false` risk block, so this is another hard
   // deploy-order dependency: the backend ships first or the whole execution-control response is
   // rejected here.
-  assert.equal(version.contract_version, "1.14.0");
+  //
+  // 1.14.0 -> 1.15.0: THE PRE-RUN UNIVERSE, AND WHY A WIDE ONE BREAKS A QUANTITY CAP.
+  // Everything above assumed one deliberately configured underlying. Watching the whole F&O universe
+  // instead is safe for EXPOSURE — `BOX_MAX_OPEN_BOXES` is an inventory ceiling and does not care how
+  // many names are watched — but it silently breaks one control and leaves another unusable.
+  //   • `BOX_LIVE_MAX_OPEN_LEG_QUANTITY` is ONE global number, and F&O lot sizes span orders of
+  //     magnitude (an index lot of 75 against single-stock lots in the thousands). With one chosen
+  //     name the cap could be set to exactly that instrument's lot; across ~200 names no single value
+  //     works. A name whose lot exceeds it is not UNLIKELY to trade, it CANNOT — and the refusal
+  //     happens deep on the entry path in `entryQuantityEnvelopeBlockReason`, where it surfaces as an
+  //     execution refusal rather than a configuration mismatch. An operator watching a quiet name
+  //     could not tell "no edge today" from "impossible by configuration".
+  //   • The board was never exposed at all, so a name could only be excluded by already KNOWING its
+  //     symbol. A deny list you cannot browse is a deny list you cannot use.
+  // The contract therefore gained:
+  //   • `universe-underlying.schema.json` — one underlying with its lot size, expiry, paired-strike
+  //     count, blocklist state, and TWO INDEPENDENT verdicts: `excluded` (what the operator decided)
+  //     and `admissible` + `inadmissible_reason` (whether the current caps permit it at all). Both
+  //     are asserted whole-object in contract.assert.ts rather than field-curated, because a renamed
+  //     inadmissibility code would otherwise let the picker fall through to "no reason given" on a
+  //     name that can never trade — silence exactly where the explanation is the point;
+  //   • `box-universe.schema.json` — `GET /api/box/universe`, readable while the engine is IDLE,
+  //     which is the whole point: `boot()` performs one universe pass, so the operator decides what
+  //     to discover instead of inferring it afterwards from whichever opportunities appeared.
+  //     `built: false` distinguishes "no pass has completed" from "the universe is empty" (without it
+  //     an empty list at boot reads as a broken instrument master), and `summary.blocked_by_caps`
+  //     counts names that are NOT excluded and still cannot trade — the count that matters, because
+  //     those look enabled.
+  // Also `POST /api/box/excluded-underlyings/bulk`, which has no response schema of its own (it
+  // returns the already-pinned `box-excluded-underlyings` shape). It exists because each
+  // single-symbol write triggers a full universe rebuild backend-side, so screening eighty names one
+  // request at a time would be eighty instrument-master fetches. It is DIFF-BASED rather than
+  // replace-the-set, so a client holding a stale list cannot silently RE-ADMIT a name excluded
+  // moments earlier from elsewhere — the one direction of error that re-opens entry on something
+  // deliberately declined.
+  // PURELY ADDITIVE: no existing shape moved, and nothing became required on an existing schema. The
+  // frontend consumes both new shapes, so it is a minor bump rather than a patch, and unlike the four
+  // bumps above it is NOT a hard deploy-order dependency — an unbumped frontend would keep working,
+  // it simply could not show the picker.
+  assert.equal(version.contract_version, "1.15.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,

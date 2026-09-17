@@ -20,6 +20,7 @@ import type {
   BoxOpenPosition,
   BoxOpportunity,
   BoxStatus,
+  BoxUniverse,
   BoxConfigView,
   BoxExecutionSelection,
   BoxSessionView,
@@ -182,6 +183,54 @@ export async function includeUnderlying(symbol: string): Promise<BoxExcludedUnde
     { method: "DELETE" },
   );
   return body.excluded_underlyings;
+}
+
+/**
+ * Apply MANY blocklist changes at once. FULL ADMIN backend-side.
+ *
+ * WHY THIS IS NOT A LOOP OVER `excludeUnderlying`
+ *
+ * Each single-symbol write triggers a full universe rebuild backend-side — a fresh instrument-master
+ * fetch and a re-derivation of every window. Excluding eighty names one request at a time would be
+ * eighty rebuilds. This applies the batch in one transaction with one rebuild.
+ *
+ * DIFF-BASED, NOT REPLACE-THE-SET. Callers send explicit deltas, never a desired final list, so a
+ * screen holding a stale universe cannot silently RE-ADMIT a name excluded moments earlier from
+ * elsewhere — the one direction of error that re-opens entry on something deliberately declined.
+ *
+ * All-or-nothing: the backend validates every symbol before writing anything, so a rejected request
+ * has changed nothing.
+ */
+export async function applyExcludedUnderlyingsBulk(input: {
+  exclude?: { symbol: string; reason?: string }[];
+  include?: string[];
+}): Promise<{ added: number; removed: number; blocklist: BoxExcludedUnderlyings }> {
+  const body = await request<{
+    ok?: boolean;
+    added: number;
+    removed: number;
+    excluded_underlyings: BoxExcludedUnderlyings;
+  }>("/api/box/excluded-underlyings/bulk", "Failed to apply the blocklist changes", {
+    method: "POST",
+    body: input,
+  });
+  return { added: body.added, removed: body.removed, blocklist: body.excluded_underlyings };
+}
+
+/* --------------------------- the tradable universe --------------------------- */
+
+/**
+ * Read every underlying the engine could watch.
+ *
+ * Deliberately a SEPARATE request rather than part of the status payload: it is instrument metadata
+ * that changes once per universe pass, while status streams several times a second. Embedding a
+ * ~200-row list in every SSE frame would multiply the stream for data that had not changed.
+ *
+ * Safe to call while the engine is idle — that is its main use. `built: false` means no universe pass
+ * has completed yet, which a caller must NOT render as "the universe is empty".
+ */
+export async function fetchBoxUniverse(): Promise<BoxUniverse> {
+  return request<BoxUniverse>("/api/box/universe", "Failed to load the tradable universe");
 }
 
 /* ------------------------------ trade actions -------------------------------- */

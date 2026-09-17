@@ -78,6 +78,9 @@ export interface BoxTradeContract { id: string; execution_mode: string; broker: 
 /** GET /api/box/trades/history (200) (from contract/schemas/box-trades-history.schema.json) */
 export type BoxTradesHistoryContract = { dbEnabled: boolean; scope: "all"; source: string; cacheEnabled: boolean; lite: boolean; trades: BoxTradeContract[]; } | ({ dbEnabled: boolean; scope: "today"; source: "memory" | "postgres" | "none"; day: string | null; cacheEnabled: boolean; lite: boolean; trades: Record<string, never>[]; });
 
+/** GET /api/box/universe (200) (from contract/schemas/box-universe.schema.json) */
+export interface BoxUniverseContract { underlyings: UniverseUnderlyingContract[]; summary: { total: number; indices: number; excluded: number; watchable: number; blocked_by_caps: number; }; caps: { max_open_leg_quantity: number; max_gross_open_leg_quantity: number; }; built: boolean; built_at: number | null; blocklist_readable: boolean; }
+
 /** Redacted broker health descriptor (from contract/schemas/broker-health.schema.json) */
 export interface BrokerHealthContract { broker: "zerodha" | "dhan"; authenticated: boolean; data_ready: boolean; trading_ready: boolean; problems: string[]; }
 
@@ -128,3 +131,6 @@ export interface RuntimeStatusContract { brokers: BrokerRuntimeStatusContract[];
 
 /** A parsed Box SSE frame (from contract/schemas/sse-envelope.schema.json) */
 export interface SseEnvelopeContract { event: string; data: Record<string, never> | unknown[] | string | number | boolean | null; }
+
+/** One underlying in the tradable universe, as the pre-run picker shows it (from contract/schemas/universe-underlying.schema.json) */
+export interface UniverseUnderlyingContract { symbol: string; name: string; is_index: boolean; lot_size: number; expiry: string | null; paired_strikes: number; excluded: boolean; excluded_reason: string | null; admissible: boolean; inadmissible_reason: "lot_exceeds_per_leg_cap" | "four_legs_exceed_gross_cap" | "no_paired_strikes" | "unusable_lot_size" | null; inadmissible_detail: string | null; }
