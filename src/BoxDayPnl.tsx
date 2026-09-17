@@ -7,7 +7,7 @@
  * touch-based metrics the monitor uses); this only renders them.
  */
 
-import type { BoxDayPnl } from "./api";
+import type { AccountFunds, BoxDayPnl, FundsUnavailableReason } from "./api";
 
 function rupees(v: number | null | undefined): string {
   if (v === null || v === undefined) return "—";
@@ -19,8 +19,105 @@ function pnlClass(v: number): string {
   return v > 0 ? "is-pos" : v < 0 ? "is-neg" : "";
 }
 
-export function BoxDayPnlStrip({ dayPnl }: { dayPnl: BoxDayPnl | undefined }) {
-  if (!dayPnl) return null;
+/**
+ * What to SHOW when there is no balance figure.
+ *
+ * Each reason gets its own words because each calls for a different action, and collapsing them into
+ * one dash is what leaves an operator staring at nothing with no idea whether to log in, wait, or
+ * stop expecting a number at all. None of these is "₹0" — an empty account is a real, separate state
+ * that renders as an actual zero.
+ */
+const FUNDS_UNAVAILABLE_LABEL: Record<FundsUnavailableReason, string> = {
+  no_session: "no broker session",
+  not_supported: "not available for this broker",
+  never_read: "reading…",
+  read_failed: "read failed",
+  not_reported: "not reported by broker",
+  semantics_unknown: "cannot be interpreted",
+};
+
+/**
+ * FREE CAPITAL — the tile an operator checks before arming.
+ *
+ * Rendered in the neutral money group, deliberately without P&L colouring: a balance is capital, not
+ * profit, so a big number here is neither good nor bad. Same convention as the margin tiles beside it.
+ *
+ * The staleness treatment is the load-bearing part. A figure past its freshness bound is STILL SHOWN,
+ * with its age and a marker, because mid-session "₹47,000 as of 60s ago, refresh failing" is far more
+ * useful than a blank — and blanking it would also be indistinguishable from an empty account.
+ */
+function AccountFundsItem({ funds }: { funds: AccountFunds | undefined }) {
+  if (!funds) return null;
+
+  const value = funds.free_to_trade_rupees;
+  const known = value !== null;
+  const ageSecs = funds.age_ms === null ? null : Math.round(funds.age_ms / 1000);
+
+  return (
+    <div
+      className={`box-daypnl-item box-daypnl-item--neutral${known && !funds.fresh ? " is-stale" : ""}`}
+      // The backend's own sentence, which already states what the figure cannot prove. Reusing it
+      // rather than writing a second explanation keeps one authority for the caveat.
+      title={funds.note}
+    >
+      <span className="box-daypnl-k">Free to trade</span>
+      <span className="box-daypnl-v">
+        {known ? (
+          rupees(value)
+        ) : (
+          <span className="box-dim">
+            —{" "}
+            <span className="box-daypnl-reason">
+              {funds.unavailable_reason
+                ? FUNDS_UNAVAILABLE_LABEL[funds.unavailable_reason]
+                : "unknown"}
+            </span>
+          </span>
+        )}
+      </span>
+      <span className="box-daypnl-sub">
+        {known ? (
+          <>
+            {funds.fresh ? (
+              <>{ageSecs === null ? "" : `${ageSecs}s ago`}</>
+            ) : (
+              // Explicitly labelled, never shown as if it were current.
+              <span className="is-warn">
+                STALE · {ageSecs === null ? "unknown age" : `${ageSecs}s ago`}
+              </span>
+            )}
+            {/* The encumbrance, when the broker reports it. Shown because "free" is only meaningful
+                beside what is already blocked, and because null here means UNKNOWN rather than
+                nothing blocked — a distinction that changes how far the headline can be trusted. */}
+            {funds.broker_utilised_rupees !== null && (
+              <> · {rupees(funds.broker_utilised_rupees)} blocked</>
+            )}
+          </>
+        ) : (
+          funds.last_error ?? "no figure published"
+        )}
+      </span>
+    </div>
+  );
+}
+
+export function BoxDayPnlStrip({
+  dayPnl,
+  funds,
+}: {
+  dayPnl: BoxDayPnl | undefined;
+  /** From `status.account_funds`. Rendered even when the day-P&L block is absent. */
+  funds?: AccountFunds | undefined;
+}) {
+  // The funds tile must survive a missing day-P&L block: free capital is worth showing before the
+  // first trade of the day exists, which is exactly when an operator is deciding whether to arm.
+  if (!dayPnl) {
+    return funds ? (
+      <section className="box-daypnl" aria-label="Account funds">
+        <AccountFundsItem funds={funds} />
+      </section>
+    ) : null;
+  }
   return (
     <section className="box-daypnl" aria-label="Running day P&L">
       <Item

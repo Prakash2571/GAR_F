@@ -1203,7 +1203,11 @@ export default function Box({ onLock }: Props) {
       {/* One view at a time. The scanner, open book and history are three
           different jobs, and stacking them made the page a scroll-fest — but the
           counts stay on the tabs so nothing important is hidden behind a click. */}
-      <BoxDayPnlStrip dayPnl={status?.day_pnl} />
+      {/* Free capital rides in the neutral money strip beside the margin tiles. It is published
+          continuously by the backend (its own timer, every mode with a session), unlike the
+          `available_funds` figure inside `economic_admission`, which only exists as a by-product of a
+          live entry attempt and is therefore absent exactly when an operator is deciding to arm. */}
+      <BoxDayPnlStrip dayPnl={status?.day_pnl} funds={status?.account_funds} />
 
       <BoxExecutionHealth
         metrics={status?.metrics}

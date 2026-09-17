@@ -560,5 +560,19 @@
     "last_successful_build_at": null,
     "subscriptions_requested": false,
     "box_socket_connected": false
+  },
+  "account_funds": {
+    "free_to_trade_rupees": 47250,
+    "broker_available_rupees": 47250,
+    "broker_utilised_rupees": 12000,
+    "broker": "zerodha",
+    "semantics": "net_of_encumbrance",
+    "encumbrance_netted": true,
+    "observed_at": 1789000000000,
+    "age_ms": 4200,
+    "fresh": true,
+    "unavailable_reason": null,
+    "last_error": null,
+    "note": "Spendable account balance as reported by the broker, 4s old. zerodha: available.live_balance is documented as already net of encumbrances, so utilised.debits is NOT subtracted again. It does NOT prove a specific box is affordable — four-leg margin is a separate question the economic-admission gate answers against the broker basket margin."
   }
 }

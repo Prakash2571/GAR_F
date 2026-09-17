@@ -436,7 +436,37 @@ test("the contract version and the backend pin move TOGETHER", () => {
   // that HAS both fields, and an optional field validates when present); it surfaced here, as a
   // MutuallyAssignable failure between `watched?: boolean` and the hand-written `watched: boolean`.
   // Tightening only: no shape changed and both fields were always emitted.
-  assert.equal(version.contract_version, "1.16.1");
+  //
+  // 1.16.1 -> 1.17.0: FREE CAPITAL, PUBLISHED CONTINUOUSLY RATHER THAN PER ENTRY ATTEMPT.
+  // The account balance already existed on the wire, but only inside
+  // `economic_admission.picture.available_funds` — which is a by-product of live entry admission and
+  // is therefore null in every paper mode, null in live while the three funding gates are off, null
+  // until the FIRST entry has been economically evaluated, and thereafter frozen at whatever that
+  // attempt observed (potentially hours old). So the one figure an operator most wants before arming
+  // was absent precisely then. `box-status` gained a REQUIRED `account_funds` block
+  // (`account-funds.schema.json`), refreshed on its own timer in every mode that has an authenticated
+  // session — read through the market-data client rather than the live-only order adapter, because
+  // "what can I actually trade with?" is a question that matters while REHEARSING.
+  // The honesty properties that shape the schema, each of which a client must respect:
+  //   • `free_to_trade_rupees: null` is UNKNOWN and must NEVER render as ₹0. Six distinct
+  //     `unavailable_reason`s are kept apart because they call for different actions — log in
+  //     (`no_session`), wait (`never_read`), stop expecting a number (`not_supported`), or read the
+  //     error (`read_failed` / `not_reported` / `semantics_unknown`);
+  //   • a GENUINE ₹0 balance is reported as 0 with `unavailable_reason: null`, so an empty account is
+  //     distinguishable from an unread one;
+  //   • a STALE figure is published WITH its age rather than discarded, because mid-session
+  //     "₹47,000 as of 60s ago, refresh failing" is more useful than a blank — and a blank would be
+  //     indistinguishable from an empty account. `fresh` is the flag, `age_ms` is never negative;
+  //   • `semantics` is the machine-readable enum, not prose: for Zerodha `net_of_encumbrance` means
+  //     `utilised.debits` is NOT subtracted from `live_balance` again. The headline runs through the
+  //     SAME per-broker helper the live admission gate uses, so the screen and the engine cannot
+  //     disagree about whether an entry was affordable.
+  // `account_funds` is REQUIRED on an `additionalProperties: false` schema, so this is another hard
+  // deploy-order dependency: the backend ships first or an unbumped frontend rejects the whole status
+  // response. Asserted whole-object in contract.assert.ts rather than field-curated, because a
+  // seventh `unavailable_reason` added later must break compilation instead of silently falling
+  // through to a bare dash on a state that has a specific operator action.
+  assert.equal(version.contract_version, "1.17.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,

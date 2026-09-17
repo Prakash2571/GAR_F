@@ -2466,6 +2466,22 @@ table {
   color: var(--text-muted);
 }
 
+/* A balance past its freshness bound is still SHOWN — dimmed and marked, never blanked. Mid-session
+   "₹47,000 as of 60s ago" beats a dash, and a dash would also be indistinguishable from an empty
+   account. Only the border is tinted: the number itself stays legible, because it is still the best
+   figure available. */
+.box-daypnl-item.is-stale {
+  border-color: var(--warning);
+}
+
+/* Why there is no figure, in place of the number. Small and muted: it is an explanation, not a value,
+   and must not read as an amount. */
+.box-daypnl-reason {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-regular);
+  letter-spacing: var(--tracking-tight);
+}
+
 /* ==========================================================================
  * 14. WORKSPACE: CONTROL PANELS
  *
