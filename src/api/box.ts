@@ -292,13 +292,17 @@ export async function setBoxPaperProfile(
 
 export async function armBoxSession(
   maxCompletedTrades?: number,
+  maxEntryAttempts?: number,
 ): Promise<{ session: BoxSessionView; execution: BoxExecutionControl }> {
   return request<{ ok?: boolean; session: BoxSessionView; execution: BoxExecutionControl }>(
     "/api/box/session/arm",
     "Failed to arm the box trading session",
     {
       method: "POST",
-      body: maxCompletedTrades === undefined ? {} : { max_completed_trades: maxCompletedTrades },
+      body: {
+        ...(maxCompletedTrades === undefined ? {} : { max_completed_trades: maxCompletedTrades }),
+        ...(maxEntryAttempts === undefined ? {} : { max_entry_attempts: maxEntryAttempts }),
+      },
     },
   );
 }
@@ -324,6 +328,47 @@ export async function setBoxLiveControl(
     { method: "POST", body: { enabled } },
   );
   return body.status;
+}
+
+/**
+ * Ask the live order manager to cancel every attributed working Box order.
+ *
+ * A successful HTTP response is not treated as a clean sweep by the UI: the backend publishes
+ * `attempted` and `ok`, and returns a 207 when any cancellation fails. Callers receive the
+ * unmodified outcome so they can tell cancellation from actual exposure reduction.
+ */
+export async function cancelWorkingBoxOrders(): Promise<{
+  attempted: boolean;
+  ok: boolean;
+  cancelled: unknown[];
+  failures: string[];
+  blocked_reason?: string | null;
+  status: BoxStatus;
+}> {
+  return request(
+    "/api/box/live/cancel-working",
+    "Failed to cancel working Box orders",
+    { method: "POST" },
+  );
+}
+
+/**
+ * Flatten only broker exposure attributed to durable Box intents.
+ *
+ * The backend latches entry off, cancels working orders and reconciles before it plans reductions;
+ * it never treats arbitrary account holdings as Box exposure.
+ */
+export async function flattenAttributedBoxExposure(): Promise<{
+  attempted: number;
+  results: unknown[];
+  settlement: { cancelled: number; failures: string[]; blocked: string | null; reconciled: boolean };
+  status: BoxStatus;
+}> {
+  return request(
+    "/api/box/live/flatten",
+    "Failed to flatten attributed Box exposure",
+    { method: "POST" },
+  );
 }
 
 /* ------------------------------ SSE stream url ------------------------------- */

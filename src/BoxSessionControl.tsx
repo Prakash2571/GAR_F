@@ -22,12 +22,13 @@
  * refused while the first Box is still open, when nothing has yet completed. Showing only
  * "0/1 complete" next to a refused entry would look like a bug, so both are shown.
  *
- * A rejected, partially-filled-then-unwound, or economics-aborted entry consumes NOTHING — those
- * are counted separately as aborted attempts.
+ * A rejected, partially-filled-then-unwound, or economics-aborted entry consumes no COMPLETE
+ * lifecycle; with the strict one-shot control it still consumes the separate ENTRY-ATTEMPT budget.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { armBoxSession, disarmBoxSession, type BoxExecutionControl } from "./api";
+import { ControlRequests, runOnce } from "./lib/statusIntegrity.ts";
 
 /** What each state means operationally, so the label is never cryptic. */
 const STATE_HELP: Record<string, string> = {
@@ -58,6 +59,9 @@ export function BoxSessionControl({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // Session arm/disarm resets or protects a durable risk budget. State updates cannot
+  // prevent a same-frame double click, so reserve the action synchronously first.
+  const requests = useRef(new ControlRequests());
 
   if (!canTrade || !control) return null;
 
@@ -69,38 +73,46 @@ export function BoxSessionControl({
   const customValid =
     custom.trim() !== "" && Number.isInteger(customNum) && customNum >= 0 && customNum <= 10_000;
 
-  async function arm(max?: number) {
-    setBusy(true);
-    setError(null);
-    setNote(null);
-    try {
-      const next = await armBoxSession(max);
-      const limit = next.session.max_completed_trades;
-      setNote(
-        `Session armed: ${limit === 0 ? "UNLIMITED" : limit} complete Box lifecycle(s) permitted. ` +
-          "Monitoring, exit and residual flattening are unaffected by this limit.",
-      );
-      onChanged();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to arm the session.");
-    } finally {
-      setBusy(false);
-    }
+  async function arm(maxCompletedTrades?: number, maxEntryAttempts?: number) {
+    const outcome = await runOnce(requests.current, "session_arming", async () => {
+      setBusy(true);
+      setError(null);
+      setNote(null);
+      try {
+        const next = await armBoxSession(maxCompletedTrades, maxEntryAttempts);
+        const completed = next.session.max_completed_trades;
+        const attempts = next.session.max_entry_attempts;
+        setNote(
+          `Session armed: ${completed === 0 ? "UNLIMITED" : completed} complete lifecycle(s) and ` +
+            `${attempts === 0 ? "UNLIMITED" : attempts} entry attempt(s) permitted. ` +
+            "Monitoring, exit and residual flattening are unaffected by these entry limits.",
+        );
+        onChanged();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to arm the session.");
+      } finally {
+        setBusy(false);
+      }
+    });
+    if (!outcome.sent) setNote(outcome.reason);
   }
 
   async function disarm() {
-    setBusy(true);
-    setError(null);
-    setNote(null);
-    try {
-      await disarmBoxSession();
-      setNote("Session disarmed. Counters are preserved, so re-arming still checks for live exposure.");
-      onChanged();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to disarm the session.");
-    } finally {
-      setBusy(false);
-    }
+    const outcome = await runOnce(requests.current, "session_arming", async () => {
+      setBusy(true);
+      setError(null);
+      setNote(null);
+      try {
+        await disarmBoxSession();
+        setNote("Session disarmed. Counters are preserved, so re-arming still checks for live exposure.");
+        onChanged();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to disarm the session.");
+      } finally {
+        setBusy(false);
+      }
+    });
+    if (!outcome.sent) setNote(outcome.reason);
   }
 
   /** Why re-arming would be refused right now, in the operator's words. */
@@ -155,6 +167,19 @@ export function BoxSessionControl({
           <dt>REMAINING</dt>
           <dd>
             {session.remaining_trades === null ? "unlimited" : session.remaining_trades}
+          </dd>
+        </div>
+        <div>
+          <dt>ENTRY ATTEMPTS</dt>
+          <dd title="Started at admission before any broker POST. This is the risk-taking budget; a partial or rejected entry still spends it.">
+            {session.max_entry_attempts === 0
+              ? "unlimited"
+              : `${session.entry_attempts}/${session.max_entry_attempts}`}
+            <small>
+              {session.remaining_entry_attempts === null
+                ? "unbounded"
+                : `${session.remaining_entry_attempts} remaining`}
+            </small>
           </dd>
         </div>
         <div>
@@ -227,10 +252,10 @@ export function BoxSessionControl({
 
       {isFullAdmin && (
         <div className="box-session-actions">
-          <button type="button" className="btn btn--sm" disabled={busy} onClick={() => void arm(1)}>
-            Arm one-shot (1)
+          <button type="button" className="btn btn--sm" disabled={busy} onClick={() => void arm(1, 1)}>
+            Arm one-shot (1 attempt / 1 box)
           </button>
-          <button type="button" className="btn btn--sm" disabled={busy} onClick={() => void arm(0)}>
+          <button type="button" className="btn btn--sm" disabled={busy} onClick={() => void arm(0, 0)}>
             Arm unlimited
           </button>
           <label className="box-session-custom">
@@ -251,7 +276,7 @@ export function BoxSessionControl({
               type="button"
               className="btn btn--sm"
               disabled={busy || !customValid}
-              onClick={() => void arm(customNum)}
+              onClick={() => void arm(customNum, customNum)}
             >
               Arm N
             </button>
@@ -281,11 +306,12 @@ export function BoxSessionControl({
       )}
 
       <p className="box-session-note">
-        <strong>A cycle is one COMPLETE lifecycle</strong> — ENTRY → HOLD/MONITOR → EXIT → FLAT — not
-        one broker order. Reaching the limit disables NEW ENTRY only: the engine keeps monitoring the
-        open Box, keeps auto-exiting it, keeps cleaning up partial exits, keeps flattening residual
-        legs and keeps reconciling. A rejected, partially-filled-then-unwound or economics-aborted
-        entry never establishes a Box and therefore never consumes a cycle.
+        <strong>One-shot means both limits equal one:</strong> one entry attempt and one COMPLETE
+        lifecycle — ENTRY → HOLD/MONITOR → EXIT → FLAT — not one broker order. Reaching either entry
+        limit disables NEW ENTRY only: the engine keeps monitoring the open Box, keeps auto-exiting it,
+        keeps cleaning up partial exits, keeps flattening residual legs and keeps reconciling. A rejected,
+        partially-filled-then-unwound or economics-aborted entry spends the attempt budget even when it
+        never establishes a Box.
       </p>
 
       {error && <p className="box-session-msg box-session-msg--error">{error}</p>}

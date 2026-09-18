@@ -33,6 +33,8 @@
 
 import { useRef, useState } from "react";
 import {
+  cancelWorkingBoxOrders,
+  flattenAttributedBoxExposure,
   previewBoxExecutionMode,
   setBoxLiveControl,
   setBoxPaperProfile,
@@ -461,7 +463,7 @@ export function BoxExecutionControl({
                   () => setBoxLiveControl("box_emergency_flatten", !control.emergency_flatten_enabled),
                 )
               }
-              title="Permits an operator-triggered emergency flatten. Deliberately separate from entry."
+              title="Arms the separate permission required for an explicit emergency flatten; it does not flatten by itself."
             >
               {control.emergency_flatten_enabled ? "Disarm emergency flatten" : "Arm emergency flatten"}
             </button>
@@ -469,6 +471,72 @@ export function BoxExecutionControl({
               {control.emergency_flatten_enabled ? "ARMED" : "not armed"}
             </span>
           </div>
+
+          {control.emergency_flatten_enabled && (
+            <div className="box-exec-arm-row">
+              <button
+                type="button"
+                className="btn btn--sm"
+                disabled={!isFullAdmin || busy === "cancel_working"}
+                onClick={() =>
+                  void run(
+                    "emergency",
+                    "cancel_working",
+                    async () => {
+                      const result = await cancelWorkingBoxOrders();
+                      if (!result.attempted || !result.ok) {
+                        // A 207/409 is an operational result, not a network failure. Refresh first
+                        // so the operator sees the remaining working/residual exposure before the
+                        // error message asks them to intervene.
+                        onChanged();
+                        throw new Error(
+                          result.blocked_reason ??
+                            `Cancellation completed with ${result.failures.length} unresolved failure(s).`,
+                        );
+                      }
+                    },
+                    "Working Box orders cancelled. Inspect Positions and Operational State before any further action.",
+                  )
+                }
+                title="Cancel every attributed working Box order. This does not flatten filled or residual exposure."
+              >
+                {busy === "cancel_working" ? "Cancelling…" : "Cancel working Box orders"}
+              </button>
+              <button
+                type="button"
+                className="btn btn--danger btn--sm"
+                disabled={!isFullAdmin || busy === "flatten_now"}
+                onClick={() => {
+                  const confirmed = window.confirm(
+                    "Emergency flatten will first disable new entry, cancel working attributed Box orders, reconcile with the broker, then attempt to reduce attributed Box exposure. It can realise a loss and may leave residual exposure if liquidity or broker state prevents a fill. Continue?",
+                  );
+                  if (!confirmed) return;
+                  void run(
+                    "emergency",
+                    "flatten_now",
+                    async () => {
+                      const result = await flattenAttributedBoxExposure();
+                      if (result.settlement.failures.length > 0 || !result.settlement.reconciled) {
+                        // The backend has already latched entry off and attempted reduction. Refresh
+                        // the authoritative state even though the settlement was not clean.
+                        onChanged();
+                        throw new Error(
+                          `Emergency flatten started, but settlement needs attention: ${[
+                            ...result.settlement.failures,
+                            ...(result.settlement.reconciled ? [] : ["post-cancel reconciliation did not complete"]),
+                          ].join("; ")}`,
+                        );
+                      }
+                    },
+                    "Emergency flatten requested. Entry was disabled and attributed exposure reduction was attempted; confirm flat/reconciled status before re-arming.",
+                  );
+                }}
+                title="Flatten only exposure attributed to durable Box intents. A confirmation is required because it can realise a loss."
+              >
+                {busy === "flatten_now" ? "Flattening…" : "Emergency flatten attributed exposure"}
+              </button>
+            </div>
+          )}
 
           <div className="box-exec-arm-row">
             <button
