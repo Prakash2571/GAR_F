@@ -466,7 +466,50 @@ test("the contract version and the backend pin move TOGETHER", () => {
   // response. Asserted whole-object in contract.assert.ts rather than field-curated, because a
   // seventh `unavailable_reason` added later must break compilation instead of silently falling
   // through to a bare dash on a state that has a specific operator action.
-  assert.equal(version.contract_version, "1.17.0");
+  //
+  // ── v1.18.0 — `entry_alerts`: WHICH underlying was refused, and WHY ──────────────────────────
+  //
+  // The motivating failure is worth recording, because the page was actively misleading rather than
+  // merely incomplete. A paper_legging deployment displayed:
+  //
+  //     ATTEMPTS 355   FAILED 355   FAILURE RATE 100%
+  //     Rejection categories:  UNKNOWN_INTERNAL_ERROR 354   CROSS_LEG_TIME_SKEW 1
+  //
+  // Nothing had crashed. The armed session's attempt budget was spent, so every candidate was
+  // correctly refused with `session_limit_reached` — but that reason was one of SIX members of the
+  // backend's refusal union that had never been added to its closed metric-label set, so the
+  // cardinality backstop rewrote all 354 of them to `unknown_internal_error`. The operator was sent
+  // hunting a crash that did not exist, and the single fact that explained everything was the one
+  // fact being discarded.
+  //
+  // Fixing the label was necessary but not sufficient: NOTHING on the wire carried the SYMBOL.
+  // `metrics.execution.rejection_categories` is a process-lifetime counter map and structurally
+  // cannot (a symbol in a metric label is an unbounded label space); `box_execution_attempts` rows
+  // are written only once a leg has actually FILLED, so a refusal that never reached the market
+  // persists nothing at all; and the `ENTRY_REJECTED_*` trade events are throttled per candidate, so
+  // a name refused hundreds of times leaves a handful of rows. Three places, three different ways of
+  // losing the same answer.
+  // The properties that shape this schema, each of which the UI must respect:
+  //   • AGGREGATED by (underlying, reason). 354 identical refusals arrive as ONE alert with
+  //     `count: 354`. Rendering them individually would bury the two that differ, which are
+  //     invariably the ones worth reading;
+  //   • `count` is EXACT — unthrottled and unsampled — so it can be compared with
+  //     `metrics.execution.failed` and a discrepancy is itself a signal;
+  //   • `category` splits ordinary market churn from things needing a human, and `actionable` is the
+  //     BACKEND's verdict. The badge must count `actionable_alerts`, never `total_alerts`: a bell
+  //     that rings for `price_moved` rings permanently and is ignored within a day, taking the real
+  //     alerts with it;
+  //   • `dropped_groups > 0` means the list is TRUNCATED at the backend's group cap. It is published
+  //     rather than hidden because the cap is what makes keying by symbol safe, and a silent cap
+  //     would just be a different way of misleading someone about how much is being refused;
+  //   • `remedy` always carries a real sentence, including an explicit "no action" — the whole point
+  //     is that no state on this surface is left unexplained.
+  // Like `account_funds`, `entry_alerts` is REQUIRED on the closed `box-status` schema, so the same
+  // hard deploy order applies: backend first. Asserted whole-object (both levels) in
+  // contract.assert.ts, so a fifth `category` added later breaks compilation instead of silently
+  // rendering an unstyled, unbadged row for a class of problem nobody considered — which would
+  // reintroduce, inside the very feature built to prevent it, the silence that caused the bug.
+  assert.equal(version.contract_version, "1.18.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,

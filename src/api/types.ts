@@ -1000,6 +1000,88 @@ export interface AccountFunds {
   note: string;
 }
 
+/**
+ * WHAT KIND of entry refusal this is — which decides whether it deserves the operator's attention.
+ *
+ * The categories are the reason the notification badge is worth looking at. `market` is ordinary
+ * churn (the price moved, the edge closed) and is deliberately NOT badged: a bell that rings for
+ * price movement rings constantly, and an operator learns within a day to ignore it. The other three
+ * mean nothing will trade until something changes.
+ */
+export type EntryAlertCategory =
+  /** Ordinary market outcome. Nothing is broken; no action. Never badged. */
+  | "market"
+  /** A setting or an operator decision is refusing entry, and nothing will trade until it changes. */
+  | "operator_action"
+  /** A dependency is unhealthy — feed, database. */
+  | "infrastructure"
+  /** Our own code, or an unclassifiable failure. Always worth a human. */
+  | "fault";
+
+/**
+ * One aggregated entry refusal: which underlying, for what reason, how many times.
+ *
+ * AGGREGATED BY (underlying, reason) BY THE BACKEND. 354 identical refusals of one name arrive as ONE
+ * alert with `count: 354`, not as 354 rows — rendering them individually would bury the two that
+ * differ, which are invariably the ones that matter.
+ *
+ * `reason` is deliberately a plain `string` rather than a union: it is the backend's closed
+ * `BoxParentAttemptReason` taxonomy (~25 members spanning market outcomes, admission refusals and
+ * technical fault classes), and the UI must render an unrecognised member honestly rather than fail
+ * to compile or, worse, silently drop it. `category` and `remedy` are what the UI actually keys on,
+ * and both are computed by the backend precisely so the two sides cannot disagree about urgency.
+ */
+export interface EntryAlert {
+  /** The underlying that was refused (e.g. NIFTY, RELIANCE). Never blank; "(unknown)" if unresolvable. */
+  underlying: string;
+  /** The backend's closed refusal-reason label. Render via `entryAlertReasonLabel`. */
+  reason: string;
+  category: EntryAlertCategory;
+  /** True for every category except `market`. Computed by the backend, never re-derived here. */
+  actionable: boolean;
+  /** Exact number of times this (underlying, reason) pair was refused. Never throttled or sampled. */
+  count: number;
+  /** Epoch ms of the first occurrence — distinguishes a long-standing condition from a new one. */
+  first_at: number;
+  /** Epoch ms of the most recent occurrence. */
+  last_at: number;
+  /** The refusing layer's own detail for the NEWEST occurrence, bounded. Null when it supplied none. */
+  last_detail: string | null;
+  /** The most recent candidate key, so a specific strike pair can be found. */
+  last_candidate_key: string | null;
+  /** What to DO about it. Always a real sentence, including an explicit "no action". */
+  remedy: string;
+}
+
+/**
+ * `box_status.entry_alerts` — why entries are being refused, per underlying.
+ *
+ * THE SURFACE THIS REPLACES. `metrics.execution.rejection_categories` is a counter map: it can say
+ * "354 of something" but structurally cannot say WHICH NAME, because a symbol in a metric label is an
+ * unbounded label space. So a deployment whose session budget was simply spent displayed
+ * `UNKNOWN_INTERNAL_ERROR: 354` and nothing else. This object is the bounded, symbol-carrying
+ * counterpart — the only place that answers "which stock failed, why, how often, and what do I do".
+ */
+export interface EntryAlerts {
+  /** Most urgent first (fault → infrastructure → operator_action → market), then most recent. */
+  alerts: EntryAlert[];
+  /** Distinct (underlying, reason) groups tracked. Equals `alerts.length`. */
+  total_alerts: number;
+  /** Sum of every group's count — every refusal since the ledger was last reset. */
+  total_rejections: number;
+  /** Groups with `actionable: true`. THIS is the badge number; `total_alerts` would cry wolf. */
+  actionable_alerts: number;
+  /** Sum of counts across actionable groups only. */
+  actionable_rejections: number;
+  /**
+   * Groups evicted at the backend's fixed group cap. NON-ZERO MEANS THE LIST IS TRUNCATED — surface
+   * it rather than showing a partial list as if it were complete.
+   */
+  dropped_groups: number;
+  /** Epoch ms of the most recent refusal, or null when there has never been one. */
+  latest_at: number | null;
+}
+
 export interface BoxStatus {
   running: boolean;
   state: "SCANNING" | "MARKET_CLOSED" | "STOPPED";
@@ -1053,6 +1135,12 @@ export interface BoxStatus {
    * `unavailable_reason`, so an unread balance can never be rendered as an empty account.
    */
   account_funds: AccountFunds;
+  /**
+   * WHICH UNDERLYING WAS REFUSED, AND WHY. Required by the contract from v1.18.0 — never null, and
+   * empty-but-present when nothing has been refused, so an absent alert list is always "no refusals"
+   * and never "the field went missing".
+   */
+  entry_alerts: EntryAlerts;
   db_enabled: boolean;
   started_at: number | null;
   stopped_at: number | null;

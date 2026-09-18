@@ -45,6 +45,8 @@ import type {
   BoxStatusContract,
   BoxExcludedUnderlyingsContract,
   AccountFundsContract,
+  EntryAlertContract,
+  EntryAlertsContract,
   BoxUniverseContract,
   UniverseUnderlyingContract,
   BrokerHealthContract,
@@ -68,6 +70,8 @@ import type {
   BoxStatus,
   BoxExcludedUnderlyings,
   AccountFunds,
+  EntryAlert,
+  EntryAlerts,
   BoxUniverse,
   UniverseUnderlying,
   BrokerHealthView,
@@ -245,6 +249,24 @@ type _BoxExcludedUnderlyings = Assert<
 type _AccountFunds = Assert<MutuallyAssignable<AccountFundsContract, AccountFunds>>;
 
 /**
+ * box_status.entry_alerts — whole-object, both levels, because both schemas are CLOSED.
+ *
+ * Asserted rather than curated because of what this surface is FOR. It exists because a deployment
+ * reported `UNKNOWN_INTERNAL_ERROR: 354` for what was actually a spent session budget, so the fields
+ * that must never drift are `category` (an exhaustive union the badge and the panel both switch on)
+ * and `actionable` (the backend's own verdict on urgency, which the UI must not re-derive). If the
+ * backend added a fifth category, a curated assertion would let the panel fall through to an
+ * unstyled, unbadged row for a class of problem nobody had considered — reintroducing, in the very
+ * feature built to prevent it, the silence that caused the original bug. This breaks compilation
+ * instead.
+ *
+ * `count` and `dropped_groups` are likewise load-bearing: a truncated list that renders as a complete
+ * one would be a new way of misleading an operator about how much is being refused.
+ */
+type _EntryAlert = Assert<MutuallyAssignable<EntryAlertContract, EntryAlert>>;
+type _EntryAlerts = Assert<MutuallyAssignable<EntryAlertsContract, EntryAlerts>>;
+
+/**
  * GET /api/box/universe — whole-object, both levels, because both schemas are CLOSED.
  *
  * Asserted rather than curated for the same reason as the blocklist: this is the surface an operator
@@ -372,6 +394,9 @@ export type __ContractAssertProof = [
   _BoxExcludedUnderlyings,
   // contract v1.17.0 — free capital, published continuously rather than per entry attempt.
   _AccountFunds,
+  // contract v1.18.0 — which underlying was refused, and why.
+  _EntryAlert,
+  _EntryAlerts,
   // contract v1.15.0 — the pre-run universe picker.
   _UniverseUnderlying,
   _BoxUniverse,

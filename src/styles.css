@@ -3690,9 +3690,180 @@ table {
 
 .box-sound-toggle,
 .box-sound-test,
+.box-alerts-btn,
 .box-help-btn {
   /* These reuse `.btn`; only their density differs from a default toolbar button. */
   padding: 6px 9px;
+}
+
+/* ---- entry alerts: the bell, its badge, and the drawer ---- */
+
+.box-alerts-btn {
+  position: relative;
+}
+
+/* The bell only changes colour when there is something ACTIONABLE and unseen. Ordinary market
+   refusals must never tint it, or the tint stops carrying information. */
+.box-alerts-btn.has-new {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.box-alerts-badge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* The drawer reuses `.box-help`'s geometry; only its content density differs. */
+.box-alerts {
+  width: min(620px, 100vw);
+}
+
+.box-alerts-empty,
+.box-alerts-truncated {
+  padding: var(--s-4);
+  border-left: 2px solid var(--info);
+  background: var(--info-quiet);
+  border-radius: var(--r-sm);
+}
+
+.box-alerts-truncated {
+  border-left-color: var(--warning);
+  background: var(--warning-quiet);
+  margin-bottom: var(--s-5);
+}
+
+.box-alerts-group {
+  margin-bottom: var(--s-6);
+}
+
+.box-alerts-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding-bottom: var(--s-2);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.box-alerts-group-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.box-alerts-group-blurb {
+  margin: var(--s-2) 0 var(--s-3);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.box-alerts-row {
+  padding: var(--s-3) var(--s-4);
+  margin-bottom: var(--s-2);
+  border: 1px solid var(--border);
+  border-left-width: 2px;
+  border-radius: var(--r-sm);
+  background: var(--surface-raised);
+}
+
+/* Category tone is carried on the left edge only, so four categories can sit in one scroll
+   without the panel turning into a colour chart. */
+.box-alerts-row.is-fault,
+.box-alerts-group-head.is-fault {
+  border-left-color: var(--negative);
+}
+
+.box-alerts-row.is-infra,
+.box-alerts-group-head.is-infra {
+  border-left-color: var(--warning);
+}
+
+.box-alerts-row.is-operator,
+.box-alerts-group-head.is-operator {
+  border-left-color: var(--info);
+}
+
+.box-alerts-row.is-market,
+.box-alerts-group-head.is-market {
+  border-left-color: var(--border-strong);
+}
+
+.box-alerts-group-head.is-fault,
+.box-alerts-group-head.is-infra,
+.box-alerts-group-head.is-operator,
+.box-alerts-group-head.is-market {
+  border-left-style: solid;
+  border-left-width: 2px;
+  padding-left: var(--s-3);
+}
+
+.box-alerts-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+/* The SYMBOL leads: it is what an operator scans the list by. */
+.box-alerts-underlying {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.box-alerts-reason {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.box-alerts-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.box-alerts-when {
+  margin-top: var(--s-1);
+  font-size: var(--fs-micro);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The remedy is the point of the row: it is the only line that tells the operator what to DO. */
+.box-alerts-remedy {
+  margin-top: var(--s-2);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-base);
+  color: var(--text-secondary);
+}
+
+.box-alerts-detail,
+.box-alerts-candidate {
+  margin-top: var(--s-2);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-micro);
+  line-height: var(--lh-snug);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.box-alerts-candidate {
+  opacity: 0.75;
 }
 
 .box-sound-test {
