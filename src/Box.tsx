@@ -1928,7 +1928,10 @@ export default function Box({ onLock }: Props) {
           every real refusal stays with the backend, so this can only decline to proceed. */}
       {confirmRun && (
         <RunConfirm
-          live={live}
+          // The EXECUTION MODE, not the stream state. `live` here is the SSE connection and was
+          // previously passed by mistake — see the prop doc in RunConfirm for why that inverted the
+          // dialog's safety claim whenever the stream dropped on a live deployment.
+          mode={headerMode}
           busy={busy}
           onConfirm={() => {
             setConfirmRun(false);
