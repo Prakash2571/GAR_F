@@ -718,20 +718,26 @@ export default function Box({ onLock }: Props) {
   }
 
   async function handleClose(id: string) {
-    setClosingId(id);
-    setError(null);
-    setNotice(null);
-    try {
-      setOpen(await closeBoxTrade(id));
-      setNotice("Box closed at the executable touch.");
-      // A manual close lands in today, so the cheap fast path is enough.
-      void loadToday();
-    } catch (err) {
-      // A refusal (no one-lot market) is the expected, meaningful case here.
-      setError(err instanceof Error ? err.message : "Failed to close the box.");
-    } finally {
-      setClosingId(null);
-    }
+    // A React-state `closingId` alone cannot block two clicks in the same frame.
+    // Claim the per-trade synchronous slot before the request so a live close is
+    // never double-submitted by this browser.
+    const outcome = await runOnce(controls.current, "trade", async () => {
+      setClosingId(id);
+      setError(null);
+      setNotice(null);
+      try {
+        setOpen(await closeBoxTrade(id));
+        setNotice("Box closed at the executable touch.");
+        // A manual close lands in today, so the cheap fast path is enough.
+        void loadToday();
+      } catch (err) {
+        // A refusal (no one-lot market) is the expected, meaningful case here.
+        setError(err instanceof Error ? err.message : "Failed to close the box.");
+      } finally {
+        setClosingId(null);
+      }
+    }, id);
+    if (!outcome.sent) setNotice(outcome.reason);
   }
 
   /**

@@ -49,9 +49,14 @@ const FUNDS_UNAVAILABLE_LABEL: Record<FundsUnavailableReason, string> = {
 function AccountFundsItem({ funds }: { funds: AccountFunds | undefined }) {
   if (!funds) return null;
 
+  // Zerodha's `available.live_balance` is the broker-reported margin available for a
+  // new trade, not cash in a bank account. The backend applies the broker-specific
+  // semantics once and never subtracts `utilised.debits` twice.
   const value = funds.free_to_trade_rupees;
   const known = value !== null;
   const ageSecs = funds.age_ms === null ? null : Math.round(funds.age_ms / 1000);
+  const marginLabel = funds.broker === "zerodha" ? "Available margin to trade" : "Available funds to trade";
+  const usedLabel = funds.broker === "zerodha" ? "used/blocked margin" : "used/blocked";
 
   return (
     <div
@@ -60,7 +65,7 @@ function AccountFundsItem({ funds }: { funds: AccountFunds | undefined }) {
       // rather than writing a second explanation keeps one authority for the caveat.
       title={funds.note}
     >
-      <span className="box-daypnl-k">Free to trade</span>
+      <span className="box-daypnl-k">{marginLabel}</span>
       <span className="box-daypnl-v">
         {known ? (
           rupees(value)
@@ -90,7 +95,7 @@ function AccountFundsItem({ funds }: { funds: AccountFunds | undefined }) {
                 beside what is already blocked, and because null here means UNKNOWN rather than
                 nothing blocked — a distinction that changes how far the headline can be trusted. */}
             {funds.broker_utilised_rupees !== null && (
-              <> · {rupees(funds.broker_utilised_rupees)} blocked</>
+              <> · {rupees(funds.broker_utilised_rupees)} {usedLabel}</>
             )}
           </>
         ) : (
@@ -109,7 +114,7 @@ export function BoxDayPnlStrip({
   /** From `status.account_funds`. Rendered even when the day-P&L block is absent. */
   funds?: AccountFunds | undefined;
 }) {
-  // The funds tile must survive a missing day-P&L block: free capital is worth showing before the
+  // The funds tile must survive a missing day-P&L block: account margin is worth showing before the
   // first trade of the day exists, which is exactly when an operator is deciding whether to arm.
   if (!dayPnl) {
     return funds ? (
@@ -121,14 +126,14 @@ export function BoxDayPnlStrip({
   return (
     <section className="box-daypnl" aria-label="Running day P&L">
       {/*
-        FREE CAPITAL, FIRST, AND IN *THIS* BRANCH.
+        ACCOUNT MARGIN, FIRST, AND IN *THIS* BRANCH.
  
         This is the bug fix, and it is worth stating plainly because the original mistake was
         invisible by construction. The tile was rendered ONLY in the `!dayPnl` early return above,
-        which reads as a sensible "show funds even with no P&L yet" fallback — but `day_pnl` is a
+        which reads as a sensible "show account margin even with no P&L yet" fallback — but `day_pnl` is a
         REQUIRED field of box-status and `computeDayPnl()` returns an object even with zero trades, so
         `dayPnl` is always truthy against a real backend. The early return was dead code, and the
-        "Free to trade" tile therefore never mounted anywhere. The backend was publishing the figure
+        available-margin tile therefore never mounted anywhere. The backend was publishing the figure
         correctly the whole time.
  
         (`src/api/types.ts` declares `day_pnl?` optional while the schema marks it required, which is
