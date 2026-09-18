@@ -1,7 +1,7 @@
 > ### Pinned backend commit
 >
 > `contract/BACKEND_CONTRACT.json` pins
-> **`backend_sha = ff1ed1970015d498d0ceaf5760e200bd94a7d488`** — the `GAR_B` commit
+> **`backend_sha = 9161a6c04aff7d77b08b8eec0f2ab14af9d7e6a6`** — the `GAR_B` `main` commit
 > (`fix(box): stop reporting real refusals as UNKNOWN_INTERNAL_ERROR, and publish which
 > underlying was refused`, contract **1.18.0**) whose contract set hashes to the pinned
 > `schemas_sha256`. Checking that SHA out in the backend reproduces this contract exactly,
