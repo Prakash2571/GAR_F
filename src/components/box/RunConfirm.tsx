@@ -25,15 +25,35 @@
 import { useEffect, useRef, useState } from "react";
 import { XIcon } from "@phosphor-icons/react";
 import { fetchBoxUniverse, type BoxUniverse } from "../../api";
+import type { ModeLabel } from "../../lib/honestLabels.ts";
 
 export function RunConfirm({
-  live,
+  mode,
   busy,
   onConfirm,
   onCancel,
 }: {
-  /** Whether the engine is in a live execution mode, which changes what RUN means. */
-  live: boolean;
+  /**
+   * THE BACKEND'S OWN EXECUTION MODE, via `modeLabel(status.execution_mode)`.
+   *
+   * WAS `live: boolean`, AND WAS BEING HANDED THE SSE CONNECTION STATE.
+   *
+   * `Box.tsx` has two unrelated things that could be called "live": `headerMode.live` (the engine is
+   * in a live EXECUTION MODE) and `live` (the SSE stream is currently CONNECTED — its own prop doc in
+   * BoxHeader says "Presentation only — NOT evidence of tradability"). This dialog was passed the
+   * second one, so its headline tracked the stream socket instead of the execution mode:
+   *
+   *   stream connected, paper engine  → "LIVE mode — entered with REAL orders"  (false alarm)
+   *   stream dropped, LIVE engine     → "Paper simulation — no order reaches any broker"
+   *
+   * The second line is the one that matters. A genuinely live deployment whose stream had blipped
+   * would tell the operator, in the confirmation dialog for the button that starts automated entry,
+   * that nothing reaches the broker. A reassurance derived from a socket is not a safety property.
+   *
+   * Taking the whole `ModeLabel` rather than a boolean also means the paper claim can be gated on
+   * `known`, so an unreported mode is stated as unknown instead of being rendered as paper.
+   */
+  mode: ModeLabel;
   busy: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -85,10 +105,15 @@ export function RunConfirm({
         <header className="modal-head">
           <div>
             <h2 id="box-run-title">Start scanning?</h2>
-            <p className="modal-sub">
-              {live
+            {/* THREE states, not two. "Not live" and "unknown" must never share a sentence: only a
+                CONFIRMED paper mode earns the words "no order reaches any broker", and the paper
+                mode is NAMED because paper_legging and paper_touch model different executions. */}
+            <p className={mode.live || !mode.known ? "modal-sub is-warn" : "modal-sub"}>
+              {mode.live
                 ? "LIVE mode — qualifying boxes are entered with REAL orders."
-                : "Paper simulation — no order reaches any broker."}
+                : mode.known
+                  ? `Paper simulation (${mode.badge.replace(/^paper — /, "")}) — no order reaches any broker.`
+                  : "Execution mode UNKNOWN — the backend has not reported it. Do not assume this is paper."}
             </p>
           </div>
           <button

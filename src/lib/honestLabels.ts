@@ -33,6 +33,15 @@ export interface ModeLabel {
   subtitle: string;
   /** True when real broker orders can be produced by this deployment. */
   live: boolean;
+  /**
+   * True when the backend actually TOLD us the mode.
+   *
+   * `live: false` alone is ambiguous — it is also what an unreported mode yields — so anything that
+   * makes a POSITIVE safety claim ("no order reaches any broker") must check this too. Without it a
+   * caller has no way to distinguish "this is paper" from "we do not know", and those must never
+   * render the same reassurance.
+   */
+  known: boolean;
   /** One sentence stating what this mode does and does not do. */
   detail: string;
 }
@@ -53,6 +62,7 @@ export function modeLabel(executionMode: string | null | undefined): ModeLabel {
       badge: "mode unknown",
       subtitle: "Box arbitrage · execution mode UNKNOWN, one lot",
       live: false,
+      known: false,
       detail:
         "The backend has not reported an execution mode. Do not assume this is paper: treat every " +
         "control as potentially live until the mode is known.",
@@ -63,6 +73,7 @@ export function modeLabel(executionMode: string | null | undefined): ModeLabel {
       badge: "LIVE — real orders",
       subtitle: "Box arbitrage · LIVE, real money, one lot",
       live: true,
+      known: true,
       detail:
         "This deployment can place REAL orders with REAL money at the configured broker. Nothing " +
         "here is a simulation, and no fill, four-leg completion or maximum loss is guaranteed.",
@@ -74,6 +85,7 @@ export function modeLabel(executionMode: string | null | undefined): ModeLabel {
     badge: `paper — ${pretty}`,
     subtitle: `Box arbitrage · paper trading (${pretty}), one lot`,
     live: false,
+    known: true,
     detail:
       `This deployment is running the ${pretty} simulation. No order reaches any broker. Simulated ` +
       `fills are modelled, not promised, and they are not evidence of live behaviour.`,
