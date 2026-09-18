@@ -120,6 +120,25 @@ export function BoxDayPnlStrip({
   }
   return (
     <section className="box-daypnl" aria-label="Running day P&L">
+      {/*
+        FREE CAPITAL, FIRST, AND IN *THIS* BRANCH.
+ 
+        This is the bug fix, and it is worth stating plainly because the original mistake was
+        invisible by construction. The tile was rendered ONLY in the `!dayPnl` early return above,
+        which reads as a sensible "show funds even with no P&L yet" fallback — but `day_pnl` is a
+        REQUIRED field of box-status and `computeDayPnl()` returns an object even with zero trades, so
+        `dayPnl` is always truthy against a real backend. The early return was dead code, and the
+        "Free to trade" tile therefore never mounted anywhere. The backend was publishing the figure
+        correctly the whole time.
+ 
+        (`src/api/types.ts` declares `day_pnl?` optional while the schema marks it required, which is
+        what made the dead branch look plausible in review. The tile is now rendered in BOTH branches,
+        so that mismatch can no longer hide it.)
+ 
+        Placed FIRST because it is the number an operator checks before arming: what can I trade with?
+        That question precedes how today has gone.
+      */}
+      <AccountFundsItem funds={funds} />
       <Item
         label={`Open running net (${dayPnl.open_count})`}
         value={dayPnl.open_running_net_pnl}

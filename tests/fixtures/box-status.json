@@ -574,5 +574,39 @@
     "unavailable_reason": null,
     "last_error": null,
     "note": "Spendable account balance as reported by the broker, 4s old. zerodha: available.live_balance is documented as already net of encumbrances, so utilised.debits is NOT subtracted again. It does NOT prove a specific box is affordable — four-leg margin is a separate question the economic-admission gate answers against the broker basket margin."
+  },
+  "entry_alerts": {
+    "alerts": [
+      {
+        "underlying": "NIFTY",
+        "reason": "session_limit_reached",
+        "category": "operator_action",
+        "actionable": true,
+        "count": 354,
+        "first_at": 1788999000000,
+        "last_at": 1789000000000,
+        "last_detail": "session_attempt_budget_exhausted: the armed trading session refused entry",
+        "last_candidate_key": "NIFTY|2026-09-24|24000|24200|LONG",
+        "remedy": "The armed session has spent its permitted attempts or box lifecycles (BOX_SESSION_MAX_COMPLETED_TRADES / the session attempt budget). NOTHING WILL ENTER until you arm a new session or raise the budget. Open positions are still monitored and can still exit."
+      },
+      {
+        "underlying": "RELIANCE",
+        "reason": "cross_leg_time_skew",
+        "category": "market",
+        "actionable": false,
+        "count": 1,
+        "first_at": 1788999500000,
+        "last_at": 1788999500000,
+        "last_detail": "leg exchange timestamps spanned 1840ms",
+        "last_candidate_key": "RELIANCE|2026-09-24|1400|1420|LONG",
+        "remedy": "No action if rare. The four legs' exchange timestamps were too far apart to be one coherent snapshot, so the box was not priced across stale quotes."
+      }
+    ],
+    "total_alerts": 2,
+    "total_rejections": 355,
+    "actionable_alerts": 1,
+    "actionable_rejections": 354,
+    "dropped_groups": 0,
+    "latest_at": 1789000000000
   }
 }

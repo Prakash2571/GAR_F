@@ -1,15 +1,22 @@
 > ### Pinned backend commit
 >
 > `contract/BACKEND_CONTRACT.json` pins
-> **`backend_sha = fd13a399871a62063d0628a618d83945a18c0e57`** — the `GTSAlgoResearch_B` commit
-> (`docs: rebrand the backend as GTS Algo Research`, contract **1.9.0**) whose contract set
-> hashes to the pinned `schemas_sha256`. Checking that SHA out in the backend reproduces this
-> contract exactly, which is the whole point of the pin.
+> **`backend_sha = ff1ed1970015d498d0ceaf5760e200bd94a7d488`** — the `GAR_B` commit
+> (`fix(box): stop reporting real refusals as UNKNOWN_INTERNAL_ERROR, and publish which
+> underlying was refused`, contract **1.18.0**) whose contract set hashes to the pinned
+> `schemas_sha256`. Checking that SHA out in the backend reproduces this contract exactly,
+> which is the whole point of the pin.
 >
-> 1.9.0 changed exactly one value: `protocol.json` `session_cookie_default`,
-> `strikedge_session` → `gts_session`. `protocol.json` is hashed by `digest.mjs` alongside the
-> schemas, so a protocol-constant change moves `schemas_sha256` exactly as a schema edit would
-> — which is why the version bumped and everything below had to be re-pinned.
+> 1.18.0 added one REQUIRED property to the closed `box-status` schema: `entry_alerts`
+> (`entry-alerts.schema.json` + `entry-alert.schema.json`) — the per-underlying, aggregated
+> ledger of refused entry attempts. It exists because `rejection_categories` is a metric label
+> space that structurally cannot carry a symbol, so a deployment whose session budget was simply
+> spent reported `UNKNOWN_INTERNAL_ERROR: 354` and nothing else. Because the property is
+> REQUIRED on an `additionalProperties: false` schema, the backend must deploy FIRST or an
+> unbumped frontend rejects the whole status response.
+>
+> (This block was previously stale at **1.9.0** / `fd13a39` while the pin itself had moved on to
+> 1.17.0 — the digest gate cannot catch that, which is exactly why the note below exists.)
 >
 > **When you change the contract, update this SHA too.** `contract:verify` cannot check it:
 > it verifies the DIGEST, which is content-addressed and will happily agree while the SHA

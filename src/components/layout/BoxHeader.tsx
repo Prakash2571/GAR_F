@@ -25,6 +25,7 @@ import Button from "../ui/Button.tsx";
 import ThemeToggle from "../../ThemeToggle.tsx";
 import BoxSoundToggle from "../../BoxSoundToggle.tsx";
 import { BoxHelp } from "../../BoxHelp.tsx";
+import BoxAlertsBell from "../box/BoxAlertsBell.tsx";
 import type { BoxConfigView, BoxStatus } from "../../api.ts";
 import type { ModeLabel } from "../../lib/honestLabels.ts";
 
@@ -145,6 +146,13 @@ export default function BoxHeader({
       </div>
 
       <div className="gts-workbar-session">
+        {/* ENTRY ALERTS — which underlying was refused, and why.
+ 
+            Placed FIRST among the utilities, and before the help panel, because it is the control an
+            operator reaches for when the page says entries are failing and does not say why. It is a
+            read-only surface: nothing in it can place, cancel or modify an order, which is why it
+            belongs in this group rather than beside RUN/STOP. */}
+        <BoxAlertsBell alerts={status?.entry_alerts} />
         {/* The help panel is given the LIVE mode and config so it explains what this server is
             actually running — a help page quoting stale defaults is worse than none, and its
             lead paragraph must not promise "paper" under live. */}
