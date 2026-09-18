@@ -195,18 +195,32 @@ jobs:
       # regression — exactly the pattern an earlier generation of this front end used, and which was
       # deliberately removed.
       #
-      # The bundle DOES use localStorage, but only for two benign UI preferences whose exact keys are
-      # read from source:
+      # The bundle DOES use localStorage, but only for three benign UI preferences whose exact keys
+      # are read from source:
       #     gts_theme                     (src/lib/theme.ts     — light/dark theme)
       #     calspread:box:sound-enabled   (src/lib/boxSounds.ts — Box sound on/off; the key predates
       #                                    the rebrand and is intentionally unchanged, so a stored
       #                                    sound preference is not silently reset. It is invisible in
       #                                    the UI and pinned by tests/boxSoundPref.test.mjs.)
+      #     gts_box_alerts_seen_at        (src/components/box/BoxAlertsBell.tsx — epoch ms of the last
+      #                                    time the operator OPENED the entry-alerts panel, so the
+      #                                    "new" badge survives a reload. A single integer timestamp:
+      #                                    no identifier, no credential, no account or session data,
+      #                                    and nothing derived from any of them. Deliberately client-
+      #                                    side: acknowledging a notification is one operator's
+      #                                    attention, and persisting it server-side would let one
+      #                                    person's dismissal silence the bell for everyone watching
+      #                                    the same deployment.)
       # These are the ONLY allowed keys. The check resolves every key passed to localStorage
       # get/setItem (whether an inline string literal or a minified variable holding one) and fails
-      # if any resolved key is not one of the two above — so it cannot false-positive on the theme /
-      # sound keys, and it catches a newly-introduced session/token key regardless of what the
-      # minifier renames the variable to.
+      # if any resolved key is not one of the three above — so it cannot false-positive on the theme /
+      # sound / alerts keys, and it catches a newly-introduced session/token key regardless of what
+      # the minifier renames the variable to.
+      #
+      # ADDING A KEY HERE IS A DELIBERATE, REVIEWABLE ACT. The allow-list is the whole mechanism: it
+      # must only ever gain keys that carry a UI PREFERENCE, never anything that identifies a user, a
+      # session or an account. If a change needs a key that does not obviously satisfy that, the
+      # answer is to not store it client-side.
       - name: Assert no session token is stored in localStorage
         run: |
           set -euo pipefail
@@ -214,7 +228,11 @@ jobs:
           import { readFileSync, readdirSync } from "node:fs";
           import path from "node:path";
 
-          const ALLOWED = new Set(["gts_theme", "calspread:box:sound-enabled"]);
+          const ALLOWED = new Set([
+            "gts_theme",
+            "calspread:box:sound-enabled",
+            "gts_box_alerts_seen_at",
+          ]);
           const dir = "dist/assets";
           const files = readdirSync(dir).filter((f) => f.endsWith(".js"));
           let failed = false;

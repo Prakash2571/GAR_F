@@ -34,7 +34,7 @@ import type { EntryAlert, EntryAlertCategory, EntryAlerts } from "../../api.ts";
  * one operator's attention, and persisting it server-side would make one person's dismissal silence
  * the bell for everybody watching the same deployment.
  */
-const SEEN_KEY = "gts.box.alerts.seenAt";
+const SEEN_KEY = "gts_box_alerts_seen_at";
 
 /** How each category is titled and toned. The backend classifies; this only chooses words and colour. */
 const CATEGORY_META: Record<
