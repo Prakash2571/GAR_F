@@ -306,7 +306,13 @@ async function readJson<T>(res: Response, what: string): Promise<T> {
   } catch {
     // Not JSON — fall through to the status-based message below.
   }
-  if (!res.ok) throw new ApiError(body?.error ?? `${what} (HTTP ${res.status}).`, res.status);
+  // The PARSED body travels with the error, not just the message. Some endpoints answer a non-2xx
+  // with a STRUCTURED, actionable payload rather than only a sentence — the operator-configuration
+  // PATCH returns `{ applied: false, version, reason, problems[] }` on a 409/422/403, where the
+  // version is needed to resynchronise and `problems` names the offending field. Without the body a
+  // caller would have to parse prose to find them, and one that forgot would render "request failed"
+  // for a refusal that had a precise reason attached. `body` is `null` when the reply was not JSON.
+  if (!res.ok) throw new ApiError(body?.error ?? `${what} (HTTP ${res.status}).`, res.status, body);
   if (body === null) throw new Error(`${what}: the server sent an unreadable reply.`);
   return body;
 }
@@ -323,11 +329,22 @@ async function readJson<T>(res: Response, what: string): Promise<T> {
  */
 export class ApiError extends Error {
   readonly status: number;
+  /**
+   * The PARSED JSON body of the failing response, or `null` when the reply was not JSON.
+   *
+   * Added for endpoints that answer a non-2xx with a structured, actionable payload rather than only a
+   * message — see the note in `readJson`. Typed `unknown` on purpose: a caller must narrow it before
+   * use, so an unexpected shape (a proxy's HTML error page, a truncated reply) cannot be read as a
+   * valid domain object. `message` is unchanged, so every existing `err.message` call site is
+   * unaffected.
+   */
+  readonly body: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, body: unknown = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.body = body;
   }
 }
 

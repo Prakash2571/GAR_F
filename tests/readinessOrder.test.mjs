@@ -509,7 +509,41 @@ test("the contract version and the backend pin move TOGETHER", () => {
   // contract.assert.ts, so a fifth `category` added later breaks compilation instead of silently
   // rendering an unstyled, unbadged row for a class of problem nobody considered — which would
   // reintroduce, inside the very feature built to prevent it, the silence that caused the bug.
-  assert.equal(version.contract_version, "1.18.0");
+  // ── v1.19.0 — OPERATOR RUNTIME CONFIGURATION: the authority boundary, on the wire ────────────
+  // The backend gained a validated, PostgreSQL-persisted runtime configuration surface so an
+  // operator can change a strategy or risk parameter without editing a server `.env` and restarting.
+  // Four new schemas, all additive, none touching an existing shape:
+  //   • `operator-config` — GET and PATCH both return it, so a client always finishes a mutation
+  //     holding the new authoritative state instead of re-reading and hoping. `version` is the
+  //     optimistic-concurrency token for the configuration AS A WHOLE: a PATCH echoes the version it
+  //     believes it is editing and is refused if anything moved, and the frontend uses the same
+  //     number to DISCARD a stale response that arrives after a newer one;
+  //   • `operator-config-setting` — and the reason this schema carries THREE values rather than one
+  //     is the entire point of the feature. `configured_value` is what the operator asked for,
+  //     `effective_value` is what the engine enforces, and they diverge whenever an explicitly-set
+  //     deployment ceiling clamps the operator's figure (`source: runtime_clamped_by_env`,
+  //     `clamped_by_deployment: true`). A UI showing only one number would report a limit that is
+  //     not in force, which on a capital cap is the most dangerous thing this surface could do.
+  //     `session_snapshot_value` is the fourth: non-null only for a NEXT_SESSION setting while a
+  //     session is armed, carrying the value FROZEN at arm time, so a newly configured attempt
+  //     ceiling can never be rendered as though the armed session were already bound by it;
+  //   • `operator-config-change` — the append-only audit trail, recording the configured AND the
+  //     effective value before and after, because a clamp makes those differ and "I set 150,000"
+  //     versus "120,000 was enforced" is exactly what an incident review needs;
+  //   • `operator-config-refusal` — 409 stale version, 422 validation/policy, 403 role. `applied` is
+  //     `const: false` rather than a boolean, and `problems` has `minItems: 1`, so a refusal can
+  //     neither be misread as a partial success nor arrive without saying why.
+  // The `deployment` block is READ-ONLY and env-owned: it DISPLAYS the four live-capability gates
+  // (execution mode, the deployment live flag and the two per-broker gates) plus the backend's own
+  // `live_capable` verdict, and nothing in it is writable through any runtime API. That is what makes
+  // it impossible to turn a paper deployment live from a browser, and it is why the UI must keep
+  // taking the paper/live label from here rather than deriving one.
+  // NO SECRET APPEARS IN ANY OF THESE SHAPES. Only environment variables classified as plain `config`
+  // in the backend's own `src/env/secrets.ts` may be registered as settings at all, a backend test
+  // asserts it against the real classifier, and `env_var` is provenance for an Advanced detail only.
+  // PURELY ADDITIVE and NOT a hard deploy-order dependency: nothing became required on an existing
+  // schema, so an unbumped frontend keeps working — it simply cannot show the configuration screen.
+  assert.equal(version.contract_version, "1.19.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,

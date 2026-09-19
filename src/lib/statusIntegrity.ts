@@ -237,10 +237,16 @@ export type ControlClass =
   | "scanner"
   | "mode"
   | "broker"
-  | "trade";
+  | "trade"
+  // Operator CONFIGURATION writes. Its own class, not folded into "mode" or "trade", because a
+  // configuration PATCH carries an optimistic-concurrency version: two concurrent writes would have
+  // the second refused as stale, and the operator would see a spurious failure for a change they
+  // only submitted once. Single-flighting it makes the double-click a no-op instead.
+  | "configuration";
 
 /** Human label per control class, so a refusal names the control the operator actually pressed. */
 export const CONTROL_LABEL: Readonly<Record<ControlClass, string>> = Object.freeze({
+  configuration: "configuration",
   entry_arming: "entry arming",
   live_order_management: "live-order management",
   emergency: "emergency action",
