@@ -269,6 +269,22 @@ type _BoxMetricsExecutionScalars = Assert<
   >
 >;
 
+/*
+ * `NonNullable` on the hand-written side, and the reason is itself a divergence worth naming.
+ *
+ * `BoxMetrics.snapshot()` ALWAYS returns a `legging` object — it is an unconditional key in the
+ * returned literal — and the schema marks it required accordingly. This repository nevertheless
+ * declares it `legging?:`, and `BoxExecutionHealth` guards every read with `legging?.` or
+ * `legging && legging.outcomes.total > 0`.
+ *
+ * That divergence is in the SAFE direction: the frontend tolerates an absence the backend cannot
+ * produce, which costs nothing, whereas the reverse would crash. So it is left alone rather than
+ * "corrected" to match the contract — but it does mean `BoxMetricsSnapshot["legging"]` is a union
+ * with `undefined`, and `keyof` over a union is the INTERSECTION of its members' keys, which for
+ * anything unioned with `undefined` is `never`. `Pick` would then reject every key name. Stripping
+ * the nullability is what lets these assertions talk about the shape, which is the part the
+ * contract actually governs; the optionality is a local safety choice, not a contract claim.
+ */
 type _BoxMetricsLeggingScalars = Assert<
   MutuallyAssignable<
     Pick<
@@ -276,9 +292,20 @@ type _BoxMetricsLeggingScalars = Assert<
       "fill_rate_4_of_4" | "failure_rate_3_of_4" | "failure_rate_2_of_4" | "failure_rate_1_of_4"
     >,
     Pick<
-      BoxMetricsSnapshot["legging"],
+      NonNullable<BoxMetricsSnapshot["legging"]>,
       "fill_rate_4_of_4" | "failure_rate_3_of_4" | "failure_rate_2_of_4" | "failure_rate_1_of_4"
     >
+  >
+>;
+
+/*
+ * `outcomes.total` and `outcomes.aborts` — the two the panel reads to decide whether the legging
+ * block renders at all, and how many attempts were abandoned.
+ */
+type _BoxMetricsLeggingOutcomes = Assert<
+  MutuallyAssignable<
+    Pick<BoxMetricsContract["legging"]["outcomes"], "total" | "aborts">,
+    Pick<NonNullable<BoxMetricsSnapshot["legging"]>["outcomes"], "total" | "aborts">
   >
 >;
 
@@ -312,7 +339,7 @@ type _BoxMetricsLeggingRings = Assert<
       "legging_net_loss" | "first_to_last_fill_ms" | "expected_vs_realised_net" | "most_failing_role"
     >,
     Pick<
-      BoxMetricsSnapshot["legging"],
+      NonNullable<BoxMetricsSnapshot["legging"]>,
       "legging_net_loss" | "first_to_last_fill_ms" | "expected_vs_realised_net" | "most_failing_role"
     >
   >
@@ -485,6 +512,7 @@ export type __ContractAssertProof = [
   // open leaf. These four are what make a backend rename a COMPILE error instead of a blank panel.
   _BoxMetricsExecutionScalars,
   _BoxMetricsLeggingScalars,
+  _BoxMetricsLeggingOutcomes,
   _BoxMetricsRings,
   _BoxMetricsLeggingRings,
   // contract v1.13.0 — the operator blocklist of underlyings that may never be entered.
