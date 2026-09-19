@@ -43,6 +43,7 @@ import type {
   BoxOpenPositionContract,
   BoxOpportunityContract,
   BoxStatusContract,
+  BoxMetricsContract,
   BoxExcludedUnderlyingsContract,
   AccountFundsContract,
   EntryAlertContract,
@@ -68,6 +69,7 @@ import type {
   BoxOpenPosition,
   BoxOpportunity,
   BoxStatus,
+  BoxMetricsSnapshot,
   BoxExcludedUnderlyings,
   AccountFunds,
   EntryAlert,
@@ -223,6 +225,122 @@ type _BoxStatusFields = Assert<
       | "feed_age_ms" | "skipped_for_budget" | "skipped_symbols" | "skipped_for_underlying_cap"
       | "skipped_underlying_cap_symbols" | "max_underlyings" | "last_error" | "market_data_state"
       | "excluded_underlyings"
+    >
+  >
+>;
+
+/* ============================ BOX METRICS — newly assertable (contract v1.20.0) ============================ */
+/**
+ * `box-status.metrics` USED TO BE one of the open leaves listed in this file's header: the schema
+ * pinned it as `{"type": "object"}` and nothing more, so the generated type was
+ * `Record<string, never>` and no assertion here could say anything true about it.
+ *
+ * That was not a cosmetic gap. `BoxExecutionHealth` renders from these exact field names, the
+ * frontend hand-maintains `BoxMetricsSnapshot` in `./types.ts`, the backend derives its own shape
+ * from `ReturnType<BoxMetrics["snapshot"]>`, and NOTHING connected the two — not the digest, which
+ * did not cover the interior, and not this file, which had nothing to assert against. A backend
+ * rename would have compiled, validated, deployed, and shown the operator an empty panel.
+ *
+ * `box-metrics.schema.json` now pins the names, so the loop closes: the backend's contract suite
+ * validates a REAL serialized response against that schema, the schema generates
+ * `BoxMetricsContract`, and the two assertions below make `tsc -b` prove the generated contract and
+ * the hand-written type still agree.
+ *
+ * CURATED, for the reason the header describes: the schema is deliberately OPEN at every level so
+ * the engine can keep adding counters, and `BoxMetricsSnapshot` is correspondingly a superset
+ * (22 execution fields against the 15 the contract pins). A whole-object assertion would be a false
+ * claim. What is asserted is exactly the set the UI reads.
+ */
+
+// The scalar counters and rates, MUTUALLY: a rename, removal or retype on EITHER side breaks the
+// build. Both sides are plain `number`, so equality is the right and strictest claim.
+type _BoxMetricsExecutionScalars = Assert<
+  MutuallyAssignable<
+    Pick<
+      BoxMetricsContract["execution"],
+      "attempted" | "completed" | "successful" | "partial_recovered" | "partial_unresolved"
+      | "failed" | "aborted" | "retries" | "success_rate" | "failure_rate" | "rejection_categories"
+    >,
+    Pick<
+      BoxMetricsSnapshot["execution"],
+      "attempted" | "completed" | "successful" | "partial_recovered" | "partial_unresolved"
+      | "failed" | "aborted" | "retries" | "success_rate" | "failure_rate" | "rejection_categories"
+    >
+  >
+>;
+
+/*
+ * `NonNullable` on the hand-written side, and the reason is itself a divergence worth naming.
+ *
+ * `BoxMetrics.snapshot()` ALWAYS returns a `legging` object — it is an unconditional key in the
+ * returned literal — and the schema marks it required accordingly. This repository nevertheless
+ * declares it `legging?:`, and `BoxExecutionHealth` guards every read with `legging?.` or
+ * `legging && legging.outcomes.total > 0`.
+ *
+ * That divergence is in the SAFE direction: the frontend tolerates an absence the backend cannot
+ * produce, which costs nothing, whereas the reverse would crash. So it is left alone rather than
+ * "corrected" to match the contract — but it does mean `BoxMetricsSnapshot["legging"]` is a union
+ * with `undefined`, and `keyof` over a union is the INTERSECTION of its members' keys, which for
+ * anything unioned with `undefined` is `never`. `Pick` would then reject every key name. Stripping
+ * the nullability is what lets these assertions talk about the shape, which is the part the
+ * contract actually governs; the optionality is a local safety choice, not a contract claim.
+ */
+type _BoxMetricsLeggingScalars = Assert<
+  MutuallyAssignable<
+    Pick<
+      BoxMetricsContract["legging"],
+      "fill_rate_4_of_4" | "failure_rate_3_of_4" | "failure_rate_2_of_4" | "failure_rate_1_of_4"
+    >,
+    Pick<
+      NonNullable<BoxMetricsSnapshot["legging"]>,
+      "fill_rate_4_of_4" | "failure_rate_3_of_4" | "failure_rate_2_of_4" | "failure_rate_1_of_4"
+    >
+  >
+>;
+
+/*
+ * `outcomes.total` and `outcomes.aborts` — the two the panel reads to decide whether the legging
+ * block renders at all, and how many attempts were abandoned.
+ */
+type _BoxMetricsLeggingOutcomes = Assert<
+  MutuallyAssignable<
+    Pick<BoxMetricsContract["legging"]["outcomes"], "total" | "aborts">,
+    Pick<NonNullable<BoxMetricsSnapshot["legging"]>["outcomes"], "total" | "aborts">
+  >
+>;
+
+/*
+ * The RING-valued fields, one-way (contract → hand-written), which is the consumer-critical
+ * direction: everything the contract guarantees must be consumable by the type the panel reads.
+ *
+ * Deliberately not mutual. The generated ring carries an index signature because the schema leaves
+ * it open, while the hand-written `RingSummary` is an `interface` — and TypeScript grants an
+ * implicit index signature to type aliases but NOT to interfaces, so the reverse direction cannot
+ * hold for a reason that has nothing to do with the contract agreeing. Asserting it anyway would
+ * mean weakening `RingSummary` to satisfy the compiler, which is the wrong way round.
+ */
+type _BoxMetricsRings = Assert<
+  AssignableTo<
+    Pick<
+      BoxMetricsContract["execution"],
+      "decision_deterioration" | "execution_slippage" | "exit_slippage"
+    >,
+    Pick<
+      BoxMetricsSnapshot["execution"],
+      "decision_deterioration" | "execution_slippage" | "exit_slippage"
+    >
+  >
+>;
+
+type _BoxMetricsLeggingRings = Assert<
+  AssignableTo<
+    Pick<
+      BoxMetricsContract["legging"],
+      "legging_net_loss" | "first_to_last_fill_ms" | "expected_vs_realised_net" | "most_failing_role"
+    >,
+    Pick<
+      NonNullable<BoxMetricsSnapshot["legging"]>,
+      "legging_net_loss" | "first_to_last_fill_ms" | "expected_vs_realised_net" | "most_failing_role"
     >
   >
 >;
@@ -390,6 +508,13 @@ export type __ContractAssertProof = [
   _AccessStatus,
   _AccessAuthBranch,
   _BoxStatusFields,
+  // contract v1.20.0 — the rolling metrics the execution-health panel renders from, no longer an
+  // open leaf. These four are what make a backend rename a COMPILE error instead of a blank panel.
+  _BoxMetricsExecutionScalars,
+  _BoxMetricsLeggingScalars,
+  _BoxMetricsLeggingOutcomes,
+  _BoxMetricsRings,
+  _BoxMetricsLeggingRings,
   // contract v1.13.0 — the operator blocklist of underlyings that may never be entered.
   _BoxExcludedUnderlyings,
   // contract v1.17.0 — free capital, published continuously rather than per entry attempt.
