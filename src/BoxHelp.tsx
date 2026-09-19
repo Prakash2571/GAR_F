@@ -82,9 +82,14 @@ export function BoxHelp({
 
   return (
     <>
+      {/* `btn btn--quiet` is not decoration: the stylesheet's own note on `.box-help-btn` says it
+          "reuse[s] `.btn`" and only overrides density, but the class was never applied here, so this
+          button inherited no background, border, radius or min-height and sat in the toolbar as a
+          bare glyph a different size from every neighbour. It is the same quiet variant as Alerts,
+          Sounds, Test, theme and Lock, so the utility group reads as one toolbar. */}
       <button
         type="button"
-        className="box-help-btn"
+        className="btn btn--quiet box-help-btn"
         onClick={() => setOpen(true)}
         title="What this page does, what every term means, and what every parameter changes"
         aria-label="About this page"

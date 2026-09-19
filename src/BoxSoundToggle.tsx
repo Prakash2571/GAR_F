@@ -27,7 +27,7 @@ export default function BoxSoundToggle({ enabled, onToggle, onTest }: BoxSoundTo
     <>
       <button
         type="button"
-        className="btn box-sound-toggle"
+        className="btn btn--quiet box-sound-toggle"
         aria-label={actionLabel}
         aria-pressed={enabled}
         title={label}
@@ -42,7 +42,7 @@ export default function BoxSoundToggle({ enabled, onToggle, onTest }: BoxSoundTo
       </button>
       <button
         type="button"
-        className="btn box-sound-test"
+        className="btn btn--quiet box-sound-test"
         aria-label="Play a test Box sound"
         title="Play a test sound. Also re-enables sound playback after a page refresh."
         onClick={onTest}
