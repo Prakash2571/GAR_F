@@ -177,12 +177,13 @@ export function ConfigurationPanel({ canTrade }: { canTrade: boolean }) {
 
   const config = state.config;
 
-  // NARROWED ONCE, HERE, rather than tested again at each use.
+  // RESOLVED ONCE, HERE, rather than re-read from the union inside the JSX.
   //
-  // `ConfigViewState` carries `error` only on the `stale: true` member, so a boolean local does not
-  // give the compiler permission to read `state.error` later in the JSX — the discriminant has to be
-  // tested where the property is accessed. Resolving it to `string | null` in one place keeps the
-  // render readable and keeps the two facts ("is it stale" and "why") from drifting apart.
+  // `ConfigViewState` carries `error` only on its `stale: true` member. Reading `state.error` under a
+  // `stale &&` guard does in fact compile — TypeScript narrows through a `const` alias of a
+  // discriminant check — so this is a readability preference and not a correctness fix. It is written
+  // this way because it keeps the two facts ("is it stale" and "why") together at one point, instead
+  // of depending on that inference rule holding across a JSX boundary for a reader to verify.
   const staleError = state.stale === true ? state.error : null;
   const stale = staleError !== null;
   const groups = groupByCategory(config.settings);

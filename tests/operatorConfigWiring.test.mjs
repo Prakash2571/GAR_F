@@ -342,21 +342,23 @@ test("no configuration file has an unused import (noUnusedLocals is a build fail
   }
 });
 
-test("the stale banner reads its message through a narrowed local, not off the union", () => {
-  // THE BUG THIS PINS. `ConfigViewState` carries `error` only on its `stale: true` member, so
-  // `const stale = state.stale === true` followed by `{state.error}` in the JSX does not compile:
-  // a boolean local gives the compiler no permission to read the property. It has to be narrowed
-  // where the discriminant is tested.
+test("the stale banner resolves its message once, rather than re-reading the union in JSX", () => {
+  /*
+   * A CORRECTION, recorded because the original version of this comment was wrong.
+   *
+   * I claimed `const stale = state.stale === true` followed by `{state.error}` in the JSX "does not
+   * compile", since `ConfigViewState` carries `error` only on its `stale: true` member. That is NOT
+   * true: TypeScript has narrowed through a `const` alias of a discriminant check since 4.4, and CI
+   * proved it by typechecking the earlier revision successfully. The original code was correct.
+   *
+   * The `staleError` form is kept as a readability preference, not a fix — it resolves "is it stale"
+   * and "why" together at one point instead of relying on a subtle inference rule holding across a
+   * JSX boundary. This assertion therefore pins a STYLE the file has chosen, and says so, rather than
+   * pretending to guard a compile error that never existed.
+   */
   assert.match(PANEL, /const staleError = state\.stale === true \? state\.error : null/);
   assert.match(PANEL, /\{staleError\}/);
-
-  // And the un-narrowed form must not come back.
-  const afterEarlyReturns = PANEL.slice(PANEL.indexOf("const config = state.config"));
-  assert.equal(
-    /\{state\.error\}/.test(afterEarlyReturns),
-    false,
-    "state.error is read off the union again — this does not compile",
-  );
+  assert.match(PANEL, /const stale = staleError !== null/);
 });
 
 test("every union member of ConfigViewState is constructed somewhere", () => {
