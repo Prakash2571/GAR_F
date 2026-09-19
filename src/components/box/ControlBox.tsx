@@ -43,6 +43,7 @@ import { BoxRiskControl } from "../../BoxRiskControl.tsx";
 import { BoxGates } from "../../BoxGates.tsx";
 import { BoxExclusions } from "../../BoxExclusions.tsx";
 import { UniversePicker } from "./UniversePicker.tsx";
+import { ConfigurationPanel } from "./configuration/ConfigurationPanel.tsx";
 import type {
   BoxConfigView,
   BoxExcludedUnderlyings,
@@ -50,13 +51,18 @@ import type {
   BoxStatus,
 } from "../../api";
 
-type Tab = "execution" | "session" | "universe" | "risk";
+type Tab = "execution" | "session" | "universe" | "risk" | "configuration";
 
 const TABS: { id: Tab; label: string; hint: string }[] = [
   { id: "execution", label: "Execution", hint: "Mode, live arming and pacing" },
   { id: "session", label: "Session", hint: "How many box lifecycles are authorised" },
   { id: "universe", label: "Universe", hint: "Which underlyings may be entered" },
   { id: "risk", label: "Risk & gates", hint: "Caps, and the thresholds a box must clear" },
+  // The CONFIGURATION tab, added last so the four existing tabs keep their positions and an operator's
+  // muscle memory is unaffected. It is a peer rather than a replacement: the panels above are the
+  // moment-to-moment controls (run, arm, exclude), while this one is the persisted policy underneath
+  // them. Folding the two together is what produced the wall of text this container was built to fix.
+  { id: "configuration", label: "Configuration", hint: "Persisted strategy, risk and market-data policy" },
 ];
 
 export function ControlBox({
@@ -95,6 +101,9 @@ export function ControlBox({
     session: null,
     universe: blocklistBroken ? "!" : excludedCount > 0 ? String(excludedCount) : null,
     risk: null,
+    // The panel owns its own staleness and locked-setting markers, because only it has fetched the
+    // configuration. Surfacing them here would need this container to duplicate that fetch.
+    configuration: null,
   };
 
   return (
@@ -208,6 +217,14 @@ export function ControlBox({
             />
           </>
         )}
+
+        {/*
+          OWNS ITS OWN FETCH, STATE AND SINGLE-FLIGHT GUARD, exactly as the sibling panels do. This
+          container deliberately passes no configuration data down and holds no mutation state: the
+          header comment above explains why hoisting a panel's busy/error state here is how a refactor
+          of a safety surface introduces a double-submit.
+        */}
+        {tab === "configuration" && <ConfigurationPanel canTrade={canTrade} />}
 
         {tab === "risk" && (
           <>
