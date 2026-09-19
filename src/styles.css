@@ -1600,17 +1600,54 @@ table {
 }
 
 /* ---- the status strip: the readiness readout, first thing under the bar ---- */
+/**
+ * THE HAIRLINE GRID, AND WHY IT IS NOT DRAWN WITH A GAP.
+ *
+ * The obvious way to draw an instrument-panel grid is `gap: 1px` over a border-coloured
+ * background: every internal hairline appears for free. That is what this strip used to do,
+ * and it is correct only while every row is FULL.
+ *
+ * `auto-fill` keeps the tracks it created. It does not collapse a track merely because the
+ * last row has no item in it — the track still holds items in the rows above. So a cell count
+ * that is not a whole multiple of the column count leaves real, laid-out grid area at the end
+ * of the last row with no item in it, and the container's border-coloured background paints
+ * straight through it. The strip carries 15 cells, so at six columns it ended in a 3-cell-wide
+ * slab of #1b1f24 — a dead grey void that read as a rendering fault rather than as empty space.
+ * The execution-health grid below had the same hole for the same reason.
+ *
+ * So the hairlines are drawn by the CELLS instead, as an outset shadow on each cell's right and
+ * bottom edge, and the container paints the ordinary surface. Three properties make this work:
+ * an outset shadow costs no layout, so the grid geometry is untouched; the cells are
+ * transparent, so a later sibling's background cannot paint over an earlier sibling's hairline;
+ * and `overflow: hidden` clips the trailing edges, so the outermost cells do not double the
+ * container's own border. Unoccupied grid area is now just surface, which is what empty space
+ * should look like.
+ */
+.box-strip,
+.box-exec-grid,
+.box-session-grid,
+.box-exec-latency,
+.box-exec-confirm-grid {
+  gap: 0;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.box-stat,
+.box-exec-stat,
+.box-exec-cell {
+  background: transparent;
+  box-shadow:
+    1px 0 0 var(--border),
+    0 1px 0 var(--border);
+}
+
 .box-strip {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
-  gap: 1px;
   margin-bottom: var(--s-5);
-  /* A 1px gap over a border-coloured background draws every internal hairline for
-     free, so the strip reads as one instrument panel rather than N boxes. */
-  background: var(--border);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  overflow: hidden;
 }
 
 .box-stat {
@@ -1618,7 +1655,10 @@ table {
   flex-direction: column;
   gap: 3px;
   padding: var(--s-3) var(--s-4);
-  background: var(--surface);
+  /* Same floor and same top-alignment as the metric cells in the control panels, so the strip
+     and the panels below it read as one instrument rather than two different grids. */
+  min-height: 54px;
+  justify-content: flex-start;
 }
 
 .box-stat-v {
@@ -3024,20 +3064,24 @@ table {
   font-weight: var(--fw-regular);
 }
 
+/* Same discipline as the diagnostic lists: the tint and a left rule mark the note as a warning,
+   and the sentence itself stays readable rather than being set in amber on amber. */
 .box-exec-note.is-warn {
-  color: var(--warning);
+  --op-tone: var(--warning);
+  border-left: 2px solid var(--op-tone);
   background: var(--warning-quiet);
+  color: var(--text-secondary);
 }
 
 /* ---- metric grids inside the panels ---- */
+/* The hairlines come from the cells, not from a gap over a coloured background — see the note
+   on `.box-strip` in section 7 for why, and for what `auto-fill` does to a ragged last row. */
 .box-exec-grid,
 .box-session-grid,
 .box-exec-latency,
 .box-exec-confirm-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1px;
-  background: var(--border);
   border-bottom: 1px solid var(--border);
 }
 
@@ -3047,7 +3091,16 @@ table {
   flex-direction: column;
   gap: 2px;
   padding: var(--s-3) var(--s-4);
-  background: var(--surface);
+  /* A metric cell is one label, one value and an optional sub-line. Pinning a floor here keeps
+     a row of bare counters the same height as a row carrying sub-lines, so section to section
+     the panel keeps one rhythm instead of breathing with whatever data arrived.
+
+     Content is TOP-aligned, not centred. A grid row is as tall as its tallest cell, and several
+     of these labels wrap to two lines ("Decision deterioration p50 / p95"). Centring would then
+     push every short label in that row half a line down and the values out of line with each
+     other; top-alignment keeps one label baseline and one value baseline straight across. */
+  min-height: 54px;
+  justify-content: flex-start;
 }
 
 .box-exec-stat-v {
@@ -3196,6 +3249,21 @@ table {
   color: var(--text);
 }
 
+/**
+ * DIAGNOSTIC LISTS: THE MARKER CARRIES THE COLOUR, THE SENTENCE DOES NOT.
+ *
+ * These lists used to set the warning colour on the whole element, so every blocker sentence was
+ * rendered in amber. When a deployment is mid-session with a closed socket and a disarmed gate
+ * that is seven or eight consecutive coloured sentences — a wall the eye reads as one alarming
+ * texture instead of as eight separate, individually actionable statements. Long-form text in a
+ * saturated colour is also the hardest thing on the page to actually read.
+ *
+ * So the body returns to secondary text and the colour moves to the `::marker`, which is where a
+ * list's severity belongs: a column of coloured bullets down the left edge still says "these are
+ * problems" at a glance, still groups them, and leaves the prose legible. The tone is inherited
+ * from the enclosing block (`--op-tone`), so a broken gate gets negative markers and a merely
+ * paused one gets warning markers, without either restating the colour.
+ */
 .box-exec-blockers,
 .box-broker-blockers,
 .box-broker-problems,
@@ -3205,7 +3273,14 @@ table {
   padding: 0 var(--s-4) var(--s-4) calc(var(--s-4) + 1.1em);
   font-size: var(--fs-xs);
   line-height: var(--lh-snug);
-  color: var(--warning);
+  color: var(--text-secondary);
+}
+
+.box-exec-blockers > li::marker,
+.box-broker-blockers > li::marker,
+.box-broker-problems > li::marker,
+.box-op-reasons > li::marker {
+  color: var(--op-tone, var(--warning));
 }
 
 .box-exec-confirm {
@@ -3470,18 +3545,25 @@ table {
   color: var(--text);
 }
 
+/* Each variant declares its severity ONCE, as `--op-tone`, and the left rule and any nested
+   blocker markers both read it. Nothing else in the block restates the colour: the headline stays
+   at full-strength body text because it is the sentence most worth reading, and a 2px rule plus a
+   column of coloured bullets already says how bad this is. */
 .box-op-gate--ok {
-  border-left-color: var(--positive);
+  --op-tone: var(--positive);
+  border-left-color: var(--op-tone);
   background: var(--positive-quiet);
 }
 
 .box-op-gate--paused {
-  border-left-color: var(--warning);
+  --op-tone: var(--warning);
+  border-left-color: var(--op-tone);
   background: var(--warning-quiet);
 }
 
 .box-op-gate--broken {
-  border-left-color: var(--negative);
+  --op-tone: var(--negative);
+  border-left-color: var(--op-tone);
   background: var(--negative-quiet);
 }
 
@@ -3691,9 +3773,14 @@ table {
 .box-sound-toggle,
 .box-sound-test,
 .box-alerts-btn,
+/* Reuses `.btn btn--quiet` like every other utility in the workbar — the markup now actually
+   applies those classes, which it did not before, so this rule only has to adjust density. The
+   label is a single glyph, so the horizontal padding collapses and a min-width equal to `.btn`'s
+   min-height keeps it a square rather than a sliver. */
 .box-help-btn {
-  /* These reuse `.btn`; only their density differs from a default toolbar button. */
-  padding: 6px 9px;
+  padding: 6px 0;
+  min-width: 30px;
+  justify-content: center;
 }
 
 /* ---- entry alerts: the bell, its badge, and the drawer ---- */
@@ -4437,6 +4524,15 @@ table {
      · .cfg-row-clamped / .cfg-row-armed use the warning colour, because in both cases the number
        the operator set is NOT the number being enforced.
      · .cfg-unavailable is deliberately QUIET — it is not a fault.
+
+   THE TOKEN NAMES BELOW WERE WRONG AND SILENTLY FELL BACK. This block was originally written
+   against `--ok`, `--warn`, `--warn-quiet` and `--text-tertiary`, none of which exist in this
+   stylesheet. Every one of those references therefore resolved to its var() fallback, so the panel
+   rendered "good" in `--accent` (blue) instead of `--positive`, and every warning in `--danger` —
+   the colour reserved for destructive actions — instead of `--warning`. A clamped limit looked
+   like a delete button. Nothing errored, because an undefined custom property with a fallback is
+   perfectly valid CSS; it just quietly disagreed with the rest of the page. The real tokens are
+   named directly now, and the fallback indirection is gone so the next wrong name fails visibly.
    ═══════════════════════════════════════════════════════════════════════════════════════════ */
 
 .cfg {
@@ -4464,7 +4560,7 @@ table {
   margin: 0;
   padding: 0 var(--s-4) var(--s-4);
   font-size: var(--fs-xs);
-  color: var(--text-tertiary, var(--text-secondary));
+  color: var(--text-muted);
 }
 
 .cfg-unavailable-detail code {
@@ -4511,8 +4607,8 @@ table {
   font-weight: var(--fw-semibold);
 }
 
-.cfg-headline-v.is-good { color: var(--ok, var(--accent)); }
-.cfg-headline-v.is-warn { color: var(--warn, var(--danger)); }
+.cfg-headline-v.is-good { color: var(--positive); }
+.cfg-headline-v.is-warn { color: var(--warning); }
 
 /* ── sub-tabs ── */
 .cfg-tabs {
@@ -4547,7 +4643,7 @@ table {
 }
 
 /* A risk-increasing setting is identifiable before the label is read. */
-.cfg-row--dangerous { border-left: 3px solid var(--warn, var(--danger)); }
+.cfg-row--dangerous { border-left: 3px solid var(--warning); }
 
 .cfg-row-head {
   display: flex;
@@ -4564,8 +4660,8 @@ table {
 .cfg-row-flag {
   padding: 0 var(--s-1);
   border-radius: var(--r-sm);
-  background: var(--warn-quiet, var(--accent-quiet));
-  color: var(--warn, var(--danger));
+  background: var(--warning-quiet);
+  color: var(--warning);
   font-family: var(--font-mono);
   font-size: var(--fs-micro);
   letter-spacing: var(--tracking-caps);
@@ -4672,7 +4768,7 @@ table {
 
 /* Both of these mean: the number you set is NOT the number being enforced. */
 .cfg-row-clamped dd,
-.cfg-row-armed dd { color: var(--warn, var(--danger)); }
+.cfg-row-armed dd { color: var(--warning); }
 
 .cfg-row-clamped,
 .cfg-row-armed { grid-column: 1 / -1; }
@@ -4693,7 +4789,7 @@ table {
   margin: var(--s-2) 0 0;
   padding-left: var(--s-4);
   font-size: var(--fs-xs);
-  color: var(--warn, var(--danger));
+  color: var(--warning);
 }
 
 .cfg-row-advanced {
@@ -4752,7 +4848,7 @@ table {
 }
 
 .cfg-overview dd.is-warn,
-.cfg-fact dd.is-warn { color: var(--warn, var(--danger)); }
+.cfg-fact dd.is-warn { color: var(--warning); }
 
 .cfg-deployment-intro {
   margin: 0 0 var(--s-3);
@@ -4801,7 +4897,7 @@ table {
   font-weight: var(--fw-semibold);
 }
 
-.cfg-confirm-transition--risk .cfg-confirm-new { color: var(--warn, var(--danger)); }
+.cfg-confirm-transition--risk .cfg-confirm-new { color: var(--warning); }
 
 .cfg-confirm-old { color: var(--text-secondary); }
 .cfg-confirm-arrow { color: var(--text-secondary); }
@@ -4817,7 +4913,7 @@ table {
   max-width: 62ch;
 }
 
-.cfg-confirm-requires { color: var(--warn, var(--danger)); }
+.cfg-confirm-requires { color: var(--warning); }
 
 .cfg-confirm-actions {
   display: flex;

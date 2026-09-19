@@ -171,7 +171,7 @@ export default function BoxAlertsBell({ alerts }: { alerts: EntryAlerts | undefi
     <>
       <button
         type="button"
-        className={`btn box-alerts-btn${hasNew ? " has-new" : ""}`}
+        className={`btn btn--quiet box-alerts-btn${hasNew ? " has-new" : ""}`}
         onClick={openPanel}
         title={title}
         aria-label={
