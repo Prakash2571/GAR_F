@@ -543,7 +543,33 @@ test("the contract version and the backend pin move TOGETHER", () => {
   // asserts it against the real classifier, and `env_var` is provenance for an Advanced detail only.
   // PURELY ADDITIVE and NOT a hard deploy-order dependency: nothing became required on an existing
   // schema, so an unbumped frontend keeps working — it simply cannot show the configuration screen.
-  assert.equal(version.contract_version, "1.19.0");
+  // ── v1.20.0 — THE METRICS SNAPSHOT, WRITTEN DOWN ─────────────────────────────────────────────
+  // `box-status.metrics` was declared `{"type": "object"}` and nothing more, with the comment "OPEN
+  // by design: engine-owned rolling ... rings". The intent was right — the engine must stay free to
+  // add counters — but the effect was that the interior was covered by NOTHING, and the execution
+  // health panel renders from ~25 names inside it. The digest did not reach them. The compile-time
+  // assertions could not see them, because an open object generates `Record<string, never>` — the
+  // header of contract.assert.ts listed `metrics` among exactly those unassertable leaves. And the
+  // panel reads them defensively, so a rename would not throw. A backend renaming
+  // `partial_recovered` would therefore have compiled on both sides, passed every test in both
+  // repositories, deployed, and rendered a grid of dashes: not an error, just silence, on the one
+  // panel whose job is to say whether execution is working.
+  //   • `box-metrics` — OPEN at every level, exactly as before, and `latency`/`throughput`/`charges`
+  //     are still not listed at all. What it adds is a `required` array over the names a consumer
+  //     depends on, which draws the distinction that matters: ADDING a counter needs no bump, while
+  //     renaming, removing or retyping one the UI reads fails immediately;
+  //   • `box-metric-ring` — `Ring.summary()`, which is NULL until the ring has a sample, so null
+  //     means "not measured yet" and must never be rendered as zero. Open for the same reason:
+  //     `required` already catches a DROPPED percentile, which is what breaks a consumer, whereas an
+  //     ADDED one breaks nobody.
+  // This is what makes the loop closed rather than merely documented: the backend's contract suite
+  // validates a REAL serialized engine response against these schemas, the schemas generate
+  // `BoxMetricsContract`, and four assertions in contract.assert.ts make `tsc -b` prove the
+  // generated contract and the hand-written `BoxMetricsSnapshot` still agree.
+  // NO WIRE CHANGE and NOT a deploy-order dependency: not one byte of any response moved, so either
+  // side may ship first. `readContractIdentity()` is reported by the backend and gated on by
+  // nothing, so a version skew cannot refuse a request.
+  assert.equal(version.contract_version, "1.20.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,
