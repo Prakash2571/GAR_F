@@ -120,6 +120,21 @@ function refusalFrom(error: unknown): OperatorConfigRefusal | null {
   return candidate as OperatorConfigRefusal;
 }
 
+/**
+ * Does this error mean the backend has no operator-configuration endpoint at all?
+ *
+ * A `404` on this path is not a fault: the frontend ships ahead of the backend routes (see the
+ * backend's `docs/OPERATOR_CONFIG.md` §7), so a deployment running an older or in-between build
+ * answers 404 because the route genuinely does not exist. Callers use this to render an honest
+ * "not available on this build" state instead of an error with a Retry button that can never succeed.
+ *
+ * Deliberately narrow — ONLY 404. A 401/403 means the session or role is wrong and must keep
+ * surfacing as an error, and a 5xx is a real fault.
+ */
+export function isOperatorConfigUnavailable(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
+}
+
 /** The absolute URL, for callers that need it (diagnostics, tests). */
 export function operatorConfigUrl(): string {
   return apiUrl("/api/box/operator-config");

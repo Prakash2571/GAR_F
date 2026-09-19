@@ -35,7 +35,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ControlRequests, runOnce } from "../../../lib/statusIntegrity.ts";
-import { fetchOperatorConfig, patchOperatorConfig } from "../../../api/operatorConfig.ts";
+import {
+  fetchOperatorConfig,
+  isOperatorConfigUnavailable,
+  patchOperatorConfig,
+} from "../../../api/operatorConfig.ts";
 import {
   canSubmit,
   describeChange,
@@ -45,6 +49,7 @@ import {
   needsConfirmation,
   onConfigFailed,
   onConfigLoaded,
+  onConfigUnavailable,
   startingValue,
   type ChangeSummary,
   type ConfigViewState,
@@ -87,6 +92,13 @@ export function ConfigurationPanel({ canTrade }: { canTrade: boolean }) {
       setState((prev) => onConfigLoaded(prev, config));
     } catch (error) {
       if (mine !== seq.current) return;
+      // A 404 is "this backend build has no such route", not a fault — see
+      // `isOperatorConfigUnavailable`. Kept separate so the UI does not offer a Retry button for
+      // something retrying cannot fix.
+      if (isOperatorConfigUnavailable(error)) {
+        setState((prev) => onConfigUnavailable(prev));
+        return;
+      }
       setState((prev) => onConfigFailed(prev, error instanceof Error ? error.message : "Unknown error"));
     }
   }, []);
@@ -158,6 +170,25 @@ export function ConfigurationPanel({ canTrade }: { canTrade: boolean }) {
 
   if (state.kind === "loading") {
     return <section className="cfg"><p className="cfg-loading">Loading configuration…</p></section>;
+  }
+
+  if (state.kind === "unavailable") {
+    // Stated plainly, with NO Retry: the route does not exist on this build, so retrying is a button
+    // that cannot work. Informational styling, not a warning — nothing is wrong with the deployment.
+    return (
+      <section className="cfg">
+        <p className="cfg-unavailable">
+          Runtime configuration is not available on this backend build. Strategy, risk and
+          market-data values are currently set in the deployment environment and are shown read-only
+          on the other tabs.
+        </p>
+        <p className="cfg-unavailable-detail">
+          This panel activates automatically once the backend exposes{" "}
+          <code>/api/box/operator-config</code>. Nothing is wrong with the deployment and no action is
+          needed here.
+        </p>
+      </section>
+    );
   }
 
   if (state.kind === "failed") {

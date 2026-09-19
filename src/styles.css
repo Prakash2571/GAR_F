@@ -4418,3 +4418,409 @@ table {
 .box-metric.box-dim .box-metric-v {
   color: var(--text-muted);
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+   OPERATOR CONFIGURATION PANEL  (src/components/box/configuration/*)
+
+   Shipped without styles in the first cut, which left the panel rendering as unstyled text on a
+   dark trading screen. Written to the same conventions as .box-controlbox above — same tokens,
+   same framed-section shape — so the Configuration tab reads as a peer of the other control tabs
+   rather than as something bolted on.
+
+   The visual rules that carry meaning rather than decoration:
+     · .cfg-row--dangerous gets a left accent, so a risk-increasing setting is identifiable before
+       reading the label.
+     · .cfg-row-effective is the value actually IN FORCE and is the most prominent number in a row;
+       the configured value only appears when a deployment bound is overriding it, and then it is
+       explicitly marked as not in force.
+     · .cfg-row-clamped / .cfg-row-armed use the warning colour, because in both cases the number
+       the operator set is NOT the number being enforced.
+     · .cfg-unavailable is deliberately QUIET — it is not a fault.
+   ═══════════════════════════════════════════════════════════════════════════════════════════ */
+
+.cfg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.cfg-loading {
+  margin: 0;
+  padding: var(--s-4);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+/* ── "no such endpoint on this build": informational, never alarming ── */
+.cfg-unavailable {
+  margin: 0;
+  padding: var(--s-4) var(--s-4) 0;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.cfg-unavailable-detail {
+  margin: 0;
+  padding: 0 var(--s-4) var(--s-4);
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+.cfg-unavailable-detail code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+}
+
+/* ── header ── */
+.cfg-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  padding-bottom: var(--s-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.cfg-title {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.cfg-headline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  margin-left: auto;
+  font-size: var(--fs-xs);
+}
+
+.cfg-headline-k {
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.cfg-headline-v {
+  font-family: var(--font-mono);
+  font-weight: var(--fw-semibold);
+}
+
+.cfg-headline-v.is-good { color: var(--ok, var(--accent)); }
+.cfg-headline-v.is-warn { color: var(--warn, var(--danger)); }
+
+/* ── sub-tabs ── */
+.cfg-tabs {
+  display: flex;
+  gap: var(--s-1);
+  flex-wrap: wrap;
+}
+
+.cfg-tab { position: relative; }
+
+.cfg-tab-flag {
+  margin-left: var(--s-1);
+  padding: 0 var(--s-1);
+  border-radius: var(--r-sm);
+  background: var(--accent-quiet);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+}
+
+.cfg-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+/* ── one setting ── */
+.cfg-row {
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-raised);
+}
+
+/* A risk-increasing setting is identifiable before the label is read. */
+.cfg-row--dangerous { border-left: 3px solid var(--warn, var(--danger)); }
+
+.cfg-row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.cfg-row-label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.cfg-row-flag {
+  padding: 0 var(--s-1);
+  border-radius: var(--r-sm);
+  background: var(--warn-quiet, var(--accent-quiet));
+  color: var(--warn, var(--danger));
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--tracking-caps);
+}
+
+.cfg-row-flag--locked {
+  background: var(--accent-quiet);
+  color: var(--text-secondary);
+}
+
+.cfg-row-desc {
+  margin: var(--s-1) 0 var(--s-2);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  max-width: 68ch;
+}
+
+/* ── the control ── */
+.cfg-row-control {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-2);
+}
+
+.cfg-input {
+  width: 12ch;
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  text-align: right;
+}
+
+.cfg-input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cfg-input-prefix,
+.cfg-input-suffix {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+.cfg-select {
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: inherit;
+  font-size: var(--fs-sm);
+}
+
+.cfg-toggle {
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.cfg-toggle.is-on {
+  background: var(--accent-quiet);
+  border-color: var(--accent-line);
+  color: var(--accent-text);
+}
+
+.cfg-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── provenance ── */
+.cfg-row-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16ch, 1fr));
+  gap: var(--s-1) var(--s-3);
+  margin: 0;
+  font-size: var(--fs-xs);
+}
+
+.cfg-row-meta dt {
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-size: var(--fs-micro);
+  color: var(--text-secondary);
+}
+
+.cfg-row-meta dd {
+  margin: 0;
+  font-family: var(--font-mono);
+}
+
+.cfg-row-effective {
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-sm);
+}
+
+/* Both of these mean: the number you set is NOT the number being enforced. */
+.cfg-row-clamped dd,
+.cfg-row-armed dd { color: var(--warn, var(--danger)); }
+
+.cfg-row-clamped,
+.cfg-row-armed { grid-column: 1 / -1; }
+
+.cfg-row-clamp-note {
+  font-family: var(--font-ui);
+  color: var(--text-secondary);
+}
+
+.cfg-row-caveat {
+  margin: var(--s-2) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  max-width: 76ch;
+}
+
+.cfg-row-blockers {
+  margin: var(--s-2) 0 0;
+  padding-left: var(--s-4);
+  font-size: var(--fs-xs);
+  color: var(--warn, var(--danger));
+}
+
+.cfg-row-advanced {
+  margin-top: var(--s-2);
+  font-size: var(--fs-xs);
+}
+
+.cfg-row-advanced summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-size: var(--fs-micro);
+}
+
+.cfg-row-advanced-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20ch, 1fr));
+  gap: var(--s-1) var(--s-3);
+  margin: var(--s-2) 0 0;
+}
+
+.cfg-row-advanced-body dt {
+  font-size: var(--fs-micro);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.cfg-row-advanced-body dd { margin: 0; font-family: var(--font-mono); }
+
+/* ── overview / deployment ── */
+.cfg-overview,
+.cfg-deployment-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22ch, 1fr));
+  gap: var(--s-2) var(--s-4);
+  margin: 0;
+  font-size: var(--fs-xs);
+}
+
+.cfg-overview dt,
+.cfg-deployment-facts dt,
+.cfg-fact dt {
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-size: var(--fs-micro);
+  color: var(--text-secondary);
+}
+
+.cfg-overview dd,
+.cfg-fact dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-weight: var(--fw-medium);
+}
+
+.cfg-overview dd.is-warn,
+.cfg-fact dd.is-warn { color: var(--warn, var(--danger)); }
+
+.cfg-deployment-intro {
+  margin: 0 0 var(--s-3);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  max-width: 80ch;
+}
+
+.cfg-fact-note {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  color: var(--text-secondary);
+}
+
+/* ── change history ── */
+.cfg-history { font-size: var(--fs-xs); }
+
+.cfg-history summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  font-size: var(--fs-micro);
+}
+
+.cfg-history ul {
+  margin: var(--s-2) 0 0;
+  padding-left: var(--s-4);
+  font-family: var(--font-mono);
+}
+
+.cfg-history-actor { color: var(--text-secondary); }
+
+/* ── dangerous-change confirmation ── */
+.cfg-confirm { display: flex; flex-direction: column; gap: var(--s-3); }
+
+.cfg-confirm-transition {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+
+.cfg-confirm-transition--risk .cfg-confirm-new { color: var(--warn, var(--danger)); }
+
+.cfg-confirm-old { color: var(--text-secondary); }
+.cfg-confirm-arrow { color: var(--text-secondary); }
+
+.cfg-confirm-effect { margin: 0; font-size: var(--fs-sm); max-width: 62ch; }
+
+.cfg-confirm-when,
+.cfg-confirm-requires,
+.cfg-confirm-caveat {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+
+.cfg-confirm-requires { color: var(--warn, var(--danger)); }
+
+.cfg-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
