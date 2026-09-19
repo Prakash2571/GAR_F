@@ -289,3 +289,80 @@ test("Box.tsx did not absorb the configuration form", () => {
   assert.equal(/patchOperatorConfig/.test(box), false, "Box.tsx mutates configuration directly");
   assert.equal(/OperatorConfigSetting/.test(box), false, "Box.tsx reimplements a setting row");
 });
+
+
+/* ═════════════════ 11. Static checks standing in for the compiler ═════════════════ */
+
+/*
+ * WHY THESE EXIST. `tsconfig.json` sets `strict`, `noUnusedLocals` and `noUnusedParameters`, and the
+ * build is the real authority — but the harness here cannot run `tsc`, and an unused import or a
+ * missed discriminant narrowing is a HARD build failure rather than a style nit. These catch the two
+ * classes that are mechanically detectable from source, so a breakage is found here instead of in CI.
+ *
+ * They are a safety net, not a substitute: they cannot type-check expressions.
+ */
+
+/** Every file this suite guards, as raw source (comments intact — imports live outside them). */
+const GUARDED = [
+  ["lib/operatorConfig.ts", join(SRC, "lib", "operatorConfig.ts")],
+  ["api/operatorConfig.ts", join(SRC, "api", "operatorConfig.ts")],
+  ["ConfigurationPanel.tsx", join(CFG_DIR, "ConfigurationPanel.tsx")],
+  ["SettingRow.tsx", join(CFG_DIR, "SettingRow.tsx")],
+  ["DangerousChangeModal.tsx", join(CFG_DIR, "DangerousChangeModal.tsx")],
+  ["DeploymentFacts.tsx", join(CFG_DIR, "DeploymentFacts.tsx")],
+];
+
+/** Pull the imported binding names out of every `import { ... }` / `import X` statement. */
+function importedNames(source) {
+  const names = [];
+  for (const m of source.matchAll(/import\s+(type\s+)?([^;]*?)\s+from\s+["'][^"']+["']/g)) {
+    const clause = m[2];
+    const braced = /\{([\s\S]*?)\}/.exec(clause);
+    if (braced !== null) {
+      for (const part of braced[1].split(",")) {
+        const name = part.trim().replace(/^type\s+/, "").split(/\s+as\s+/).pop();
+        if (name) names.push(name.trim());
+      }
+    }
+    const defaultName = clause.replace(/\{[\s\S]*?\}/, "").replace(/,/g, "").trim();
+    if (defaultName && !defaultName.startsWith("*")) names.push(defaultName);
+  }
+  return names;
+}
+
+test("no configuration file has an unused import (noUnusedLocals is a build failure)", () => {
+  for (const [label, path] of GUARDED) {
+    const source = readFileSync(path, "utf8");
+    // Strip the import block itself so a name is not counted as "used" by its own import.
+    const body = source.replace(/^\s*import[\s\S]*?from\s+["'][^"']+["'];?\s*$/gm, "");
+    for (const name of importedNames(source)) {
+      const used = new RegExp(`\\b${name.replace(/[$]/g, "\\$")}\\b`).test(body);
+      assert.ok(used, `${label} imports "${name}" but never uses it — tsc will fail the build`);
+    }
+  }
+});
+
+test("the stale banner reads its message through a narrowed local, not off the union", () => {
+  // THE BUG THIS PINS. `ConfigViewState` carries `error` only on its `stale: true` member, so
+  // `const stale = state.stale === true` followed by `{state.error}` in the JSX does not compile:
+  // a boolean local gives the compiler no permission to read the property. It has to be narrowed
+  // where the discriminant is tested.
+  assert.match(PANEL, /const staleError = state\.stale === true \? state\.error : null/);
+  assert.match(PANEL, /\{staleError\}/);
+
+  // And the un-narrowed form must not come back.
+  const afterEarlyReturns = PANEL.slice(PANEL.indexOf("const config = state.config"));
+  assert.equal(
+    /\{state\.error\}/.test(afterEarlyReturns),
+    false,
+    "state.error is read off the union again — this does not compile",
+  );
+});
+
+test("every union member of ConfigViewState is constructed somewhere", () => {
+  // A member nothing produces is dead state that the reducers will never be tested against.
+  const lib = readFileSync(join(SRC, "lib", "operatorConfig.ts"), "utf8");
+  assert.match(lib, /kind: "ready"[\s\S]{0,80}stale: false/);
+  assert.match(lib, /kind: "ready"[\s\S]{0,80}stale: true/);
+  assert.match(lib, /kind: "failed"/);
+});

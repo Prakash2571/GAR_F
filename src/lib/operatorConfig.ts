@@ -210,9 +210,20 @@ export function isRiskIncreasing(
   }
 
   if (typeof current === "number" && typeof next === "number") {
-    const unlimited = setting.zero_means === "unlimited";
-    const a = unlimited && current === 0 ? Number.POSITIVE_INFINITY : current;
-    const b = unlimited && next === 0 ? Number.POSITIVE_INFINITY : next;
+    // AN AMBIGUOUS SENTINEL IS TREATED AS RISK-INCREASING, so the operator is asked to confirm.
+    //
+    // `disabled` means the gate is off — but for the cross-leg coherence bounds the backend documents
+    // that a stored 0 is maximally SAFE in live-strict mode (it refuses every entry) and maximally
+    // PERMISSIVE in paper, and which applies depends on another setting. The backend therefore refuses
+    // to call such a change a tightening; here, where the only consequence is whether a confirmation
+    // appears, the conservative answer is to show one. The two modules agree on "not provably safe"
+    // and differ only in what they do with it, which is the correct division: the backend enforces,
+    // this decides what to explain.
+    const sentinel = setting.zero_means === "unlimited" || setting.zero_means === "disabled";
+    if (setting.zero_means === "disabled" && (current === 0 || next === 0)) return true;
+
+    const a = sentinel && current === 0 ? Number.POSITIVE_INFINITY : current;
+    const b = sentinel && next === 0 ? Number.POSITIVE_INFINITY : next;
     if (direction === "lower_is_safer") return b > a;
     if (direction === "higher_is_safer") return b < a;
     return false;
@@ -275,6 +286,16 @@ export function describeChange(
   const newLabel = formatValue(setting, next);
   const riskIncreasing = isRiskIncreasing(setting, current, next);
 
+  // `requires_flat` alone UNDERSTATES the requirement, and the gap is not cosmetic.
+  //
+  // The backend flags `requires_flat` only for FLAT_AND_DISARMED settings, where the requirement holds
+  // in every direction. But a TIGHTEN_ONLY_WHILE_ARMED setting ALSO requires flat-and-disarmed for a
+  // WIDENING — that is the whole content of the policy. Reporting `false` there would let the dialog
+  // omit the one precondition the operator is about to fail, and the refusal would arrive afterwards
+  // as a surprise.
+  const wideningNeedsFlat =
+    riskIncreasing && setting.mutation_policy === "TIGHTEN_ONLY_WHILE_ARMED";
+
   return {
     title: setting.label,
     transition: `${oldLabel} → ${newLabel}`,
@@ -283,7 +304,7 @@ export function describeChange(
     effect: effectSentence(setting, riskIncreasing),
     when: takesEffectLabel(setting.takes_effect),
     riskIncreasing,
-    requiresFlat: setting.requires_flat,
+    requiresFlat: setting.requires_flat || wideningNeedsFlat,
     requiresFullAdmin: setting.requires_full_admin,
     caveat: setting.caveat ?? null,
   };
@@ -376,7 +397,20 @@ export function acceptConfig(
   current: OperatorConfig | null,
   incoming: OperatorConfig,
 ): { accepted: boolean; config: OperatorConfig } {
+  // A VERSION THAT IS NOT AN INTEGER IS NOT A VERSION.
+  //
+  // Everything downstream treats it as an ordering key and echoes it on the next write. A malformed
+  // payload — a proxy rewriting the body, a truncated reply — would otherwise compare false against
+  // anything (`NaN < 5` is false), be accepted as newer, and then be echoed into a PATCH that the
+  // backend refuses for reasons the operator cannot see. Refusing it here keeps the staleness logic
+  // total rather than mostly-total.
+  if (!Number.isInteger(incoming.version)) {
+    return current === null
+      ? { accepted: false, config: incoming }
+      : { accepted: false, config: current };
+  }
   if (current === null) return { accepted: true, config: incoming };
+  if (!Number.isInteger(current.version)) return { accepted: true, config: incoming };
   if (incoming.version < current.version) return { accepted: false, config: current };
   return { accepted: true, config: incoming };
 }

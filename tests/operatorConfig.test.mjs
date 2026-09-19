@@ -571,3 +571,106 @@ test("configuration is its own control class, not folded into another", async ()
   const { CONTROL_LABEL } = await import("../src/lib/statusIntegrity.ts");
   assert.equal(CONTROL_LABEL.configuration, "configuration");
 });
+
+
+/* ═════════════════ 15. The ambiguous zero sentinel (mirrors the backend fix) ═════════════════ */
+
+/*
+ * The backend defect these mirror: for the three cross-leg coherence bounds, `zero_means: "disabled"`
+ * and a stored 0 switches the gate OFF. An earlier revision normalised only `"unlimited"`, so setting
+ * one to 0 was classified as a TIGHTENING — and on the frontend that meant no confirmation dialog for
+ * an edit that disables a coherence check.
+ *
+ * The direction is genuinely undecidable from the value: the backend documents that in live-strict mode
+ * a stored 0 refuses every entry (maximally safe) while paper reads it as disabled (maximally
+ * permissive), and which applies depends on another setting. So any 0-involving change is treated as
+ * risk-increasing here — where the only consequence is whether the operator is asked to confirm, and
+ * asking is the conservative answer.
+ */
+
+function coherenceSetting(overrides = {}) {
+  return setting({
+    key: "maxCrossLegReceiveDispersionMs",
+    label: "Cross-leg receive-time coherence",
+    category: "market_data",
+    unit: "milliseconds",
+    type: "integer",
+    min: 0,
+    max: 60_000,
+    zero_means: "disabled",
+    safe_direction: "lower_is_safer",
+    mutation_policy: "TIGHTEN_ONLY_WHILE_ARMED",
+    configured_value: 500,
+    effective_value: 500,
+    default_value: 500,
+    ...overrides,
+  });
+}
+
+test("disabling a coherence bound is treated as risk-increasing", () => {
+  const s = coherenceSetting();
+  assert.equal(isRiskIncreasing(s, 500, 0), true, "500 -> 0 (gate off) was not flagged");
+  assert.equal(needsConfirmation(s, 500, 0), true);
+});
+
+test("re-enabling a coherence bound from 0 is also treated as risk-increasing", () => {
+  // Unprovable in the other direction too: in live-strict mode 0 refuses every entry, so 0 -> 500 is
+  // enabling entry.
+  const s = coherenceSetting({ configured_value: 0, effective_value: 0 });
+  assert.equal(isRiskIncreasing(s, 0, 500), true);
+});
+
+test("a genuine finite tightening of a coherence bound is not flagged as risk-increasing", () => {
+  // The fix must not make every edit to these settings loud, or the confirmation stops meaning
+  // anything — which is the failure mode the specific dialog exists to avoid.
+  const s = coherenceSetting();
+  assert.equal(isRiskIncreasing(s, 500, 300), false);
+  assert.equal(isRiskIncreasing(s, 300, 500), true, "loosening should still be flagged");
+});
+
+test("`disabled` renders as Disabled, never as a bare zero", () => {
+  assert.equal(formatValue(coherenceSetting(), 0), "Disabled");
+  assert.equal(formatValue(coherenceSetting(), 500), "500 ms");
+});
+
+/* ═════════════════ 16. The flat requirement is not understated ═════════════════ */
+
+test("widening a tighten-only setting reports that it needs flat and disarmed", () => {
+  // The backend flags requires_flat only for FLAT_AND_DISARMED settings, but a TIGHTEN_ONLY setting
+  // also requires flat-and-disarmed for a WIDENING — that is the whole content of the policy. Omitting
+  // it would leave the dialog silent about the one precondition the operator is about to fail.
+  const s = setting({
+    mutation_policy: "TIGHTEN_ONLY_WHILE_ARMED",
+    requires_flat: false,
+    requires_disarmed: false,
+    safe_direction: "lower_is_safer",
+    zero_means: null,
+  });
+  const widen = describeChange(s, 2, 5);
+  assert.equal(widen.riskIncreasing, true);
+  assert.equal(widen.requiresFlat, true, "the dialog would not have mentioned the flat requirement");
+});
+
+test("tightening the same setting does not claim a flat requirement it does not have", () => {
+  const s = setting({
+    mutation_policy: "TIGHTEN_ONLY_WHILE_ARMED",
+    requires_flat: false,
+    safe_direction: "lower_is_safer",
+    zero_means: null,
+  });
+  const tighten = describeChange(s, 5, 2);
+  assert.equal(tighten.riskIncreasing, false);
+  assert.equal(tighten.requiresFlat, false);
+});
+
+test("a FLAT_AND_DISARMED setting reports the requirement in both directions", () => {
+  const s = setting({
+    mutation_policy: "FLAT_AND_DISARMED",
+    requires_flat: true,
+    requires_disarmed: true,
+    safe_direction: "lower_is_safer",
+    zero_means: null,
+  });
+  assert.equal(describeChange(s, 5, 2).requiresFlat, true);
+  assert.equal(describeChange(s, 2, 5).requiresFlat, true);
+});

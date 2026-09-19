@@ -96,25 +96,13 @@ export function ConfigurationPanel({ canTrade }: { canTrade: boolean }) {
     void refresh();
   }, [canTrade, refresh]);
 
-  /** A row asked to change something. Confirm first when the change warrants it. */
-  const requestChange = useCallback(
-    (setting: OperatorSetting, next: SettingValue) => {
-      setNotice(null);
-      const current = startingValue(setting);
-      if (current === next) return;
-      const summary = describeChange(setting, current, next);
-      if (needsConfirmation(setting, current, next)) {
-        setPending({ setting, next, summary });
-        return;
-      }
-      void submit(setting, next);
-    },
-    // `submit` is stable via useCallback below; declared after, so the linter's exhaustive-deps is
-    // satisfied by the ref-free closure over setState only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state],
-  );
-
+  // DECLARED BEFORE `requestChange`, which calls it.
+  //
+  // The reverse order needed an eslint-disable to suppress exhaustive-deps, and that suppression was
+  // hiding a real fragility rather than a lint quibble: `requestChange` closes over whichever `submit`
+  // existed in its render, so the two staying in step depended on their dependency lists happening to
+  // change together. Declaring `submit` first lets it be a genuine dependency and the compiler keep
+  // them consistent.
   const submit = useCallback(
     async (setting: OperatorSetting, next: SettingValue) => {
       const version = editingVersion(state);
@@ -150,6 +138,22 @@ export function ConfigurationPanel({ canTrade }: { canTrade: boolean }) {
     [state, refresh],
   );
 
+  /** A row asked to change something. Confirm first when the change warrants it. */
+  const requestChange = useCallback(
+    (setting: OperatorSetting, next: SettingValue) => {
+      setNotice(null);
+      const current = startingValue(setting);
+      if (current === next) return;
+      const summary = describeChange(setting, current, next);
+      if (needsConfirmation(setting, current, next)) {
+        setPending({ setting, next, summary });
+        return;
+      }
+      void submit(setting, next);
+    },
+    [submit],
+  );
+
   if (!canTrade) return null;
 
   if (state.kind === "loading") {
@@ -172,7 +176,15 @@ export function ConfigurationPanel({ canTrade }: { canTrade: boolean }) {
   }
 
   const config = state.config;
-  const stale = state.stale === true;
+
+  // NARROWED ONCE, HERE, rather than tested again at each use.
+  //
+  // `ConfigViewState` carries `error` only on the `stale: true` member, so a boolean local does not
+  // give the compiler permission to read `state.error` later in the JSX — the discriminant has to be
+  // tested where the property is accessed. Resolving it to `string | null` in one place keeps the
+  // render readable and keeps the two facts ("is it stale" and "why") from drifting apart.
+  const staleError = state.stale === true ? state.error : null;
+  const stale = staleError !== null;
   const groups = groupByCategory(config.settings);
   const readOnly = stale || busy;
 
@@ -209,7 +221,7 @@ export function ConfigurationPanel({ canTrade }: { canTrade: boolean }) {
 
       {stale && (
         <div className="banner banner--warn">
-          These values may be out of date — the last refresh failed ({state.error}). Changes are
+          These values may be out of date — the last refresh failed ({staleError}). Changes are
           disabled until a refresh succeeds.{" "}
           <button type="button" className="btn btn--sm" onClick={() => void refresh()}>
             Retry
