@@ -38,6 +38,7 @@ import {
   acceptConfig,
   onConfigLoaded,
   onConfigFailed,
+  onConfigUnavailable,
   editingVersion,
   canSubmit,
   findSetting,
@@ -673,4 +674,75 @@ test("a FLAT_AND_DISARMED setting reports the requirement in both directions", (
   });
   assert.equal(describeChange(s, 5, 2).requiresFlat, true);
   assert.equal(describeChange(s, 2, 5).requiresFlat, true);
+});
+
+
+/* ═════════════════ 17. A backend without the endpoint is NOT a failure ═════════════════ */
+
+/*
+ * THE DEFECT THIS FIXES, observed in production.
+ *
+ * The frontend half of the operator-configuration work ships ahead of the backend routes, so a
+ * deployment running an in-between build answers `404` to `GET /api/box/operator-config` — which is
+ * the correct answer for a route that does not exist. The panel rendered that as a red
+ * "The configuration could not be read (HTTP 404)" banner with a Retry button, i.e. it presented a
+ * normal state as a fault and offered an action that could never succeed. On a live trading screen
+ * during a supervised test that is noise at precisely the wrong moment.
+ *
+ * `unavailable` is therefore its OWN state, not a flavour of `failed`.
+ */
+
+test("a 404 is recognised as 'endpoint absent', not as an error", async () => {
+  const { isOperatorConfigUnavailable } = await import("../src/api/operatorConfig.ts");
+  const { ApiError } = await import("../src/api/http.ts");
+
+  assert.equal(isOperatorConfigUnavailable(new ApiError("not found", 404)), true);
+});
+
+test("401, 403 and 5xx are NOT treated as 'endpoint absent'", async () => {
+  const { isOperatorConfigUnavailable } = await import("../src/api/operatorConfig.ts");
+  const { ApiError } = await import("../src/api/http.ts");
+
+  // A session/role problem and a real fault must keep surfacing as errors — collapsing them into
+  // "not available" would hide a genuine 403 behind a reassuring message.
+  for (const status of [401, 403, 409, 422, 500, 502, 503]) {
+    assert.equal(
+      isOperatorConfigUnavailable(new ApiError("x", status)),
+      false,
+      `HTTP ${status} was misread as a missing endpoint`,
+    );
+  }
+  assert.equal(isOperatorConfigUnavailable(new Error("network down")), false);
+  assert.equal(isOperatorConfigUnavailable(null), false);
+});
+
+test("a 404 with nothing loaded yields `unavailable`, not `failed`", () => {
+  const state = onConfigUnavailable({ kind: "loading" });
+  assert.equal(state.kind, "unavailable");
+  // And it must not be submittable or offer a version to edit.
+  assert.equal(canSubmit(state), false);
+  assert.equal(editingVersion(state), null);
+});
+
+test("a 404 AFTER a successful read keeps the values and marks them stale", () => {
+  // The deployment changed under us — a rollback to an older build, or a proxy now in front of a
+  // different backend. Blanking a risk screen is the wrong response to an ambiguous signal.
+  const ready = onConfigLoaded({ kind: "loading" }, config({ version: 6 }));
+  const after = onConfigUnavailable(ready);
+
+  assert.equal(after.kind, "ready");
+  assert.equal(after.stale, true);
+  assert.equal(after.config.version, 6, "the previously-read configuration was discarded");
+  assert.match(after.error, /no longer exposes/i);
+  assert.equal(canSubmit(after), false, "a stale view must not submit");
+});
+
+test("recovering from unavailable to ready works, so the panel self-heals", () => {
+  // Once the backend routes land, the next successful refresh must simply work — no reload needed.
+  let state = onConfigUnavailable({ kind: "loading" });
+  assert.equal(state.kind, "unavailable");
+  state = onConfigLoaded(state, config({ version: 1 }));
+  assert.equal(state.kind, "ready");
+  assert.equal(state.stale, false);
+  assert.equal(canSubmit(state), true);
 });

@@ -377,6 +377,18 @@ export function lockedCount(settings: readonly OperatorSetting[]): number {
 
 export type ConfigViewState =
   | { readonly kind: "loading" }
+  /**
+   * This backend build does not expose the operator-configuration endpoint at all.
+   *
+   * A DISTINCT STATE, not a flavour of `failed`, because it is not a fault and must not be presented
+   * as one. The frontend half of the operator-configuration work ships ahead of the backend routes
+   * (see `docs/OPERATOR_CONFIG.md` §7), so a deployment running an older or in-between build answers
+   * `404` — which is the correct answer to "a route that does not exist", not evidence of a problem
+   * with the deployment. Rendering it as a red failure with a Retry button invites an operator to
+   * keep pressing a button that can never succeed, and on a trading screen during a supervised live
+   * test that is noise at exactly the wrong moment.
+   */
+  | { readonly kind: "unavailable" }
   | { readonly kind: "ready"; readonly config: OperatorConfig; readonly stale: false }
   | { readonly kind: "ready"; readonly config: OperatorConfig; readonly stale: true; readonly error: string }
   | { readonly kind: "failed"; readonly error: string };
@@ -441,6 +453,27 @@ export function onConfigFailed(state: ConfigViewState, error: string): ConfigVie
     return { kind: "ready", config: state.config, stale: true, error };
   }
   return { kind: "failed", error };
+}
+
+/**
+ * Fold "this backend does not have the endpoint" into the view state.
+ *
+ * If a configuration was previously read successfully, it is KEPT and marked stale rather than
+ * discarded: a 404 arriving after a success means the deployment changed under us (a rollback to an
+ * older build, or a proxy in front of a different backend), and blanking a risk screen is the wrong
+ * response to an ambiguous signal. With nothing held, the state becomes `unavailable` — which the UI
+ * states plainly and without a Retry button, because retrying a route that does not exist cannot help.
+ */
+export function onConfigUnavailable(state: ConfigViewState): ConfigViewState {
+  if (state.kind === "ready") {
+    return {
+      kind: "ready",
+      config: state.config,
+      stale: true,
+      error: "this backend build no longer exposes the operator-configuration endpoint",
+    };
+  }
+  return { kind: "unavailable" };
 }
 
 /** The version a PATCH must echo, or null when we hold nothing to edit. */
