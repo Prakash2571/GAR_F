@@ -569,7 +569,10 @@ test("the contract version and the backend pin move TOGETHER", () => {
   // NO WIRE CHANGE and NOT a deploy-order dependency: not one byte of any response moved, so either
   // side may ship first. `readContractIdentity()` is reported by the backend and gated on by
   // nothing, so a version skew cannot refuse a request.
-  assert.equal(version.contract_version, "1.20.0");
+  // v1.21.0 — `account_funds` now publishes the broker's FULL funds breakdown (`components`) and the
+  // `basis` that produced the headline, so a figure that disagrees with the broker's own screen can be
+  // explained component by component instead of taken on trust.
+  assert.equal(version.contract_version, "1.21.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,

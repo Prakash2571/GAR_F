@@ -55,6 +55,16 @@ function AccountFundsItem({ funds }: { funds: AccountFunds | undefined }) {
   const value = funds.free_to_trade_rupees;
   const known = value !== null;
   const ageSecs = funds.age_ms === null ? null : Math.round(funds.age_ms / 1000);
+  /*
+   * PLEDGED COLLATERAL, when the broker reports it.
+   *
+   * Surfaced because it is the single most likely explanation for a headline far below what the
+   * broker's own funds screen shows: the default basis reads `available.live_balance`, which is the
+   * cash side, and an account whose trading power comes from pledged holdings carries the rest here.
+   * Optional-chained and defaulted, so a payload from a backend that predates `components` renders
+   * exactly as it did before rather than throwing.
+   */
+  const collateral = funds.components?.["available.collateral"] ?? null;
   const marginLabel = funds.broker === "zerodha" ? "Available margin to trade" : "Available funds to trade";
   const usedLabel = funds.broker === "zerodha" ? "used/blocked margin" : "used/blocked";
 
@@ -96,6 +106,25 @@ function AccountFundsItem({ funds }: { funds: AccountFunds | undefined }) {
                 nothing blocked — a distinction that changes how far the headline can be trusted. */}
             {funds.broker_utilised_rupees !== null && (
               <> · {rupees(funds.broker_utilised_rupees)} {usedLabel}</>
+            )}
+            {/* WHICH COMPONENT PRODUCED THIS NUMBER, and the collateral beside it.
+
+                Shown because a headline far below what the broker's own screen reports is almost
+                always a FIELD-SELECTION difference rather than an arithmetic one, and an operator had
+                no way to see that from the tile. Naming the basis, and showing pledged collateral when
+                the broker reports any, turns "this number looks wrong" into a checkable statement.
+                `components` is keyed by the vendor's field names so it lines up with the broker's
+                screen directly. */}
+            {funds.basis !== "live_balance" && <> · basis {funds.basis}</>}
+            {collateral !== null && collateral > 0 && (
+              <>
+                {" "}
+                ·{" "}
+                <span className={funds.basis === "live_balance" ? "is-warn" : undefined}>
+                  {rupees(collateral)} pledged collateral
+                  {funds.basis === "live_balance" ? " NOT in this figure" : " included"}
+                </span>
+              </>
             )}
           </>
         ) : (

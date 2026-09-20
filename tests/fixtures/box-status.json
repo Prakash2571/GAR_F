@@ -573,7 +573,15 @@
     "fresh": true,
     "unavailable_reason": null,
     "last_error": null,
-    "note": "Spendable account balance as reported by the broker, 4s old. zerodha: available.live_balance is documented as already net of encumbrances, so utilised.debits is NOT subtracted again. It does NOT prove a specific box is affordable — four-leg margin is a separate question the economic-admission gate answers against the broker basket margin."
+    "note": "Spendable account balance as reported by the broker, 4s old. zerodha: available.live_balance is documented as already net of encumbrances, so utilised.debits is NOT subtracted again. It does NOT prove a specific box is affordable — four-leg margin is a separate question the economic-admission gate answers against the broker basket margin.",
+    "components": {
+      "net": 47250,
+      "available.live_balance": 47250,
+      "available.cash": 47250,
+      "available.collateral": 0,
+      "utilised.debits": 12000
+    },
+    "basis": "live_balance"
   },
   "entry_alerts": {
     "alerts": [
