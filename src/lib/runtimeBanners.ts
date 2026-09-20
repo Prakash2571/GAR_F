@@ -37,32 +37,21 @@ import { reductionAssurance as deriveReduction } from "./reductionAssurance.ts";
 
 export type Banner = { key: string; kind: "info" | "warn" | "error"; text: string };
 
-/**
- * The readiness blocker GAR_B raises when the durable store cannot be written.
+/*
+ * THE OUTAGE IS DERIVED FROM BOTH SNAPSHOTS, and `reductionAssurance` owns that derivation.
  *
- * THE REASON THIS CONSTANT EXISTS. `runtime.pg_ready` is a STARTUP LATCH — it answers "did
- * PostgreSQL respond when this process booted?" and nothing more. A store that dies MID-SESSION
- * leaves it `true` forever, while the readiness decision correctly turns every exposure-management
- * permission false and raises this code. Keying the outage off `pg_ready` alone therefore misses the
- * entire class of mid-session failures, which is exactly when an operator most needs to be told the
- * truth about whether an exit can reach the broker.
+ * This file used to key the mid-session outage off the BOX READINESS blockers alone. But the two
+ * payloads are fetched independently, on separate timers, so a fresh runtime response carrying
+ * `live_entry.reasons: ["durable_store_unavailable"]` could sit beside an OLDER readiness snapshot
+ * that still listed all three reduction permissions as available — and then no outage banner fired
+ * at all, while the entry banner promised an exit route in the same sentence that said nothing could
+ * reach the broker.
+ *
+ * `runtime.pg_ready` cannot cover for it either: it is a STARTUP LATCH, true for the rest of the day
+ * after a store dies mid-session.
+ *
+ * See `./reductionAssurance.ts` for the full account and for the fail-closed rules.
  */
-const DURABLE_STORE_BLOCKER = "durable_store_unavailable";
-
-/** Every blocker the decision is currently raising, entry and reduction alike. */
-function allBlockers(readiness: OperationalReadiness | null | undefined) {
-  if (!readiness) return [];
-  return [
-    ...readiness.entry.reasons,
-    ...readiness.exposure_management.blocked_reasons,
-    ...readiness.reconciliation.blockers,
-  ];
-}
-
-/** Whether the backend is currently reporting the durable store as unwritable. */
-function durableStoreDown(readiness: OperationalReadiness | null | undefined): boolean {
-  return allBlockers(readiness).some((b) => b.code === DURABLE_STORE_BLOCKER);
-}
 
 /*
  * EVERY SENTENCE BELOW THAT MENTIONS EXITING COMES FROM `reductionAssurance`.
@@ -132,6 +121,15 @@ export interface RuntimeBannerInput {
    */
   readiness?: OperationalReadiness | null;
   /**
+   * When each snapshot was OBSERVED by this client, for wording the conflict message only.
+   *
+   * It can never make a disagreement resolve in favour of the reassuring source — `RuntimeStatus`
+   * carries no timestamp or generation, so there is no payload-level ordering to appeal to, and the
+   * verdict fails closed regardless. Supplying it merely upgrades "which is newer cannot be
+   * established" to "the readiness snapshot was read N seconds earlier".
+   */
+  observedAt?: { runtime?: number | null; readiness?: number | null };
+  /**
    * SECTION 7 — how much to trust what follows.
    *
    * Optional so the component still renders for a caller that has no tracker, but when supplied a
@@ -156,10 +154,17 @@ export function buildRuntimeBanners({
   exportStatus,
   refresh,
   readiness,
+  observedAt,
 }: RuntimeBannerInput): Banner[] {
   const banners: Banner[] = [];
-  // Derived ONCE, and every sentence about exiting below is this value. See `reductionAssurance`.
-  const reduction = deriveReduction(readiness);
+  /*
+   * Derived ONCE, from BOTH snapshots, and every sentence about exiting below is this value.
+   *
+   * Passing `runtime` as well as `readiness` is what closes the conflicting-snapshot hole: a fresh
+   * runtime outage now overrides an older "all three permissions available" claim instead of being
+   * invisible to this function. `refresh` is passed so a stale reading cannot yield `available`.
+   */
+  const reduction = deriveReduction({ runtime, readiness, refresh, observedAt });
 
   // (0) FRESHNESS FIRST. A failed or expired refresh is itself the most important fact on screen:
   // every banner below is only as true as its last successful fetch.
@@ -172,6 +177,19 @@ export function buildRuntimeBanners({
           ? `Readiness is UNKNOWN. ${refresh.detail} Do not read the absence of a warning as an all-clear.`
           : `Readiness may be STALE. ${refresh.detail} Every statement below is only as current as that.`,
     });
+  }
+
+  /*
+   * (0b) THE SOURCES DISAGREE. Raised immediately after freshness and before everything else,
+   * because it changes how every banner below should be read: one of the two snapshots on screen is
+   * wrong, and the display is deliberately showing the restrictive one.
+   *
+   * This is its own banner rather than a clause appended to another because an operator needs to
+   * know the DISPLAY made a choice. Silently picking the safe reading would be correct and
+   * unexplained; saying so lets them go and check.
+   */
+  if (reduction.conflict && reduction.conflictDetail !== null) {
+    banners.push({ key: "readiness-conflict", kind: "error", text: reduction.conflictDetail });
   }
 
   if (runtime) {
@@ -245,7 +263,7 @@ export function buildRuntimeBanners({
         // when they need to know that the only remaining route is the broker terminal.
         text: "PostgreSQL is unavailable — the authoritative operational store cannot be read or written. No new box can be recorded and live entry fails closed. Automated reduction is ALSO unavailable: an exit, an emergency flatten, the working-order cancel sweep and reconciliation each need the durable order-intent journal before anything reaches the broker, so they are refused rather than queued and nothing is transmitted. Any open exposure is unchanged and still owned — if it cannot wait for PostgreSQL to return, reduce it from the broker terminal.",
       });
-    } else if (durableStoreDown(readiness)) {
+    } else if (reduction.outage) {
       /*
        * THE MID-SESSION OUTAGE — INVISIBLE TO `pg_ready`.
        *
