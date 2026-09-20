@@ -22,7 +22,7 @@ export type AccessStatusContract = { authenticated: false; } | ({ authenticated:
 export interface AccessVerifyContract { authenticated: true; role: "full" | "trade"; csrf_token: string; expires_at: string; }
 
 /** Free capital in the trading account, right now (from contract/schemas/account-funds.schema.json) */
-export interface AccountFundsContract { free_to_trade_rupees: number | null; broker_available_rupees: number | null; broker_utilised_rupees: number | null; broker: "zerodha" | "dhan" | null; semantics: "net_of_encumbrance" | "gross_of_encumbrance" | "unverified" | null; encumbrance_netted: boolean; observed_at: number | null; age_ms: number | null; fresh: boolean; unavailable_reason: "no_session" | "not_supported" | "never_read" | "read_failed" | "not_reported" | "semantics_unknown" | null; last_error: string | null; note: string; }
+export interface AccountFundsContract { components: { [key: string]: number | null; }; basis: "live_balance" | "net" | "live_balance_plus_collateral"; free_to_trade_rupees: number | null; broker_available_rupees: number | null; broker_utilised_rupees: number | null; broker: "zerodha" | "dhan" | null; semantics: "net_of_encumbrance" | "gross_of_encumbrance" | "unverified" | null; encumbrance_netted: boolean; observed_at: number | null; age_ms: number | null; fresh: boolean; unavailable_reason: "no_session" | "not_supported" | "never_read" | "read_failed" | "not_reported" | "semantics_unknown" | null; last_error: string | null; note: string; }
 
 /** A live-arm verdict (from contract/schemas/arm-verdict.schema.json) */
 export interface ArmVerdictContract { ok: boolean; blockers: { code: string; detail: string; }[]; }

@@ -998,6 +998,19 @@ export interface AccountFunds {
   last_error: string | null;
   /** One sentence on what this figure can and cannot prove. Safe to display verbatim. */
   note: string;
+  /**
+   * THE FULL BREAKDOWN the broker reported, keyed by its OWN field names
+   * (`net`, `available.live_balance`, `available.collateral`, `utilised.debits`, …).
+   *
+   * Published so the headline can be CHECKED rather than believed. An operator whose broker screen
+   * shows a much larger figure reads down this object and sees exactly which component the headline
+   * does and does not include — the difference between "the number looks wrong" and "the number
+   * excludes available.collateral, and here it is". Empty when the broker supplied no breakdown; a
+   * field the broker did not report is ABSENT rather than null.
+   */
+  components: Record<string, number | null>;
+  /** Which component of `components` produced the headline (`BOX_ZERODHA_FUNDS_BASIS`). */
+  basis: "live_balance" | "net" | "live_balance_plus_collateral";
 }
 
 /**
