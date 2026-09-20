@@ -26,10 +26,54 @@
  * token, passcode or ciphertext field in either payload.
  */
 
-import type { BrokerTokenRuntime, ExportStatus, RuntimeStatus } from "../api/types.ts";
+import type {
+  BrokerTokenRuntime,
+  ExportStatus,
+  OperationalReadiness,
+  RuntimeStatus,
+} from "../api/types.ts";
 import type { RefreshState } from "./statusIntegrity.ts";
+import { reductionAssurance as deriveReduction } from "./reductionAssurance.ts";
 
 export type Banner = { key: string; kind: "info" | "warn" | "error"; text: string };
+
+/**
+ * The readiness blocker GAR_B raises when the durable store cannot be written.
+ *
+ * THE REASON THIS CONSTANT EXISTS. `runtime.pg_ready` is a STARTUP LATCH — it answers "did
+ * PostgreSQL respond when this process booted?" and nothing more. A store that dies MID-SESSION
+ * leaves it `true` forever, while the readiness decision correctly turns every exposure-management
+ * permission false and raises this code. Keying the outage off `pg_ready` alone therefore misses the
+ * entire class of mid-session failures, which is exactly when an operator most needs to be told the
+ * truth about whether an exit can reach the broker.
+ */
+const DURABLE_STORE_BLOCKER = "durable_store_unavailable";
+
+/** Every blocker the decision is currently raising, entry and reduction alike. */
+function allBlockers(readiness: OperationalReadiness | null | undefined) {
+  if (!readiness) return [];
+  return [
+    ...readiness.entry.reasons,
+    ...readiness.exposure_management.blocked_reasons,
+    ...readiness.reconciliation.blockers,
+  ];
+}
+
+/** Whether the backend is currently reporting the durable store as unwritable. */
+function durableStoreDown(readiness: OperationalReadiness | null | undefined): boolean {
+  return allBlockers(readiness).some((b) => b.code === DURABLE_STORE_BLOCKER);
+}
+
+/*
+ * EVERY SENTENCE BELOW THAT MENTIONS EXITING COMES FROM `reductionAssurance`.
+ *
+ * Three banners here — the generic "live entry is blocked", the rejected-token banner and the
+ * recovery banner — used to end with a flat, unconditional promise ("open positions are still
+ * monitored and can still exit", "Reduction continues"). None consulted the backend. See
+ * `./reductionAssurance.ts` for the full account and for why the derivation is shared rather than
+ * repeated at each call site.
+ */
+export { reductionAssurance } from "./reductionAssurance.ts";
 
 /** Human wording for a machine-readable live-entry reason. Unknown codes pass through. */
 const ENTRY_REASON_TEXT: Record<string, string> = {
@@ -37,6 +81,15 @@ const ENTRY_REASON_TEXT: Record<string, string> = {
   zerodha_live_trading_disabled: "ZERODHA_LIVE_TRADING_ENABLED is false",
   dhan_live_trading_disabled: "DHAN_LIVE_TRADING_ENABLED is false",
   postgres_unavailable: "PostgreSQL is unavailable",
+  // The MID-SESSION counterpart of `postgres_unavailable`. Worded to make clear it is not merely a
+  // read outage: every reduction needs a durable write before anything reaches the broker.
+  durable_store_unavailable:
+    "the durable order-intent store cannot be written, so nothing can reach the broker",
+  // GAR_B refuses new-box admission while Box legs are held at the broker that no trade or residual
+  // row accounts for. Phrased as an operator action because that is the only thing that clears it.
+  unowned_attributed_exposure:
+    "Box legs are held at the broker that no record accounts for — an operator must verify and " +
+    "flatten or reconcile them",
   reconciliation_incomplete: "reconciliation is incomplete",
   active_broker_token_not_ready: "the active broker has no valid token yet",
   // SECTION 7 / contract v1.6.0: `live_entry.reasons` is now a projection of the ONE readiness
@@ -69,6 +122,16 @@ export interface RuntimeBannerInput {
   runtime: RuntimeStatus | null;
   exportStatus: ExportStatus | null;
   /**
+   * THE ONE authoritative readiness decision (`box_status.operational_readiness`).
+   *
+   * REQUIRED for any banner to say anything about exiting. Optional in the type only so a caller
+   * that has not yet loaded a status can still render the token/feed banners — and when it is
+   * absent every exit statement degrades to UNKNOWN rather than to reassurance. It is also the ONLY
+   * way to detect a MID-SESSION durable-store failure, which `runtime.pg_ready` (a startup latch)
+   * reports as healthy forever.
+   */
+  readiness?: OperationalReadiness | null;
+  /**
    * SECTION 7 — how much to trust what follows.
    *
    * Optional so the component still renders for a caller that has no tracker, but when supplied a
@@ -88,8 +151,15 @@ export interface RuntimeBannerInput {
  * claim that dangerous must be pinned by a test, and a JSX component cannot be asserted against
  * without a renderer. The component below is now a thin map over this function's result.
  */
-export function buildRuntimeBanners({ runtime, exportStatus, refresh }: RuntimeBannerInput): Banner[] {
+export function buildRuntimeBanners({
+  runtime,
+  exportStatus,
+  refresh,
+  readiness,
+}: RuntimeBannerInput): Banner[] {
   const banners: Banner[] = [];
+  // Derived ONCE, and every sentence about exiting below is this value. See `reductionAssurance`.
+  const reduction = deriveReduction(readiness);
 
   // (0) FRESHNESS FIRST. A failed or expired refresh is itself the most important fact on screen:
   // every banner below is only as true as its last successful fetch.
@@ -126,7 +196,10 @@ export function buildRuntimeBanners({ runtime, exportStatus, refresh }: RuntimeB
         banners.push({
           key: "token-invalid",
           kind: "error",
-          text: `The ${active.broker} token was rejected. New entry is blocked; open positions are still monitored and can still exit.`,
+          // The old text ended "open positions are still monitored and can still exit" — asserted
+          // flatly, with nothing consulted. A rejected token is itself a reason an exit may NOT be
+          // placeable (the broker rejects the order too), so this was the worst banner to guess on.
+          text: `The ${active.broker} token was rejected. New entry is blocked. ${reduction.sentence}`,
         });
       } else if (active.token_state !== "ready") {
         // waiting (before the poll start) or polling (actively retrying).
@@ -172,6 +245,35 @@ export function buildRuntimeBanners({ runtime, exportStatus, refresh }: RuntimeB
         // when they need to know that the only remaining route is the broker terminal.
         text: "PostgreSQL is unavailable — the authoritative operational store cannot be read or written. No new box can be recorded and live entry fails closed. Automated reduction is ALSO unavailable: an exit, an emergency flatten, the working-order cancel sweep and reconciliation each need the durable order-intent journal before anything reaches the broker, so they are refused rather than queued and nothing is transmitted. Any open exposure is unchanged and still owned — if it cannot wait for PostgreSQL to return, reduce it from the broker terminal.",
       });
+    } else if (durableStoreDown(readiness)) {
+      /*
+       * THE MID-SESSION OUTAGE — INVISIBLE TO `pg_ready`.
+       *
+       * `pg_ready` is a STARTUP LATCH: it records whether PostgreSQL answered when this process
+       * booted. A store that fails at 11:40 leaves it `true` for the rest of the day. The branch
+       * above therefore never fires, and before this existed the dashboard showed no outage banner at
+       * all — while the backend was refusing every exit, flatten, cancel sweep and reconciliation.
+       *
+       * The readiness decision is the only honest source here, and it says so explicitly with
+       * `durable_store_unavailable`. Same severity and same operator instruction as a startup outage,
+       * because the operational consequence is identical; the wording differs only in naming WHY the
+       * green PostgreSQL indicator cannot be trusted, so nobody spends the incident believing the
+       * store is fine because one field says so.
+       */
+      banners.push({
+        key: "pg-midsession",
+        kind: "error",
+        text:
+          "PostgreSQL FAILED MID-SESSION — the backend reports the durable store as unwritable. " +
+          "Note that the PostgreSQL indicator elsewhere may still read healthy: `pg_ready` only " +
+          "records whether the store answered at STARTUP, so it cannot see a store that died after " +
+          "boot. Treat this banner as authoritative. No new box can be recorded and live entry fails " +
+          "closed. Automated reduction is ALSO unavailable: an exit, an emergency flatten, the " +
+          "working-order cancel sweep and reconciliation each need the durable order-intent journal " +
+          "before anything reaches the broker, so they are refused rather than queued and nothing is " +
+          "transmitted. Any open exposure is unchanged and still owned — if it cannot wait for " +
+          "PostgreSQL to return, reduce it from the broker terminal.",
+      });
     }
 
     if (runtime.migration_state.pending > 0) {
@@ -187,10 +289,14 @@ export function buildRuntimeBanners({ runtime, exportStatus, refresh }: RuntimeB
       const why = runtime.live_entry.reasons.map(describeEntryReason).join("; ");
       banners.push({
         key: "entry",
-        kind: "warn",
-        text:
-          `Live entry is blocked${why ? ` — ${why}` : ""}. ` +
-          "Open positions are still monitored and can still exit.",
+        // A blocked entry with reduction ALSO unavailable is not a warning, it is an incident: there
+        // is live exposure and no automated way to reduce it. The severity has to follow the facts.
+        kind: reduction.state === "available" ? "warn" : "error",
+        // THE SENTENCE THIS ITEM WAS RAISED FOR. It used to end, unconditionally, "Open positions
+        // are still monitored and can still exit." `live_entry.blocked` is true for a disarmed flag
+        // AND for a durable-store outage; in the second case all three exposure-management
+        // permissions are false and that promise was simply untrue.
+        text: `Live entry is blocked${why ? ` — ${why}` : ""}. ${reduction.sentence}`,
       });
     }
 
@@ -203,8 +309,11 @@ export function buildRuntimeBanners({ runtime, exportStatus, refresh }: RuntimeB
     } else if (runtime.recovery_pending || !runtime.recovery_ready) {
       banners.push({
         key: "recovery",
-        kind: "warn",
-        text: "Recovery is in progress — unresolved broker state is being reconciled. Reduction continues; new entry is closed.",
+        kind: reduction.state === "available" ? "warn" : "error",
+        // "Reduction continues" was the third unconditional assurance. Recovery runs precisely when
+        // state is uncertain — including after a durable-store failure — so it is the last place that
+        // claim can be safely hard-coded.
+        text: `Recovery is in progress — unresolved broker state is being reconciled. New entry is closed. ${reduction.sentence}`,
       });
     }
   }

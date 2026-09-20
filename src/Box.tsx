@@ -952,8 +952,17 @@ export default function Box({ onLock }: Props) {
           selection and switch-blocker display. */}
       <BrokerStatusPanel runtime={runtime} />
 
-      {/* Plain-language whole-system readiness, without exposing any secret. */}
-      <RuntimeStatusBanners runtime={runtime} exportStatus={exportStatus} refresh={runtimeFreshness} />
+      {/* Plain-language whole-system readiness, without exposing any secret.
+
+          `readiness` is what lets these banners say anything about EXITING. Without it every such
+          statement degrades to UNKNOWN by design, and a MID-SESSION PostgreSQL failure would be
+          invisible here — `runtime.pg_ready` is only a startup latch. */}
+      <RuntimeStatusBanners
+        runtime={runtime}
+        exportStatus={exportStatus}
+        refresh={runtimeFreshness}
+        readiness={status?.operational_readiness ?? null}
+      />
 
       {error && <div className="banner banner--error">{error}</div>}
       {notice && !error && <div className="banner banner--info">{notice}</div>}

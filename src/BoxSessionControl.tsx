@@ -29,6 +29,7 @@
 import { useRef, useState } from "react";
 import { armBoxSession, disarmBoxSession, type BoxExecutionControl } from "./api";
 import { ControlRequests, runOnce } from "./lib/statusIntegrity.ts";
+import { armReductionAssurance } from "./lib/reductionAssurance.ts";
 
 /** What each state means operationally, so the label is never cryptic. */
 const STATE_HELP: Record<string, string> = {
@@ -41,7 +42,10 @@ const STATE_HELP: Record<string, string> = {
     "Every permitted cycle has been consumed AND is fully flat. Terminal for this session: new " +
     "entry stays disabled until an operator deliberately re-arms.",
   BLOCKED: "Armed, but something is blocking new entry — the cycle budget, or an external gate.",
-  RECOVERY: "Exposure is quarantined pending reconciliation. Entry is closed; reduction is not.",
+  // The reduction half of this sentence used to read "Entry is closed; reduction is not." — a static
+  // promise in a state that exists BECAUSE something is uncertain. Whether reduction really is
+  // available is rendered next to it, derived from the backend. See lib/reductionAssurance.ts.
+  RECOVERY: "Exposure is quarantined pending reconciliation. New entry is closed.",
 };
 
 export function BoxSessionControl({
@@ -67,6 +71,10 @@ export function BoxSessionControl({
 
   const session = control.session;
   const risk = control.risk;
+  // Every claim this panel makes about exiting is derived from the backend's arm verdict, never
+  // hard-coded. Two of the messages below fire BECAUSE a durable write or read failed — the exact
+  // state in which "exits are unaffected" is false. See lib/reductionAssurance.ts.
+  const reduction = armReductionAssurance(control);
   const customNum = Number(custom);
   // Validated here for a responsive form only. The backend validates 0..10000 independently, and
   // its answer is what decides — a UI check must never be the reason something is permitted.
@@ -138,6 +146,19 @@ export function BoxSessionControl({
         </span>
         <span className="box-session-help">{STATE_HELP[session.state] ?? ""}</span>
       </div>
+
+      {/* THE QUESTION AN OPERATOR ACTUALLY HAS in either state where entry has stopped: "can I still
+          get out?". Answered from the backend's verdict, and shown as an error when the answer is no
+          or unknown, so a state label can never be mistaken for an exit guarantee. */}
+      {(session.state === "RECOVERY" || session.state === "BLOCKED") && (
+        <p
+          className={`box-session-msg box-session-msg--${
+            reduction.state === "available" ? "info" : "error"
+          }`}
+        >
+          {reduction.sentence}
+        </p>
+      )}
 
       <dl className="box-session-grid">
         <div>
@@ -230,7 +251,12 @@ export function BoxSessionControl({
         <p className="box-session-msg box-session-msg--error">
           <strong>A consumed cycle could not be persisted.</strong> Entry stays closed until the
           write succeeds, because a restart would otherwise hand the spent cycle back. Run a live
-          reconciliation once the database is reachable. Exit and residual flattening are unaffected.
+          reconciliation once the database is reachable.{" "}
+          {/* This used to end "Exit and residual flattening are unaffected." — asserted flatly.
+              This message fires precisely BECAUSE a durable write failed, and every reduction needs
+              a durable write before anything reaches the broker, so that was the one situation in
+              which the claim was most likely to be false. Now derived. */}
+          {reduction.sentence}
         </p>
       )}
 
@@ -238,8 +264,11 @@ export function BoxSessionControl({
         <p className="box-session-msg box-session-msg--error">
           <strong>Durable session state is unreadable.</strong> New entry fails CLOSED, because an
           unread session is not an unarmed one — treating it as a clean slate is exactly how
-          restarting the process would hand back a spent one-shot budget. Exit, residual flattening
-          and reconciliation continue normally.
+          restarting the process would hand back a spent one-shot budget.{" "}
+          {/* Was "Exit, residual flattening and reconciliation continue normally." A store that
+              cannot be READ also cannot serve the cancel sweep's `loadNonterminal()` or
+              reconciliation's `loadOwned()`, so this too was reassuring on no evidence. */}
+          {reduction.sentence}
         </p>
       )}
 
