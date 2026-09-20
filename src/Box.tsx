@@ -316,6 +316,11 @@ export default function Box({ onLock }: Props) {
     }
     setReadinessIncompatible(null);
     setStatus(incoming as BoxStatus);
+    // WHEN this snapshot was observed. The readiness payload and the runtime payload are fetched on
+    // separate timers and neither carries a shared ordering field, so the only way to say how far
+    // apart they are is to record it here. Used to WORD a conflict, never to resolve one — see
+    // lib/reductionAssurance.ts.
+    setReadinessObservedAt(Date.now());
     return true;
   }, []);
 
@@ -329,6 +334,9 @@ export default function Box({ onLock }: Props) {
    */
   const runtimeRefresh = useRef(new RefreshTracker(12_000));
   const [runtimeFreshness, setRuntimeFreshness] = useState(() => runtimeRefresh.current.state(Date.now()));
+  // Observation times for the two INDEPENDENTLY fetched snapshots. See `applyStatus`.
+  const [runtimeObservedAt, setRuntimeObservedAt] = useState<number | null>(null);
+  const [readinessObservedAt, setReadinessObservedAt] = useState<number | null>(null);
 
   /**
    * In-flight control mutations, per DISTINCT control class.
@@ -517,6 +525,7 @@ export default function Box({ onLock }: Props) {
       fetchRuntimeStatus()
         .then((r) => {
           setRuntime(r);
+          setRuntimeObservedAt(Date.now());
           runtimeRefresh.current.recordSuccess(Date.now());
         })
         .catch((err: unknown) => {
@@ -962,6 +971,7 @@ export default function Box({ onLock }: Props) {
         exportStatus={exportStatus}
         refresh={runtimeFreshness}
         readiness={status?.operational_readiness ?? null}
+        observedAt={{ runtime: runtimeObservedAt, readiness: readinessObservedAt }}
       />
 
       {error && <div className="banner banner--error">{error}</div>}

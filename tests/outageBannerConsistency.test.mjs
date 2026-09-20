@@ -367,16 +367,22 @@ test("INVARIANT: across every combination, no banner ever contradicts the verdic
 });
 
 test("the assurance derivation itself is total: three states, and only three", () => {
-  assert.equal(reductionAssurance(null).state, "unknown");
-  assert.equal(reductionAssurance(undefined).state, "unknown");
-  assert.equal(reductionAssurance(readinessWith()).state, "available");
-  assert.equal(reductionAssurance(readinessWith({ exit_and_reduce: false })).state, "blocked");
-  assert.equal(reductionAssurance(readinessWith({ protective_cancel: false })).state, "blocked");
-  assert.equal(reductionAssurance(readinessWith({ manage_working_orders: false })).state, "blocked");
+  // `reductionAssurance` now takes BOTH snapshots, because a verdict derived from one of two
+  // independently-fetched sources cannot detect them disagreeing. A healthy runtime is supplied so
+  // these cases isolate the readiness half.
+  const healthyRuntime = runtimeWith();
+  const only = (readiness) => reductionAssurance({ runtime: healthyRuntime, readiness });
+
+  assert.equal(reductionAssurance({ runtime: null, readiness: null }).state, "unknown");
+  assert.equal(reductionAssurance({ runtime: undefined, readiness: undefined }).state, "unknown");
+  assert.equal(only(readinessWith()).state, "available");
+  assert.equal(only(readinessWith({ exit_and_reduce: false })).state, "blocked");
+  assert.equal(only(readinessWith({ protective_cancel: false })).state, "blocked");
+  assert.equal(only(readinessWith({ manage_working_orders: false })).state, "blocked");
 
   // A blocked verdict with an EMPTY reason list must still produce a usable sentence rather than
   // "undefined" — the backend contract allows the list to be empty.
-  const bare = reductionAssurance(readinessWith({ exit_and_reduce: false, blocked_reasons: [] }));
+  const bare = only(readinessWith({ exit_and_reduce: false, blocked_reasons: [] }));
   assert.equal(bare.state, "blocked");
   assert.doesNotMatch(bare.sentence, /undefined/);
   assert.match(bare.sentence, /readiness panel/);
@@ -412,8 +418,14 @@ test("the arm-verdict entry point produces the SAME sentences as the readiness o
 
   // Identical wording for the two states both payloads can express. If these ever diverge, one panel
   // reassures while another does not, on the same facts.
-  assert.equal(armReductionAssurance(controlWith(true)).sentence, shared(readinessWith()).sentence);
-  assert.equal(armReductionAssurance(null).sentence, shared(null).sentence);
+  assert.equal(
+    armReductionAssurance(controlWith(true)).sentence,
+    shared({ runtime: runtimeWith(), readiness: readinessWith() }).sentence,
+  );
+  assert.equal(
+    armReductionAssurance(null).sentence,
+    shared({ runtime: null, readiness: null }).sentence,
+  );
   assert.equal(armReductionAssurance(undefined).state, "unknown");
 });
 
