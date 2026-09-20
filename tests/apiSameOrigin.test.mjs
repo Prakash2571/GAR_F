@@ -125,3 +125,158 @@ test("the built production bundle contains no localhost:3001 / 127.0.0.1:3001", 
     assert.ok(!src.includes("127.0.0.1:3001"), `${file} must not contain 127.0.0.1:3001`);
   }
 });
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════════════════
+ * VITE_API_BASE_URL IS AN ORIGIN, AND NOTHING BUT AN ORIGIN
+ * ═══════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * THE DEFECT THESE TESTS PIN. The normalisation was
+ *
+ *     `${url.origin}${url.pathname}${url.search}`.replace(/\/+$/, "").replace(/\/api$/i, "")
+ *
+ * which CONCATENATED the query string into the base and silently DISCARDED any fragment. Since
+ * `apiUrl()` appends the endpoint path, "https://api.example.com?debug=1" produced
+ *
+ *     https://api.example.com?debug=1/api/box/status
+ *
+ * — a request whose path is "/" and whose query is "debug=1/api/box/status". Every endpoint 404s or
+ * hits the wrong route, and the SSE URL breaks identically. The trailing-slash strip could not help,
+ * because after concatenation the query is no longer at the end.
+ *
+ * THE FINAL POLICY (documented on `resolveApiOrigin`): absent ⇒ same-origin; otherwise an absolute
+ * http(s) URL with NO query, NO fragment, NO embedded credentials, and no path other than the two
+ * tolerated accidents (a trailing slash, a trailing "/api"). Anything else throws at module load,
+ * because a misconfigured API origin is a deployment error and must not be masked.
+ */
+
+/* ---------------------------------- valid origins ---------------------------------- */
+
+test("POLICY: a bare origin is accepted verbatim, with or without a port", () => {
+  assert.equal(resolveApiOrigin("https://api.example.com"), "https://api.example.com");
+  assert.equal(resolveApiOrigin("http://api.example.com:8080"), "http://api.example.com:8080");
+  assert.equal(resolveApiOrigin("https://api.example.com:443"), "https://api.example.com");
+  assert.equal(resolveApiOrigin("http://10.0.0.5:3001"), "http://10.0.0.5:3001");
+  // Surrounding whitespace is a copy-paste artifact, not a malformation.
+  assert.equal(resolveApiOrigin("  https://api.example.com  "), "https://api.example.com");
+});
+
+test("POLICY: the two tolerated path accidents are still stripped", () => {
+  // Unchanged behaviour, re-asserted here so the stricter path rule cannot break it.
+  assert.equal(resolveApiOrigin("https://api.example.com/"), "https://api.example.com");
+  assert.equal(resolveApiOrigin("https://api.example.com///"), "https://api.example.com");
+  assert.equal(resolveApiOrigin("https://api.example.com/api"), "https://api.example.com");
+  assert.equal(resolveApiOrigin("https://api.example.com/api/"), "https://api.example.com");
+  assert.equal(resolveApiOrigin("https://api.example.com/api///"), "https://api.example.com");
+  assert.equal(resolveApiOrigin("https://api.example.com/API"), "https://api.example.com", "case-insensitive");
+});
+
+test("POLICY: a tolerated value still produces a single un-doubled /api path", () => {
+  for (const raw of ["https://api.example.com", "https://api.example.com/", "https://api.example.com/api"]) {
+    const origin = resolveApiOrigin(raw);
+    const url = `${origin}/api/box/status`;
+    assert.equal(url, "https://api.example.com/api/box/status", `from ${raw}`);
+    assert.doesNotMatch(url, /\/api\/api/, "the endpoint prefix must never double up");
+    assert.doesNotMatch(url, /\?/, "and no query string may appear");
+  }
+});
+
+/* ---------------------------------- rejected: QUERY ---------------------------------- */
+
+test("POLICY: a QUERY STRING is rejected, not folded into the base", () => {
+  // The original defect. Each of these previously produced a corrupted URL.
+  assert.throws(() => resolveApiOrigin("https://api.example.com?debug=1"), /must not contain a query string/);
+  assert.throws(() => resolveApiOrigin("https://api.example.com/?debug=1"), /must not contain a query string/);
+  assert.throws(() => resolveApiOrigin("https://api.example.com/api?debug=1"), /must not contain a query string/);
+  assert.throws(() => resolveApiOrigin("https://api.example.com?a=1&b=2"), /must not contain a query string/);
+});
+
+test("POLICY: a BARE trailing ? or # carries no query/fragment and is therefore accepted", () => {
+  // Deliberate and asserted, not an oversight: `new URL("https://x?")` has an EMPTY `search`, so
+  // there is no query to corrupt a derived URL with. Rejecting it would fail a deployment over a
+  // harmless stray character, and accepting it cannot produce a malformed endpoint URL.
+  assert.equal(resolveApiOrigin("https://api.example.com?"), "https://api.example.com");
+  assert.equal(resolveApiOrigin("https://api.example.com#"), "https://api.example.com");
+  assert.equal(resolveApiOrigin("https://api.example.com/api?"), "https://api.example.com");
+});
+
+test("POLICY: the query-string error names the origin the operator should use instead", () => {
+  // An error that only says "invalid" sends someone back to the docs; this one is actionable.
+  assert.throws(
+    () => resolveApiOrigin("https://api.example.com?debug=1"),
+    /Use "https:\/\/api\.example\.com"/,
+  );
+});
+
+/* --------------------------------- rejected: FRAGMENT -------------------------------- */
+
+test("POLICY: a FRAGMENT is rejected rather than silently dropped", () => {
+  // Previously discarded in silence, so a misconfiguration left no trace at all.
+  assert.throws(() => resolveApiOrigin("https://api.example.com#anchor"), /must not contain a fragment/);
+  assert.throws(() => resolveApiOrigin("https://api.example.com/#anchor"), /must not contain a fragment/);
+  assert.throws(() => resolveApiOrigin("https://api.example.com/api#anchor"), /must not contain a fragment/);
+});
+
+/* ----------------------------------- rejected: PATH ---------------------------------- */
+
+test("POLICY: any OTHER path is rejected — the value is an origin, not a base path", () => {
+  assert.throws(() => resolveApiOrigin("https://api.example.com/foo"), /must not contain a path/);
+  assert.throws(() => resolveApiOrigin("https://api.example.com/api/v2"), /must not contain a path/);
+  assert.throws(() => resolveApiOrigin("https://api.example.com/backend/api"), /must not contain a path/);
+  assert.throws(() => resolveApiOrigin("https://api.example.com/apiv2"), /must not contain a path/);
+  assert.throws(() => resolveApiOrigin("https://api.example.com/api/box"), /must not contain a path/);
+});
+
+test("POLICY: the path error shows what the broken URL would have become", () => {
+  // The most convincing possible message: the actual malformed URL the value would produce.
+  assert.throws(() => resolveApiOrigin("https://api.example.com/foo"), /\/foo\/api\/\.\.\./);
+});
+
+/* ------------------------------- rejected: CREDENTIALS ------------------------------- */
+
+test("POLICY: embedded credentials are rejected — they would ride on every request", () => {
+  assert.throws(
+    () => resolveApiOrigin("https://user:pass@api.example.com"),
+    /must not contain embedded credentials/,
+  );
+  assert.throws(() => resolveApiOrigin("https://user@api.example.com"), /must not contain embedded credentials/);
+});
+
+test("POLICY: a rejected credential value never echoes the password back in the error", () => {
+  // The error text is logged and may reach a console a user can see.
+  try {
+    resolveApiOrigin("https://user:sup3rs3cret@api.example.com");
+    assert.fail("expected a throw");
+  } catch (error) {
+    assert.doesNotMatch(
+      error.message.replace("https://user:sup3rs3cret@api.example.com", ""),
+      /sup3rs3cret/,
+      "the suggested origin must not carry the secret",
+    );
+  }
+});
+
+/* ------------------------------- combinations ------------------------------- */
+
+test("POLICY: combined malformations are each rejected, in a defined order", () => {
+  // Query is checked before fragment, and both before path, so a value with several problems gets a
+  // stable, reproducible message rather than one that depends on evaluation order.
+  assert.throws(() => resolveApiOrigin("https://api.example.com/foo?a=1#b"), /must not contain a query string/);
+  assert.throws(() => resolveApiOrigin("https://api.example.com/foo#b"), /must not contain a fragment/);
+  assert.throws(() => resolveApiOrigin("https://user:p@api.example.com/foo?a=1"), /must not contain a query string/);
+});
+
+test("POLICY: a rejection is a THROW, never a silent fall back to same-origin", () => {
+  // Degrading to same-origin would mean a misconfigured deployment quietly talks to the wrong place,
+  // which is strictly worse than failing to start.
+  for (const bad of [
+    "https://api.example.com?debug=1",
+    "https://api.example.com#x",
+    "https://api.example.com/foo",
+    "https://user:pass@api.example.com",
+    "ftp://api.example.com",
+    "not a url",
+  ]) {
+    assert.throws(() => resolveApiOrigin(bad), Error, `"${bad}" must throw rather than resolve`);
+  }
+});

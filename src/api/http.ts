@@ -51,13 +51,32 @@ import { CSRF_HEADER } from "./contract.generated.ts";
  * AN EXPLICIT VALUE IS VALIDATED, NOT TRUSTED
  * -------------------------------------------
  * If `VITE_API_BASE_URL` IS supplied it is treated as an ORIGIN ONLY (endpoints add their
- * own "/api/..." prefix). It must parse as an absolute http(s) URL. An accidental trailing
- * slash or trailing "/api" is stripped so a misconfigured value cannot produce doubled
- * "/api/api/..." URLs or a trailing-slash variant that changes cookie/CORS behaviour.
+ * own "/api/..." prefix). The full policy, enforced below:
  *
- * A malformed or non-http(s) value THROWS at module load rather than silently degrading to
- * same-origin: a misconfigured API origin is a deployment error and must surface loudly, not
- * be masked by quietly talking to the wrong place.
+ *   ACCEPTED
+ *     "https://api.example.com"       → "https://api.example.com"
+ *     "http://api.example.com:8080"   → "http://api.example.com:8080"
+ *     "https://api.example.com/"      → trailing slash stripped
+ *     "https://api.example.com///"    → repeated trailing slashes stripped
+ *     "https://api.example.com/api"   → trailing "/api" stripped (so endpoints do not double it)
+ *     "https://api.example.com/api/"  → both stripped
+ *
+ *   REJECTED (throws at module load)
+ *     not an absolute URL             "not a url", "://missing-scheme", "http//broken"
+ *     not http(s)                     "javascript:", "ftp:", "file:"
+ *     a QUERY STRING                  "https://api.example.com?debug=1"
+ *     a FRAGMENT                      "https://api.example.com#x"
+ *     EMBEDDED CREDENTIALS            "https://user:pass@api.example.com"
+ *     any OTHER PATH                  "https://api.example.com/foo", ".../api/v2"
+ *
+ * A query string and a fragment are rejected rather than stripped because neither has any
+ * meaning on an origin and both previously CORRUPTED every derived URL (the query was
+ * concatenated into the base, so the endpoint path landed inside the query). A base path is
+ * rejected because no endpoint in this app expects one.
+ *
+ * Rejection THROWS at module load rather than silently degrading to same-origin: a
+ * misconfigured API origin is a deployment error and must surface loudly, not be masked by
+ * quietly talking to the wrong place.
  *
  * Exported so it can be unit-tested directly under `node:test` (which passes an explicit
  * argument) without a bundler.
@@ -88,12 +107,69 @@ export function resolveApiOrigin(raw: string | undefined | null): string {
     );
   }
 
-  // Normalise to origin + optional path, then strip a trailing slash and an accidental
-  // trailing "/api" so endpoints' own "/api/..." prefix never doubles up.
-  const normalised = `${url.origin}${url.pathname}${url.search}`
-    .replace(/\/+$/, "")
-    .replace(/\/api$/i, "");
-  return normalised;
+  /*
+   * ═══════════════════════════════════════════════════════════════════════════════════════════
+   * AN ORIGIN, AND NOTHING BUT AN ORIGIN.
+   * ═══════════════════════════════════════════════════════════════════════════════════════════
+   *
+   * THE DEFECT THIS CLOSES. The old normalisation was
+   *
+   *     `${url.origin}${url.pathname}${url.search}`.replace(/\/+$/, "").replace(/\/api$/i, "")
+   *
+   * which CONCATENATED THE QUERY STRING into the base and silently DISCARDED any fragment. Because
+   * `apiUrl()` appends the endpoint path, a value like "https://api.example.com?debug=1" produced
+   *
+   *     https://api.example.com?debug=1/api/box/status
+   *
+   * — a URL whose path is `/` and whose query is `debug=1/api/box/status`. Every request 404s or
+   * hits the wrong route, and the SSE URL is broken the same way. A trailing-slash strip cannot
+   * help, because the query is not at the end after concatenation.
+   *
+   * THE FINAL POLICY, enforced here and asserted in tests/apiSameOrigin.test.mjs:
+   *   • absent / empty / whitespace  → "" (same-origin; relative "/api/..." paths)
+   *   • must parse as an ABSOLUTE URL and use http: or https:
+   *   • NO query string and NO fragment — neither has any meaning on an origin, and both silently
+   *     corrupt every derived URL, so they are a deployment error rather than something to strip
+   *   • NO embedded credentials ("https://user:pass@host") — those would be sent on every request
+   *   • the ONLY paths tolerated are the two documented accidents: a trailing slash, and a trailing
+   *     "/api" (with or without its own trailing slash). Both are stripped so the endpoints' own
+   *     "/api/..." prefix cannot double up into "/api/api/...". ANY OTHER PATH is rejected — the
+   *     value is an origin, and a base path would produce "https://host/foo/api/..." which no
+   *     endpoint in this app expects.
+   *
+   * Rejection is a THROW at module load, deliberately: a misconfigured API origin must surface as a
+   * failed deployment, not as a frontend quietly talking to the wrong place.
+   */
+  if (url.search !== "") {
+    throw new Error(
+      `VITE_API_BASE_URL must not contain a query string: "${trimmed}". It is an ORIGIN only ` +
+        `(endpoints add their own "/api/..." path), and a query string corrupts every request URL. ` +
+        `Use "${url.origin}".`,
+    );
+  }
+  if (url.hash !== "") {
+    throw new Error(
+      `VITE_API_BASE_URL must not contain a fragment: "${trimmed}". It is an ORIGIN only, and a ` +
+        `fragment is never sent to a server. Use "${url.origin}".`,
+    );
+  }
+  if (url.username !== "" || url.password !== "") {
+    throw new Error(
+      `VITE_API_BASE_URL must not contain embedded credentials: "${trimmed}". Credentials in the ` +
+        `base URL would be attached to every request. Use "${url.origin}" and rely on the session cookie.`,
+    );
+  }
+
+  // Tolerate ONLY a trailing slash and a trailing "/api"; reject any other path.
+  const path = url.pathname.replace(/\/+$/, "");
+  if (path !== "" && path.toLowerCase() !== "/api") {
+    throw new Error(
+      `VITE_API_BASE_URL must not contain a path: "${trimmed}" has path "${url.pathname}". It is an ` +
+        `ORIGIN only — endpoints add their own "/api/..." prefix, so a base path would produce ` +
+        `"${url.origin}${path}/api/...". Use "${url.origin}".`,
+    );
+  }
+  return url.origin;
 }
 
 /**
