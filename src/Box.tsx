@@ -92,7 +92,37 @@ function pnlClass(v: number | null | undefined): string {
  * silence on a quiet strike is normal and the book is still the current one —
  * hence the generous limit. Beyond it the book is no longer trusted for a fill.
  */
-function Freshness({ ageMs, limit }: { ageMs: number | null; limit: number }) {
+function Freshness({
+  ageMs,
+  limit,
+  snapshotStale = false,
+}: {
+  ageMs: number | null;
+  limit: number;
+  /**
+   * True when the SSE snapshot carrying this age has itself gone stale.
+   *
+   * WHY THIS PILL NEEDS TO KNOW. `ageMs` is computed by the BACKEND and shipped inside a snapshot, so
+   * it measures "how old was this book when the server last spoke" — not "how old is it now". When the
+   * stream stalls the value freezes, and a 320ms age keeps rendering green forever while the real age
+   * grows without bound. That is the single most misleading thing on the page: the pill whose entire
+   * job is to say whether a price is usable for a fill was the one lying about it.
+   *
+   * With a stale snapshot the age is no longer an age, so the pill says so rather than showing a
+   * number that cannot be interpreted.
+   */
+  snapshotStale?: boolean;
+}) {
+  if (snapshotStale) {
+    return (
+      <span
+        className="box-fresh box-fresh--bad"
+        title="This book age came from the server inside a snapshot that has since gone stale, so it describes the past, not now. The real age is unknown and larger."
+      >
+        stale feed
+      </span>
+    );
+  }
   if (ageMs === null) {
     return (
       <span className="box-fresh box-fresh--bad" title="No order book received for this leg yet">
@@ -216,6 +246,15 @@ export default function Box({ onLock }: Props) {
   const [view, setView] = useState<"opportunities" | "open" | "history">("opportunities");
   /** Aborted paper_legging execution attempts (loaded lazily on the History tab). */
   const [attempts, setAttempts] = useState<BoxExecutionAttempt[]>([]);
+  /**
+   * Why the aborted-execution log could not be read, when it could not.
+   *
+   * Kept apart from `historyError` because the two answer different questions and an operator acts on
+   * them differently. Without it, a failed fetch left `attempts` empty and the panel claimed "No
+   * aborted legging executions recorded" — reporting ABSENCE OF LOSSES when the truth was absence of
+   * DATA.
+   */
+  const [attemptsError, setAttemptsError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -234,6 +273,38 @@ export default function Box({ onLock }: Props) {
   /** Closed-history broker filter. Only rendered when both brokers appear. */
   const [brokerFilter, setBrokerFilter] = useState<BrokerFilter>("all");
   const [live, setLive] = useState(false);
+  /**
+   * When the LAST SSE SNAPSHOT ACTUALLY ARRIVED, by this browser's clock. Null before the first one.
+   *
+   * WHY A CLIENT-SIDE STAMP IS REQUIRED. `live` is a pure EventSource-lifecycle boolean: it is set by
+   * `onOpen`/`onEvent` and cleared by `onDisconnect`, and `onDisconnect` only fires when EventSource
+   * raises an ERROR — i.e. a BROKEN connection. A backend whose event loop wedges, whose snapshot
+   * timer dies, or whose stream is held open by nginx or a load balancer while no bytes flow produces
+   * no error event at all. Every consequence then lands at once:
+   *
+   *   - `pending.current` is never refilled, so the flush below returns early and the last
+   *     `status` / `opportunities` / `open` stay mounted verbatim;
+   *   - the header badge stays green "Scanning";
+   *   - the Feed cell renders `live (243ms)` from the FROZEN `status.feed_age_ms` — a
+   *     backend-computed field cannot report that the backend stopped talking;
+   *   - `<Freshness ageMs={o.worst_age_ms}/>` keeps rendering the frozen server-side book age in
+   *     green, so a 40-second-old edge reads as a 320ms-old edge.
+   *
+   * And no button's actionability changed: an operator could arm real entry, or press "Close now at
+   * the current executable touch", against a snapshot of unbounded age.
+   *
+   * The backend cannot help here — `box-sse-snapshot.schema.json` is a CLOSED object of exactly
+   * `{status, opportunities, open_trades}` with no `emitted_at` and no sequence — so the age has to be
+   * measured on arrival, which is what this is. The machinery already existed and was applied to the
+   * LESS important path: `RefreshTracker` + `freshnessBand` wrap the 5s runtime poll. Nothing wrapped
+   * the stream the entire price surface depends on.
+   */
+  const [snapshotAt, setSnapshotAt] = useState<number | null>(null);
+  /**
+   * Re-evaluated on a timer so snapshot age advances with the passage of time rather than only when a
+   * frame arrives — which is the whole point, since the failure being detected is frames STOPPING.
+   */
+  const [snapshotAgeMs, setSnapshotAgeMs] = useState<number | null>(null);
   /**
    * True while the pre-run confirmation is open.
    *
@@ -538,6 +609,26 @@ export default function Box({ onLock }: Props) {
     };
     poll();
     const t = window.setInterval(poll, 5000);
+    /*
+     * THE EXECUTION-CONTROL SURFACE IS POLLED TOO, and it was not before.
+     *
+     * `loadExecutionControl()` ran ONCE on mount and then only when a mutation completed. Everything
+     * it feeds is therefore a one-shot read that could be arbitrarily old with no age shown anywhere:
+     * CIRCUIT, ENTRY STATE, LIVE ORDERS, SESSION LIMIT, ATTEMPT BUDGET, OPEN BOXES, QUEUE,
+     * `arm.preconditions.feedHealthy`, `arm.preconditions.reconciliationComplete`,
+     * `risk.realised_pnl_today` and `risk.daily_loss_limit`.
+     *
+     * So if the backend tripped the daily-loss circuit, consumed the session budget, or demoted the
+     * feed, this panel kept showing `CIRCUIT CLOSED · ARMED · 0/1 complete · FEED HEALTHY` until the
+     * operator happened to press something. That is the panel a human reads IMMEDIATELY BEFORE
+     * enabling real entry.
+     *
+     * Deliberately SLOWER than the 5s readiness poll: the endpoint is a cold read on the server (it
+     * consults the reservation store and the session record), and the values it carries change on
+     * operator actions and circuit trips rather than tick by tick. 10s bounds the staleness of a
+     * pre-arm decision without making the surface expensive.
+     */
+    const control = window.setInterval(() => void loadExecutionControl(), 10_000);
     // A second, faster timer re-evaluates FRESHNESS even when no poll resolves: data goes stale by
     // the passage of time, not by an event, so nothing else would ever notice.
     const age = window.setInterval(
@@ -547,8 +638,25 @@ export default function Box({ onLock }: Props) {
     return () => {
       window.clearInterval(t);
       window.clearInterval(age);
+      window.clearInterval(control);
     };
-  }, [canTrade]);
+  }, [canTrade, loadExecutionControl]);
+
+  /*
+   * SNAPSHOT AGE, ticked independently of the stream.
+   *
+   * This exists precisely because the failure it detects is frames STOPPING: nothing in the stream
+   * path can notice its own silence, so the age has to be advanced by a clock. 1s cadence so the
+   * displayed age and the derived staleness verdict move visibly rather than in coarse jumps.
+   */
+  useEffect(() => {
+    if (!canTrade) return;
+    const tick = () =>
+      setSnapshotAgeMs(snapshotAt === null ? null : Math.max(0, Date.now() - snapshotAt));
+    tick();
+    const t = window.setInterval(tick, 1000);
+    return () => window.clearInterval(t);
+  }, [canTrade, snapshotAt]);
 
   // A 401 anywhere returns the whole app to the gate. The http wrapper already fires this
   // when a REST call 401s; subscribing here lets the dashboard react immediately (the SSE is
@@ -597,6 +705,9 @@ export default function Box({ onLock }: Props) {
           try {
             pending.current = JSON.parse(data) as BoxSnapshot;
             setLive(true);
+            // Stamped on ARRIVAL, not on flush: the flush is a 400ms UI throttle and its timing says
+            // nothing about when the backend last spoke.
+            setSnapshotAt(Date.now());
           } catch {
             /* ignore a malformed frame */
           }
@@ -817,9 +928,50 @@ export default function Box({ onLock }: Props) {
    * "press RUN" message is the honest one.
    */
   const closedViewExpected = (cfg?.indicative_discovery ?? false) && authenticated;
-  // The backend is the authority on market hours; default to "open" only once we
-  // actually have a status, so the page never claims tradability it can't back.
-  const marketOpen = status ? status.market_open : true;
+  /*
+   * The backend is the authority on market hours, so with NO status we must not claim it is open.
+   *
+   * The old code was `status ? status.market_open : true` — with a comment saying it defaulted to
+   * "open" only once a status existed, which is the opposite of what the expression did. While
+   * `status === null` the page suppressed the "Market closed — these are last-traded prices, not
+   * executable" banner, rendered `Prices: Executable touch`, and showed the exchange lag as live. And
+   * `loadStatus` sets `error` but LEAVES `status` null on failure, so a backend that cannot serve
+   * /api/box/status made the page assert executable prices PERMANENTLY, with a red error banner
+   * directly above the claim.
+   *
+   * `false` is the safe default: it shows the market-closed banner and labels prices as last-close,
+   * which is the correct reading of "we do not know".
+   */
+  const marketOpen = status ? status.market_open : false;
+
+  /*
+   * IS THE PRICE SURFACE ON SCREEN ACTUALLY CURRENT?
+   *
+   * `live` alone cannot answer this — it only reports whether the EventSource is open, and a wedged
+   * backend holds the socket open while sending nothing (see `snapshotAt`). So the verdict combines
+   * both: the socket must be up AND a snapshot must have arrived recently.
+   *
+   * The budget is deliberately generous relative to the backend's ~2/s publish rate. It is not trying
+   * to catch a dropped frame; it is trying to catch a stream that has STOPPED, and a threshold tight
+   * enough to flicker on a slow render would be ignored within a day.
+   */
+  const SNAPSHOT_STALE_MS = 6_000;
+  const snapshotStale = snapshotAgeMs !== null && snapshotAgeMs > SNAPSHOT_STALE_MS;
+  /**
+   * True only when the rendered prices can be trusted as CURRENT.
+   *
+   * `snapshotAt === null` (no frame has ever arrived) counts as NOT trustworthy — "never received"
+   * and "received and fine" must not collapse into the same state, which is the same distinction
+   * `RefreshTracker` draws between `unknown` and `fresh`.
+   */
+  const snapshotTrusted = live && snapshotAt !== null && !snapshotStale;
+  /** Human age of the last snapshot, for the banner and the status strip. */
+  const snapshotAgeLabel =
+    snapshotAgeMs === null
+      ? "never"
+      : snapshotAgeMs < 1000
+        ? `${snapshotAgeMs}ms ago`
+        : `${(snapshotAgeMs / 1000).toFixed(snapshotAgeMs < 60_000 ? 1 : 0)}s ago`;
 
   const eligibleCount = useMemo(
     () => opportunities.filter((o) => o.status === "ELIGIBLE").length,
@@ -832,23 +984,44 @@ export default function Box({ onLock }: Props) {
     () => open.filter((p) => p.exit_blocked_reason !== null).length,
     [open],
   );
-  const closedNet = useMemo(
-    () => history.reduce((acc, t) => acc + (t.net_pnl ?? 0), 0),
-    [history],
-  );
-  const closedFees = useMemo(
-    () => history.reduce((acc, t) => acc + (t.total_charges ?? 0), 0),
-    [history],
-  );
-  const closedGross = useMemo(
-    () => history.reduce((acc, t) => acc + (t.gross_pnl ?? 0), 0),
-    [history],
-  );
-  /** Total basket margin every listed closed box blocked (a sum, not a peak). */
-  const closedMargin = useMemo(
-    () => history.reduce((acc, t) => acc + (t.margin ?? 0), 0),
-    [history],
-  );
+  /*
+   * CLOSED-BOOK TOTALS, WITH THE UNPRICED ROWS COUNTED SEPARATELY.
+   *
+   * THE DEFECT. These were plain `acc + (t.net_pnl ?? 0)` reductions. `net_pnl`, `gross_pnl` and
+   * `total_charges` are all `number | null` on the wire, and a trade whose charges could not be priced
+   * rendered `Total fees -` in its OWN row while contributing ₹0 of fees and ₹0 of net to the summary.
+   * Net is a sum of `net_pnl` rather than `gross − fees`, so the strip could read
+   * `Gross ₹4,200 · Fees ₹0 · Net ₹0` — internally inconsistent AND profit-flattering, which is the
+   * dangerous direction. It also made a systematically broken charge pricer invisible: every trade
+   * silently free.
+   *
+   * `margin` already did this correctly, disclosing `Margin ₹x (3 n/a)`; charges and P&L simply never
+   * got the same treatment. So the fix is to follow the convention that was already here — sum only
+   * the priced rows, and COUNT the unpriced ones so the total can say what it excluded.
+   */
+  const closedTotals = useMemo(() => {
+    const sumKnown = (pick: (t: (typeof history)[number]) => number | null | undefined) => {
+      let total = 0;
+      let unknown = 0;
+      for (const t of history) {
+        const v = pick(t);
+        if (typeof v === "number" && Number.isFinite(v)) total += v;
+        else unknown++;
+      }
+      return { total, unknown };
+    };
+    return {
+      net: sumKnown((t) => t.net_pnl),
+      fees: sumKnown((t) => t.total_charges),
+      gross: sumKnown((t) => t.gross_pnl),
+      /** Total basket margin every listed closed box blocked (a sum, not a peak). */
+      margin: sumKnown((t) => t.margin),
+    };
+  }, [history]);
+  const closedNet = closedTotals.net.total;
+  const closedFees = closedTotals.fees.total;
+  const closedGross = closedTotals.gross.total;
+  const closedMargin = closedTotals.margin.total;
   /**
    * What the backend's day summary says was closed today.
    *
@@ -910,23 +1083,47 @@ export default function Box({ onLock }: Props) {
         if (b === "unknown") return -1;
         return b.localeCompare(a);
       })
-      .map(([key, trades]) => ({
-      key,
-      label: istDayLabel(key),
-      trades,
-      gross: trades.reduce((sum, trade) => sum + (trade.gross_pnl ?? 0), 0),
-      fees: trades.reduce((sum, trade) => sum + (trade.total_charges ?? 0), 0),
-      net: trades.reduce((sum, trade) => sum + (trade.net_pnl ?? 0), 0),
+      .map(([key, trades]) => {
+      /*
+       * Same rule as the book-wide totals: sum only the rows that carry a real number and COUNT the
+       * rest. `?? 0` treated an unpriced trade as free, so a day could report `Gross ₹4,200 ·
+       * Fees ₹0 · Net ₹0` — flattering and internally inconsistent, since net is a sum of `net_pnl`
+       * rather than `gross − fees`.
+       */
+      const sumKnown = (pick: (t: (typeof trades)[number]) => number | null | undefined) => {
+        let total = 0;
+        let unknown = 0;
+        for (const t of trades) {
+          const v = pick(t);
+          if (typeof v === "number" && Number.isFinite(v)) total += v;
+          else unknown++;
+        }
+        return { total, unknown };
+      };
+      const gross = sumKnown((t) => t.gross_pnl);
+      const fees = sumKnown((t) => t.total_charges);
+      const net = sumKnown((t) => t.net_pnl);
       /**
        * Total basket margin these boxes blocked, and how many are missing a
        * figure. Summed over the day, so it is an upper bound on what was blocked
        * at any single instant rather than a peak: boxes that opened and closed at
        * different times never held their margin simultaneously.
        */
-      margin: trades.reduce((sum, trade) => sum + (trade.margin ?? 0), 0),
-      marginUnknown: trades.filter((trade) => trade.margin === null || trade.margin === undefined)
-        .length,
-    }));
+      const margin = sumKnown((t) => t.margin);
+      return {
+        key,
+        label: istDayLabel(key),
+        trades,
+        gross: gross.total,
+        grossUnknown: gross.unknown,
+        fees: fees.total,
+        feesUnknown: fees.unknown,
+        net: net.total,
+        netUnknown: net.unknown,
+        margin: margin.total,
+        marginUnknown: margin.unknown,
+      };
+    });
   }, [visibleHistory]);
 
   /* --------------------------------- render ------------------------------- */
@@ -1000,8 +1197,39 @@ export default function Box({ onLock }: Props) {
           until it recovers — open positions stay open and are not closed on unverifiable prices.
         </div>
       )}
-      {status && !marketOpen && (
+      {/*
+        THE BACKEND HAS STOPPED TALKING TO THIS PAGE.
+        Reported SEPARATELY from "tick feed is down", because that banner is driven by
+        `status.feed_healthy` — a value the BACKEND computes and pushes. A backend-computed field
+        cannot tell you the backend stopped pushing, so a wedged event loop or a proxy holding the
+        stream open showed every indicator green while the whole price surface was frozen.
+        Placed above the market-closed banner: if what is on screen is not current, that fact
+        outranks anything the stale snapshot happens to say.
+      */}
+      {snapshotStale && (
+        <div className="banner banner--error">
+          <strong>These prices are not live.</strong> The last update from the server arrived{" "}
+          <strong>{snapshotAgeLabel}</strong>
+          {live
+            ? " — the connection is still open but no data is coming through it"
+            : " and the connection has dropped"}
+          . Everything below is a frozen snapshot of that moment, including every order book, age and
+          edge. <strong>Arming live entry is disabled</strong> until data resumes, because creating new
+          exposure from a stale price is how a phantom edge becomes a real loss.{" "}
+          <strong>Exiting is deliberately still allowed</strong> — getting out of a position you
+          already hold must never be blocked by a stale screen, and the server re-checks the real book
+          before it sends anything. Open positions also continue to be managed by the server
+          independently of this page.
+        </div>
+      )}
+      {snapshotAt === null && live && (
         <div className="banner banner--warn">
+          <strong>Waiting for the first update.</strong> The connection is open but no snapshot has
+          arrived yet, so nothing below is priced. This is normal for a second or two after opening
+          the page.
+        </div>
+      )}
+      {status && !marketOpen && (        <div className="banner banner--warn">
           <strong>Market closed.</strong> The prices below are the{" "}
           <strong>last traded</strong> prices from the{" "}
           {status.indicative_session_day ?? "latest"} session, shown so you can see which boxes were
@@ -1118,16 +1346,31 @@ export default function Box({ onLock }: Props) {
         <div className="box-stat">
           <span className="box-stat-k">Feed</span>
           <span
-            className={`box-stat-v ${status && !status.feed_healthy && marketOpen ? "pnl-neg" : ""}`}
-            title="Heartbeat: how long since ANY instrument last ticked. Not a delay from NSE — if it goes quiet the connection is down and trading pauses."
+            className={`box-stat-v ${(status && !status.feed_healthy && marketOpen) || snapshotStale ? "pnl-neg" : ""}`}
+            title={
+              snapshotStale
+                ? `This cell is computed by the SERVER and shipped inside a snapshot, so it cannot report that the server stopped sending. The last snapshot arrived ${snapshotAgeLabel}, so the value below is frozen and the real feed state is unknown.`
+                : "Heartbeat: how long since ANY instrument last ticked. Not a delay from NSE — if it goes quiet the connection is down and trading pauses."
+            }
           >
-            {!status
-              ? "-"
-              : !marketOpen
-                ? "idle"
-                : status.feed_healthy
-                  ? `live ${status.feed_age_ms === null ? "" : `(${status.feed_age_ms}ms)`}`
-                  : "DOWN"}
+            {/*
+              SNAPSHOT STALENESS OUTRANKS `status.feed_healthy`, and must.
+              `feed_healthy` and `feed_age_ms` are BACKEND-COMPUTED and arrive inside the snapshot, so
+              a wedged backend freezes them at their last healthy values and this cell renders
+              `live (243ms)` indefinitely. A field pushed by the server can never report that the
+              server stopped pushing, so the client-measured snapshot age has to be checked first.
+            */}
+            {snapshotStale
+              ? `NO DATA (${snapshotAgeLabel})`
+              : !snapshotTrusted
+                ? "connecting…"
+                : !status
+                  ? "-"
+                  : !marketOpen
+                    ? "idle"
+                    : status.feed_healthy
+                      ? `live ${status.feed_age_ms === null ? "" : `(${status.feed_age_ms}ms)`}`
+                      : "DOWN"}
           </span>
         </div>
         <div className="box-stat">
@@ -1172,6 +1415,7 @@ export default function Box({ onLock }: Props) {
         canTrade={canTrade}
         isFullAdmin={isFullAdmin}
         executionError={executionError}
+        pricesStale={snapshotStale}
         onControlChanged={() => {
           void loadExecutionControl();
           void loadStatus();
@@ -1319,7 +1563,27 @@ export default function Box({ onLock }: Props) {
             setView("history");
             // Today first (instant), then reconcile the full book behind it.
             void loadToday().then(() => loadHistory());
-            void fetchBoxExecutionAttempts(100).then(setAttempts).catch(() => {});
+            /*
+             * A FAILED FETCH MUST NOT READ AS "NOTHING WENT WRONG".
+             *
+             * This was `.catch(() => {})`. On failure `attempts` stays `[]` and the panel renders
+             * "No aborted legging executions recorded" — a FALSE NEGATIVE on the one surface that
+             * reports money lost to partial fills that had to be unwound. `loadHistory` was
+             * explicitly hardened against exactly this bug class (it even cross-checks the day
+             * summary against an empty list); the attempts fetch never got the same treatment.
+             */
+            void fetchBoxExecutionAttempts(100)
+              .then((rows) => {
+                setAttempts(rows);
+                setAttemptsError(null);
+              })
+              .catch((err: unknown) => {
+                setAttemptsError(
+                  err instanceof Error
+                    ? err.message
+                    : "The aborted-execution log could not be loaded.",
+                );
+              });
           }}
         >
           <span className="box-view-tab-label">History</span>
@@ -1332,13 +1596,37 @@ export default function Box({ onLock }: Props) {
               title="Total basket margin every listed box blocked, summed. Not a peak: boxes closed at different times did not hold their margin at the same moment."
             >
               Margin {rupees(closedMargin)}
+              {closedTotals.margin.unknown > 0 ? ` (${closedTotals.margin.unknown} n/a)` : ""}
             </span>
             {"  ·  "}
-            <span className="box-dim">Gross {rupees(closedGross)}</span>
+            <span className="box-dim">
+              Gross {rupees(closedGross)}
+              {closedTotals.gross.unknown > 0 ? ` (${closedTotals.gross.unknown} n/a)` : ""}
+            </span>
             {"  −  "}
-            <span className="box-dim">Fees {rupees(closedFees)}</span>
+            {/*
+              THE UNPRICED COUNT IS NOT COSMETIC. These totals sum only the rows that carry a real
+              number, so without stating how many were excluded, a systematically broken charge pricer
+              reads as "every trade was free" — and `Gross X · Fees ₹0 · Net ₹0` looks like an
+              arithmetic bug in the page rather than missing data from the server.
+            */}
+            <span className="box-dim">
+              Fees {rupees(closedFees)}
+              {closedTotals.fees.unknown > 0 ? ` (${closedTotals.fees.unknown} unpriced)` : ""}
+            </span>
             {"  =  "}
-            <span className={pnlClass(closedNet)}>Net {rupees(closedNet)}</span>
+            <span className={pnlClass(closedNet)}>
+              Net {rupees(closedNet)}
+              {closedTotals.net.unknown > 0 ? ` (${closedTotals.net.unknown} n/a)` : ""}
+            </span>
+            {(closedTotals.fees.unknown > 0 || closedTotals.net.unknown > 0) && (
+              <span
+                className="box-dim"
+                title="These totals sum only the boxes that carry a priced figure. Boxes whose charges or P&L the server could not compute are excluded rather than counted as zero, because counting them as zero would overstate profit."
+              >
+                {"  ·  "}excludes unpriced boxes
+              </span>
+            )}
           </span>
         )}
       </nav>
@@ -1504,7 +1792,7 @@ export default function Box({ onLock }: Props) {
                         {o.price_source === "last_close" ? (
                           <span className="box-fresh box-fresh--closed">close</span>
                         ) : (
-                          <Freshness ageMs={o.worst_age_ms} limit={freshLimit} />
+                          <Freshness ageMs={o.worst_age_ms} limit={freshLimit} snapshotStale={snapshotStale} />
                         )}
                       </td>
                       <td>
@@ -1705,6 +1993,7 @@ export default function Box({ onLock }: Props) {
                 closing={closingId === p.id}
                 onClose={() => void handleClose(p.id)}
                 deleting={deletingId === p.id}
+                snapshotStale={snapshotStale}
                 {...(p.execution_mode !== "live"
                   ? {
                       onDelete: () =>
@@ -1799,9 +2088,28 @@ export default function Box({ onLock }: Props) {
                       Margin {rupees(day.margin)}
                       {day.marginUnknown > 0 ? ` (${day.marginUnknown} n/a)` : ""}
                     </span>
-                    <span className="box-dim">Gross {rupees(day.gross)}</span>
-                    <span className="box-dim">Fees {rupees(day.fees)}</span>
-                    <span className={pnlClass(day.net)}>Net {rupees(day.net)}</span>
+                    <span className="box-dim">
+                      Gross {rupees(day.gross)}
+                      {day.grossUnknown > 0 ? ` (${day.grossUnknown} n/a)` : ""}
+                    </span>
+                    {/* An unpriced charge shown as ₹0 makes a losing day look profitable, so the
+                        count is stated rather than folded into the sum. */}
+                    <span
+                      className="box-dim"
+                      title={
+                        day.feesUnknown > 0
+                          ? `${day.feesUnknown} box(es) have no priced charges and are EXCLUDED from this total — ` +
+                            `they are not counted as zero, because that would overstate the day's profit.`
+                          : "Total charges for the boxes closed on this day."
+                      }
+                    >
+                      Fees {rupees(day.fees)}
+                      {day.feesUnknown > 0 ? ` (${day.feesUnknown} unpriced)` : ""}
+                    </span>
+                    <span className={pnlClass(day.net)}>
+                      Net {rupees(day.net)}
+                      {day.netUnknown > 0 ? ` (${day.netUnknown} n/a)` : ""}
+                    </span>
                   </span>
                 </summary>
                 <div className="box-table-wrap">
@@ -1912,6 +2220,13 @@ export default function Box({ onLock }: Props) {
             money, so they count against strategy P&amp;L.
           </span>
         </h2>
+        {attemptsError && (
+          <div className="banner banner--warn">
+            <strong>The aborted-execution log could not be loaded.</strong> {attemptsError} The list
+            below is <strong>not</strong> evidence that nothing was unwound — it is empty because the
+            log could not be read. Reload to try again.
+          </div>
+        )}
         <BoxExecutionAttempts attempts={attempts} />
       </section>
       )}
@@ -1999,6 +2314,7 @@ function OpenBoxCard({
   onClose,
   onDelete,
   deleting,
+  snapshotStale = false,
 }: {
   p: BoxOpenPosition;
   freshLimit: number;
@@ -2007,6 +2323,15 @@ function OpenBoxCard({
   /** Absent for a LIVE position: real exposure must be flattened, not deleted. */
   onDelete?: () => void;
   deleting: boolean;
+  /**
+   * True when the snapshot carrying this position's exit-leg book ages has gone stale.
+   *
+   * Passed down so the per-leg freshness pills stop claiming a frozen age is current. Note that
+   * "Close now" is deliberately NOT gated on it: closing is risk-reducing, the backend re-checks the
+   * real book before it sends anything, and an operator must never be locked out of exiting by a
+   * stale screen.
+   */
+  snapshotStale?: boolean;
 }) {
   // A live position never gets a delete affordance. Its record is the only link to
   // real broker exposure, so removing it would orphan that exposure entirely.
@@ -2102,7 +2427,7 @@ function OpenBoxCard({
               <span className="box-leg-cell box-dim">
                 {ex ? `${ex.side === "BUY" ? ex.ask_qty : ex.bid_qty} @ touch` : "-"}
               </span>
-              <Freshness ageMs={ex?.age_ms ?? null} limit={freshLimit} />
+              <Freshness ageMs={ex?.age_ms ?? null} limit={freshLimit} snapshotStale={snapshotStale} />
               {ex && !ex.executable && <span className="box-liq box-liq--bad">thin</span>}
             </div>
           );

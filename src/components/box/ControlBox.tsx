@@ -73,6 +73,7 @@ export function ControlBox({
   canTrade,
   isFullAdmin,
   executionError,
+  pricesStale,
   onControlChanged,
   onSettingsSaved,
   onBlocklistChanged,
@@ -84,6 +85,11 @@ export function ControlBox({
   canTrade: boolean;
   isFullAdmin: boolean;
   executionError: string | null;
+  /**
+   * True when the SSE snapshot driving the page has gone stale. Threaded down to
+   * `BoxExecutionControl`, which uses it to block ARMING entry only — never any reduction.
+   */
+  pricesStale?: boolean;
   onControlChanged: () => void;
   onSettingsSaved: (next: { config: BoxConfigView; status: BoxStatus }) => void;
   onBlocklistChanged: (next: BoxExcludedUnderlyings) => void;
@@ -173,6 +179,7 @@ export function ControlBox({
               canTrade={canTrade}
               isFullAdmin={isFullAdmin}
               onChanged={onControlChanged}
+              {...(pricesStale === undefined ? {} : { pricesStale })}
             />
             {executionError && (
               <div className="banner banner--warn">

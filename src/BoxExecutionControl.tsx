@@ -89,11 +89,22 @@ export function BoxExecutionControl({
   canTrade,
   isFullAdmin,
   onChanged,
+  pricesStale,
 }: {
   control: ExecutionControlView | undefined;
   canTrade: boolean;
   isFullAdmin: boolean;
   onChanged: () => void;
+  /**
+   * True when the SSE snapshot driving this page has gone stale (see `snapshotStale` in Box.tsx).
+   *
+   * Gates ENTRY ARMING ONLY, and the asymmetry is deliberate and matches the backend's: arming entry
+   * CREATES exposure from prices that may be minutes old, which is how a phantom edge becomes a real
+   * loss. Disarming entry, managing live orders, emergency flatten and cancel-working all REDUCE or
+   * bound exposure, so blocking them on a stale screen would trap the operator in exactly the incident
+   * the staleness is signalling. Nothing here may ever gate a reduction.
+   */
+  pricesStale?: boolean;
 }) {
   /**
    * SECTION 7 — PER-CONTROL-CLASS pending state, not one global flag.
@@ -542,7 +553,21 @@ export function BoxExecutionControl({
             <button
               type="button"
               className={`btn btn--sm${control.entry_enabled ? "" : " btn--danger"}`}
-              disabled={!isFullAdmin || busy === "entry" || (!control.entry_enabled && !control.arm.entry.ok)}
+              /*
+               * STALE PRICES BLOCK ENABLING ENTRY, AND ONLY ENABLING IT.
+               *
+               * `pricesStale && !control.entry_enabled` — so the DISABLE direction stays available at
+               * all times. Turning entry off is risk-reducing, and a control that becomes unusable
+               * during the exact incident it exists for is worse than no control. This mirrors the
+               * backend, where every funding, session and timing gate is scoped `entry` and no
+               * reduction path consults any of them.
+               */
+              disabled={
+                !isFullAdmin ||
+                busy === "entry" ||
+                (!control.entry_enabled && !control.arm.entry.ok) ||
+                (!control.entry_enabled && pricesStale === true)
+              }
               onClick={() => {
                 if (control.entry_enabled) {
                   void run("entry_arming", "entry", () => setBoxLiveControl("box_entry_enabled", false));
@@ -550,12 +575,19 @@ export function BoxExecutionControl({
                   setConfirmEntry(true);
                 }
               }}
-              title="Permits opening NEW exposure. The only permission that can create new risk."
+              title={
+                !control.entry_enabled && pricesStale === true
+                  ? "Blocked: the price data on this page is stale, so there is no trustworthy edge to arm against. Disabling entry stays available."
+                  : "Permits opening NEW exposure. The only permission that can create new risk."
+              }
             >
               {control.entry_enabled ? "Disable entry" : "Enable entry (real orders)"}
             </button>
             <span className="box-exec-arm-state">
               {control.entry_enabled ? "ENABLED" : "disabled"}
+              {!control.entry_enabled && pricesStale === true && (
+                <em> · this page's prices are stale — refusing to arm against a frozen snapshot</em>
+              )}
               {!control.arm.entry.ok && control.arm.entry.blockers && (
                 <em> · {control.arm.entry.blockers.map((b) => b.detail).join("; ")}</em>
               )}
