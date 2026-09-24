@@ -596,7 +596,33 @@ test("the contract version and the backend pin move TOGETHER", () => {
   // the derived fields to render a refusal honestly, so the BACKEND MUST SHIP FIRST: an old backend
   // returning the hardcoded `ok: true` body would make this frontend report a flatten as failed-unknown
   // rather than falsely successful, which is the safe direction but is still a mismatch.
-  assert.equal(version.contract_version, "1.22.0");
+  //
+  // 1.22.0 -> 1.23.0: LOT-RELATIVE ENTRY ECONOMICS. A box's edge is `grossEdgePerUnit × lotSize`
+  // and so scales with the lot, but the backend's entry gate, safety buffer, both slippage
+  // allowances and the voluntary exit floor were FLAT rupee figures that do not. Across F&O lot
+  // sizes (~35 to 40,000+) one configured policy was therefore a ~1000x different per-unit
+  // requirement depending on the instrument — measured on the real code, ₹52.857/unit on a 35 lot
+  // against ₹0.046/unit on a 40,000 lot. That is not one policy screening a universe; it is "never
+  // trade the small lots, take almost anything on the large ones", and it presented as scarce
+  // opportunities always concentrated in the same few large-lot names. `box-config` gained eight
+  // REQUIRED properties:
+  //   • `lot_relative_thresholds` — whether any per-unit rate is active. The one an operator needs
+  //     on screen, because the flat figures alone cannot express which regime is in force.
+  //   • the six rates `min_expected_net_profit_per_unit`, `min_gross_edge_per_unit`,
+  //     `safety_buffer_per_unit`, `expected_entry_slippage_per_unit`,
+  //     `expected_exit_slippage_per_unit`, `min_exit_net_pnl_per_unit` — each resolved by the
+  //     backend per candidate as `max(flat, rate × lotSize)`, with 0 meaning the rate is inactive
+  //     and the flat figure stands alone (so a deployment that sets none behaves exactly as before).
+  //   • `one_opportunity_per_underlying` — whether the opportunity board is collapsed to the best
+  //     candidate per (underlying, direction). A PUBLICATION rule, published here rather than in
+  //     `box-execution-control`'s `risk` block on purpose: it decides what is DISPLAYED, and listing
+  //     it among the risk controls would misrepresent a display preference as a safety control. The
+  //     per-underlying ENTRY guarantee remains `one_active_box_per_underlying` on execution-control.
+  // ADDITIVE, but `box-config` is `additionalProperties: false` and all eight are REQUIRED, and
+  // `box-status` embeds config — so an unbumped frontend rejects both whole responses. Hence a minor
+  // bump, a re-vendor, a re-pin and a regenerated `contract.generated.ts`; this literal moving is the
+  // acknowledgement that all four steps are done.
+  assert.equal(version.contract_version, "1.23.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,

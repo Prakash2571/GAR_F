@@ -1,22 +1,28 @@
 > ### Pinned backend commit
 >
 > `contract/BACKEND_CONTRACT.json` pins
-> **`backend_sha = 9161a6c04aff7d77b08b8eec0f2ab14af9d7e6a6`** — the `GAR_B` `main` commit
-> (`fix(box): stop reporting real refusals as UNKNOWN_INTERNAL_ERROR, and publish which
-> underlying was refused`, contract **1.18.0**) whose contract set hashes to the pinned
-> `schemas_sha256`. Checking that SHA out in the backend reproduces this contract exactly,
-> which is the whole point of the pin.
+> **`backend_sha = 41203d60c0d45e1db4d72f6fe24426f147978897`** — the `GAR_B` `main` commit
+> (`Make the box entry economics lot-relative and stop duplicate per-underlying edges (#73)`,
+> contract **1.23.0**) whose contract set hashes to the pinned `schemas_sha256`. Checking that
+> SHA out in the backend reproduces this contract exactly, which is the whole point of the pin.
 >
-> 1.18.0 added one REQUIRED property to the closed `box-status` schema: `entry_alerts`
-> (`entry-alerts.schema.json` + `entry-alert.schema.json`) — the per-underlying, aggregated
-> ledger of refused entry attempts. It exists because `rejection_categories` is a metric label
-> space that structurally cannot carry a symbol, so a deployment whose session budget was simply
-> spent reported `UNKNOWN_INTERNAL_ERROR: 354` and nothing else. Because the property is
-> REQUIRED on an `additionalProperties: false` schema, the backend must deploy FIRST or an
-> unbumped frontend rejects the whole status response.
+> 1.23.0 added **eight REQUIRED properties** to the closed `box-config` schema, which
+> `box-status` also embeds — so an unbumped frontend rejects BOTH whole responses. A box's edge
+> is `grossEdgePerUnit × lotSize` and therefore scales with the lot, but the backend's entry
+> gate, safety buffer, both slippage allowances and the voluntary exit floor were flat rupee
+> figures that do not. Across F&O lot sizes (~35 to 40,000+) one configured policy was a ~1000x
+> different per-unit requirement depending on the instrument, so most of the universe was
+> excluded by arithmetic while the largest lots were admitted on bid-ask noise. The six
+> `*_per_unit` rates are each resolved by the backend per candidate as
+> `max(flat, rate × lotSize)`; `lot_relative_thresholds` reports whether any rate is active,
+> because the flat figures alone cannot express which regime is in force; and
+> `one_opportunity_per_underlying` reports whether the opportunity board is collapsed to one row
+> per underlying. Every rate defaults to 0, which reproduces the previous flat arithmetic
+> exactly, so the bump is about the SHAPE being required — not about behaviour changing.
 >
-> (This block was previously stale at **1.9.0** / `fd13a39` while the pin itself had moved on to
-> 1.17.0 — the digest gate cannot catch that, which is exactly why the note below exists.)
+> (This block has been stale before — at **1.9.0** / `fd13a39` while the pin had moved to 1.17.0,
+> and again at **1.18.0** / `9161a6c` while the pin had moved to 1.22.0. The digest gate cannot
+> catch that, which is exactly why the note below exists.)
 >
 > **When you change the contract, update this SHA too.** `contract:verify` cannot check it:
 > it verifies the DIGEST, which is content-addressed and will happily agree while the SHA

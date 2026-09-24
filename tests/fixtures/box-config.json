@@ -35,6 +35,14 @@
     "universe": "NSE F&O options only \u2014 F&O stocks + supported indices",
     "indicative_discovery": true,
     "closed_cache_enabled": false,
+    "one_opportunity_per_underlying": false,
+    "lot_relative_thresholds": false,
+    "min_expected_net_profit_per_unit": 0,
+    "min_gross_edge_per_unit": 0,
+    "safety_buffer_per_unit": 0,
+    "expected_entry_slippage_per_unit": 0,
+    "expected_exit_slippage_per_unit": 0,
+    "min_exit_net_pnl_per_unit": 0,
     "tunable": {
         "min_expected_net_profit": {
             "min": 0,
