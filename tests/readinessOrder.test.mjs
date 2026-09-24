@@ -572,7 +572,31 @@ test("the contract version and the backend pin move TOGETHER", () => {
   // v1.21.0 — `account_funds` now publishes the broker's FULL funds breakdown (`components`) and the
   // `basis` that produced the headline, so a figure that disagrees with the broker's own screen can be
   // explained component by component instead of taken on trust.
-  assert.equal(version.contract_version, "1.21.0");
+  //
+  // 1.21.0 -> 1.22.0: THE EMERGENCY-FLATTEN RESULT BECAME REPRESENTABLE.
+  // `POST /api/box/live/flatten` had NO SCHEMA AT ALL. It answered `{ ok: true, ... }` as a LITERAL,
+  // always HTTP 200, over a `results: unknown[]` filled with `ManualCloseResult` objects that are
+  // frequently `{ ok: false }` — exchange closed, feed unhealthy, position in RECOVERY, position already
+  // closing, PostgreSQL down. The frontend inspected only `settlement.failures` and
+  // `settlement.reconciled`, the CANCELLATION and RECONCILIATION halves, and never read `results`. So an
+  // operator who pressed the panic button while the feed was down saw a GREEN success toast while every
+  // position failed to close. Two new schemas:
+  //   • `box-flatten-item.schema.json` — one position or residual group, with a `disposition` ordered by
+  //     strength of evidence (flat_on_fill_evidence / partially_reduced / not_reduced / unresolved) and
+  //     `remaining_quantity` typed `integer | null` where NULL MEANS UNKNOWN. That null is load-bearing:
+  //     rendering it as zero is precisely the "unknown exposure became zero exposure" failure;
+  //   • `box-flatten-result.schema.json` — the aggregate, with `ok` DERIVED (never a literal),
+  //     `outcome`, `blockers`, `remaining_exposure_known`, `next_action`, and `operation_id` /
+  //     `deduplicated` because browser abort does not cancel the server operation, so a request
+  //     abandoned at its deadline and retried JOINS the original instead of starting a second flatten.
+  // The route now answers 200 only on positive evidence that nothing remains, 409 when nothing was
+  // reduced and every reason is known, and 207 for anything mixed or unproven.
+  // PURELY ADDITIVE — two new schemas, no existing shape moved, and `results` is retained as an alias of
+  // `items` so a client written against the old array still receives one. But the FRONTEND now requires
+  // the derived fields to render a refusal honestly, so the BACKEND MUST SHIP FIRST: an old backend
+  // returning the hardcoded `ok: true` body would make this frontend report a flatten as failed-unknown
+  // rather than falsely successful, which is the safe direction but is still a mismatch.
+  assert.equal(version.contract_version, "1.22.0");
   assert.equal(
     pin.contract_version,
     version.contract_version,

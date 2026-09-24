@@ -48,6 +48,21 @@ export interface ReconnectingSseOptions {
    * stop and call `onUnauthorized`. Resolves false ⇒ transient: reconnect with backoff.
    */
   probeUnauthorized: () => Promise<boolean>;
+  /**
+   * Deadline for `probeUnauthorized`, in ms. Default 10000. `0` disables it.
+   *
+   * WHY THIS IS NEEDED. `handleError` sets a `probing` latch and only clears it when the probe settles.
+   * If the probe never settles — a TCP black hole, a hung proxy, a captive portal — neither `.then` nor
+   * `.catch` runs: the latch stays set, `scheduleReconnect()` is never called, and every subsequent
+   * `onerror` short-circuits on the latch. The stream stays closed FOREVER. The app neither reconnects
+   * nor returns to the access gate, and the operator is left looking at a stale panel with a "not live"
+   * indicator.
+   *
+   * The shared HTTP wrapper now applies its own deadline to `accessStatus()`, so the real probe settles.
+   * This is a second, independent bound at the point where the latch actually lives, so the stream cannot
+   * be wedged by ANY injected probe.
+   */
+  probeTimeoutMs?: number;
   /** Factory for the underlying EventSource (injectable for tests). */
   create?: (url: string) => EventSourceLike;
   /** First backoff delay in ms. Default 1000. */
@@ -131,8 +146,7 @@ export class ReconnectingBoxStream {
     if (this.probing) return; // a probe is already deciding
     this.probing = true;
 
-    void this.opts
-      .probeUnauthorized()
+    void this.boundedProbe()
       .then((unauthorized) => {
         this.probing = false;
         if (this.stopped) return;
@@ -149,6 +163,50 @@ export class ReconnectingBoxStream {
         this.probing = false;
         if (!this.stopped) this.scheduleReconnect();
       });
+  }
+
+  /**
+   * The auth probe, with its own deadline.
+   *
+   * A probe that never settles used to wedge the `probing` latch permanently, which stopped the stream
+   * reconnecting AND stopped it ever tearing down to the access gate. Racing it against a timer means the
+   * latch is always released.
+   *
+   * A TIMED-OUT PROBE RESOLVES FALSE — "transient", so the stream backs off and retries. That direction
+   * is deliberate: resolving true would call `onUnauthorized()` and stop for good, tearing a working
+   * session down to the login screen because one probe was slow. The existing `catch { return true }` in
+   * the app's probe already errs the other way for a FAILED probe; a TIMEOUT is weaker evidence than a
+   * failure, so it must not be treated as proof the session is gone.
+   *
+   * The timer is cleared whichever side wins, so nothing accumulates across reconnects.
+   */
+  private boundedProbe(): Promise<boolean> {
+    const limit = this.opts.probeTimeoutMs ?? 10_000;
+    const probe = this.opts.probeUnauthorized();
+    if (limit <= 0) return probe;
+    return new Promise<boolean>((resolve, reject) => {
+      let settled = false;
+      const handle = this.opts.setTimeoutFn(() => {
+        if (settled) return;
+        settled = true;
+        // Transient, not unauthorized. See the docblock.
+        resolve(false);
+      }, limit);
+      probe.then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          this.opts.clearTimeoutFn(handle);
+          resolve(value);
+        },
+        (error) => {
+          if (settled) return;
+          settled = true;
+          this.opts.clearTimeoutFn(handle);
+          reject(error);
+        },
+      );
+    });
   }
 
   private scheduleReconnect(): void {

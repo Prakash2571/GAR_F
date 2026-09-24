@@ -319,6 +319,98 @@ export class MissingCsrfTokenError extends Error {
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/**
+ * DEFAULT REQUEST DEADLINES. Every request through this wrapper now has one.
+ *
+ * WHY THIS IS NEEDED. There was no application-level timeout anywhere: `RequestOptions.signal` was
+ * forwarded to `fetch` but nothing in the app ever created an `AbortController`, so `request()` hung
+ * exactly as long as the browser's socket did. A stalled request therefore held whatever single-flight
+ * slot its caller had taken, and in `BoxExecutionControl` that slot was shared by the working-order
+ * cancellation and the emergency flatten — so one black-holed cancellation disabled the panic button for
+ * the life of the mounted component.
+ *
+ * WHY THE VALUES DIFFER. A mutation may legitimately take longer than a read (a cancellation sweep walks
+ * the durable journal and talks to the broker per order), and cutting it off early is not free: the
+ * server keeps going regardless. So mutations get a longer deadline, and the deadline is presented to the
+ * operator as an UNKNOWN OUTCOME rather than a failure.
+ *
+ * WHAT A DEADLINE DOES NOT DO — and this is the important part. Aborting closes THIS end of the socket.
+ * It does not cancel the server operation, and it does not undo anything the server already did or sent
+ * to the broker. A `RequestTimeoutError` therefore means "we stopped waiting", never "it did not happen".
+ * The server side is bounded separately, by operation identity and de-duplication
+ * (`GAR_B/src/box/exposureOperations.ts`), so a retry after a timeout joins the original operation
+ * instead of starting a second one.
+ */
+export const DEFAULT_READ_TIMEOUT_MS = 15_000;
+export const DEFAULT_MUTATION_TIMEOUT_MS = 30_000;
+
+/**
+ * A request this client stopped waiting for. NOT evidence that the operation failed.
+ *
+ * Distinct from `ApiError` (the server answered and refused), from `MissingCsrfTokenError` (refused
+ * locally, provably nothing sent) and from a raw `fetch` rejection (the network failed, and whether
+ * anything was received is unknown). Callers must present it as an UNKNOWN OUTCOME: for a mutation, the
+ * operation may be complete, partially complete, or still running on the server.
+ */
+export class RequestTimeoutError extends Error {
+  readonly timeoutMs: number;
+  /** True when the abandoned request was a mutation, so the caller can warn about a blind retry. */
+  readonly mutating: boolean;
+
+  constructor(what: string, timeoutMs: number, mutating: boolean) {
+    super(
+      `${what}: no reply after ${Math.round(timeoutMs / 1000)}s, so this client stopped waiting. ` +
+        (mutating
+          ? "THE OUTCOME IS UNKNOWN — aborting does not cancel the server operation, which may have " +
+            "completed, partly completed, or still be running. Refresh to see the current state before " +
+            "retrying."
+          : "The server may still be working; refresh to retry."),
+    );
+    this.name = "RequestTimeoutError";
+    this.timeoutMs = timeoutMs;
+    this.mutating = mutating;
+  }
+}
+
+/**
+ * A request that never reached a reply because the transport failed. Outcome UNKNOWN for a mutation.
+ *
+ * `fetch` rejects with a bare `TypeError: Failed to fetch` for a DNS failure, a refused connection, a
+ * CORS rejection AND a connection dropped mid-response — the last of which may be AFTER the server
+ * acted. Wrapping it makes that ambiguity explicit instead of letting an opaque browser string reach the
+ * operator, who would reasonably read "Failed to fetch" as "nothing happened".
+ */
+export class NetworkError extends Error {
+  readonly mutating: boolean;
+  readonly cause: unknown;
+
+  constructor(what: string, mutating: boolean, cause: unknown) {
+    super(
+      `${what}: the request could not be completed (${
+        cause instanceof Error ? cause.message : String(cause)
+      }). ` +
+        (mutating
+          ? "THE OUTCOME IS UNKNOWN — the request may have reached the server before the connection " +
+            "failed. Refresh to see the current state before retrying."
+          : "Check the connection and retry."),
+    );
+    this.name = "NetworkError";
+    this.mutating = mutating;
+    this.cause = cause;
+  }
+}
+
+/**
+ * Is this outcome one where the operation MAY have taken effect?
+ *
+ * The single place that question is answered, so no caller has to re-derive it from an instanceof chain
+ * and get it wrong. A local CSRF refusal and a server refusal are both "provably nothing happened"; a
+ * timeout and a transport failure are not.
+ */
+export function isUnknownOutcome(error: unknown): boolean {
+  return error instanceof RequestTimeoutError || error instanceof NetworkError;
+}
+
 /* ----------------------------------- request ---------------------------------- */
 
 export interface RequestOptions {
@@ -328,6 +420,14 @@ export interface RequestOptions {
   /** Extra headers, merged after the defaults. */
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  /**
+   * Override the default deadline. `0` disables it (only for a genuinely unbounded stream).
+   *
+   * Defaults to `DEFAULT_MUTATION_TIMEOUT_MS` for a mutating method and `DEFAULT_READ_TIMEOUT_MS`
+   * otherwise. A caller-supplied `signal` is still honoured and is merged with the deadline, so
+   * whichever fires first wins and cleanup happens either way.
+   */
+  timeoutMs?: number;
   /**
    * When true, a 401 does NOT fire the global unauthorized handler and does NOT throw an
    * UnauthorizedError — it surfaces the backend's error message like any other failure.
@@ -391,6 +491,45 @@ async function readJson<T>(res: Response, what: string): Promise<T> {
   if (!res.ok) throw new ApiError(body?.error ?? `${what} (HTTP ${res.status}).`, res.status, body);
   if (body === null) throw new Error(`${what}: the server sent an unreadable reply.`);
   return body;
+}
+
+/**
+ * The operator-facing reason a request was refused, preferring the STRUCTURED field over the generic
+ * status sentence.
+ *
+ * WHY THIS EXISTS. `readJson` builds an `ApiError` message from `body.error`, but several refusals answer
+ * with a different field: the working-order cancellation sweep refuses with **409 + `blocked_reason`**
+ * (no `error` key at all), so the message became the useless `"Failed to cancel working Box orders
+ * (HTTP 409)."` while the real reason — "The durable order-intent journal could not be read … Restore
+ * PostgreSQL, or cancel from the broker terminal." — sat unread on `ApiError.body`. In an emergency that
+ * is the difference between an operator knowing what to do and not.
+ *
+ * Checked in order of specificity. `next_action` is last because it is guidance rather than a cause, and
+ * is only used when nothing named a cause.
+ */
+export function refusalReason(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  const body = error.body;
+  if (body === null || typeof body !== "object") return null;
+  const record = body as Record<string, unknown>;
+  for (const key of ["blocked_reason", "error", "detail", "reason", "next_action"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim() !== "") return value;
+  }
+  return null;
+}
+
+/**
+ * The message to show for any failure from this wrapper, with the structured refusal preferred.
+ *
+ * One helper so every operator-facing surface classifies identically: a caller that forgot to read
+ * `ApiError.body` is exactly how the 409 reason went missing.
+ */
+export function describeRequestFailure(error: unknown): string {
+  const structured = refusalReason(error);
+  if (structured !== null) return structured;
+  if (error instanceof Error && error.message !== "") return error.message;
+  return "The request failed.";
 }
 
 /**
@@ -463,13 +602,56 @@ export async function request<T>(
     }
   }
 
-  const res = await fetch(apiUrl(path), {
-    method,
-    headers,
-    credentials: "include",
-    ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
-    ...(options.signal ? { signal: options.signal } : {}),
-  });
+  const timeoutMs = options.timeoutMs ?? (MUTATING.has(method) ? DEFAULT_MUTATION_TIMEOUT_MS : DEFAULT_READ_TIMEOUT_MS);
+  const mutating = MUTATING.has(method);
+
+  /*
+   * THE DEADLINE, and its cleanup.
+   *
+   * An internally-created controller is merged with any caller-supplied signal so both can abort the
+   * request and neither is lost. `timer` is cleared in a `finally` whatever happens — a leaked timer
+   * would keep firing after a successful response and, in a long-lived panel, accumulate one per request.
+   *
+   * `abortedByDeadline` distinguishes OUR abort from the caller's. Both surface as the same
+   * `AbortError` from `fetch`, and they mean different things: ours is a timeout (unknown outcome),
+   * the caller's is a deliberate cancellation (e.g. a component unmounting) that must not be reported
+   * to the operator as a failure at all.
+   */
+  const controller = new AbortController();
+  let abortedByDeadline = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  if (timeoutMs > 0) {
+    timer = setTimeout(() => {
+      abortedByDeadline = true;
+      controller.abort();
+    }, timeoutMs);
+  }
+  const callerSignal = options.signal;
+  const onCallerAbort = (): void => controller.abort();
+  if (callerSignal) {
+    if (callerSignal.aborted) controller.abort();
+    else callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(apiUrl(path), {
+      method,
+      headers,
+      credentials: "include",
+      ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (abortedByDeadline) throw new RequestTimeoutError(what, timeoutMs, mutating);
+    // The CALLER aborted. Propagate untouched: a deliberate cancellation is not an error to report.
+    if (callerSignal?.aborted === true) throw error;
+    // Anything else `fetch` rejects with is a transport failure whose outcome is unknown for a mutation.
+    throw new NetworkError(what, mutating, error);
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", onCallerAbort);
+  }
 
   // A 401 means the session is gone. Notify the app ONCE from here, then throw so the
   // caller still sees the failure. Every /api/box/* call funnels through this wrapper, so

@@ -33,11 +33,14 @@
  */
 
 import type { AccessStatus } from "./access.ts";
+import type { BoxFlattenItem, flattenAttributedBoxExposure } from "./box.ts";
 import type {
   AccessStatusContract,
   AccessVerifyContract,
   ArmVerdictContract,
   BoxExecutionControlContract,
+  BoxFlattenItemContract,
+  BoxFlattenResultContract,
   OperationalReadinessContract,
   ReadinessBlockerContract,
   BoxOpenPositionContract,
@@ -529,7 +532,42 @@ export type __ContractAssertProof = [
   _BoxExecControlFields,
   _BoxOpportunityFields,
   _BoxOpenPositionFields,
+  // contract v1.22.0 — the emergency-flatten result. The route previously answered a hardcoded
+  // `ok: true` over an untyped `results` array, so there was nothing for the compiler to check and a
+  // per-position failure had no place to be reported. Asserting the UI's hand-typed shape against the
+  // generated one makes a backend rename a COMPILE error rather than a silently missing reason.
+  _BoxFlattenResultFields,
+  _BoxFlattenItemFields,
 ];
+
+/*
+ * contract v1.22.0 — POST /api/box/live/flatten.
+ *
+ * The route used to answer `{ ok: true, ... }` as a LITERAL over `results: unknown[]`, with no schema at
+ * all, so per-position and per-residual failures were unrepresentable and the UI's green toast was
+ * unfalsifiable. These assertions tie the fields the panel actually reads to the generated contract, so
+ * a backend rename or retype becomes a compile error here instead of a reason that silently stops being
+ * displayed.
+ *
+ * `remaining_quantity` is included deliberately: its `number | null` is load-bearing, because null means
+ * UNKNOWN and must never be rendered as zero.
+ */
+type _BoxFlattenResultFields = Assert<
+  MutuallyAssignable<
+    Pick<
+      BoxFlattenResultContract,
+      "ok" | "requested" | "attempted" | "outcome" | "remaining_exposure_known"
+      | "remaining_quantity" | "blockers" | "next_action" | "settlement"
+    >,
+    Pick<
+      Awaited<ReturnType<typeof flattenAttributedBoxExposure>>,
+      "ok" | "requested" | "attempted" | "outcome" | "remaining_exposure_known"
+      | "remaining_quantity" | "blockers" | "next_action" | "settlement"
+    >
+  >
+>;
+
+type _BoxFlattenItemFields = Assert<MutuallyAssignable<BoxFlattenItemContract, BoxFlattenItem>>;
 
 /** A single inert value so the module has a runtime export; carries no data. */
 export const __contractAssertsHold = true as const;

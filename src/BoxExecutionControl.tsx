@@ -34,7 +34,9 @@
 import { useRef, useState } from "react";
 import {
   cancelWorkingBoxOrders,
+  describeRequestFailure,
   flattenAttributedBoxExposure,
+  isUnknownOutcome,
   previewBoxExecutionMode,
   setBoxLiveControl,
   setBoxPaperProfile,
@@ -57,6 +59,55 @@ function profileFor(selection: BoxExecutionSelection): "standard" | "live_parity
   if (selection === "paper_legging_live_parity") return "live_parity";
   if (selection === "paper_legging") return "standard";
   return null;
+}
+
+/**
+ * Turn a flatten result that is NOT ok into the sentence an operator can act on.
+ *
+ * Exported and module-level so the wording lives in one place and can be asserted without a renderer.
+ * The backend already computed `blockers`, `next_action` and the remaining exposure; this assembles them
+ * and — the important part — reports an unknown quantity as UNKNOWN rather than as a number.
+ */
+export function describeFlattenFailure(result: {
+  outcome: string;
+  requested: number;
+  attempted: number;
+  remaining_exposure_known: boolean;
+  remaining_quantity: number | null;
+  blockers: string[];
+  next_action: string;
+  items: { label: string | null; id: string; disposition: string; reason: string | null }[];
+}): string {
+  const headline =
+    result.outcome === "unresolved"
+      ? "Emergency flatten finished with UNRESOLVED exposure."
+      : result.outcome === "partially_reduced"
+        ? "Emergency flatten only PARTIALLY reduced the exposure."
+        : result.outcome === "not_reduced"
+          ? "Emergency flatten reduced NOTHING."
+          : "Emergency flatten did not confirm that exposure was removed.";
+
+  const remaining = result.remaining_exposure_known
+    ? `Remaining exposure: ${result.remaining_quantity ?? 0} unit(s).`
+    : // NEVER render an unknown quantity as zero. That is what the null is for.
+      "Remaining exposure: UNKNOWN — at least one reduction's outcome could not be established.";
+
+  const reasons = result.blockers.length > 0
+    ? result.blockers.join(" • ")
+    : (result.items ?? [])
+      .filter((i) => i.disposition !== "flat_on_fill_evidence")
+      .map((i) => `${i.label ?? i.id}: ${i.reason ?? "outcome not established"}`)
+      .join(" • ");
+
+  return [
+    headline,
+    `Requested ${result.requested}, attempted ${result.attempted}.`,
+    remaining,
+    reasons === "" ? "" : `Reasons: ${reasons}`,
+    result.next_action,
+  ]
+    .filter((part) => part !== "")
+    .join(" ");
 }
 
 const SELECTIONS: { value: BoxExecutionSelection; label: string; hint: string }[] = [
@@ -118,6 +169,16 @@ export function BoxExecutionControl({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  /**
+   * An outcome that is NOT a success and NOT a clean failure: the request was abandoned at its
+   * deadline, or the transport failed. The server operation may have completed anyway.
+   *
+   * A third visual state, because the panel previously had only two and both were wrong for this case.
+   * A timeout rendered as a red error invites a blind retry ("it failed, press it again"), which for a
+   * flatten can double-close a position. A refused duplicate rendered as a GREEN note, which is how a
+   * dead panic button looked like a working one.
+   */
+  const [unknown, setUnknown] = useState<string | null>(null);
   const [preview, setPreview] = useState<BoxModeTransitionVerdict | null>(null);
   const [confirmEntry, setConfirmEntry] = useState(false);
   /**
@@ -139,11 +200,25 @@ export function BoxExecutionControl({
   const exec = control.execution;
 
   /**
-   * Run one control mutation, at most once per control class in flight.
+   * Run one control mutation, at most once per control class AND ID in flight.
    *
-   * `cls` is the DISTINCT authority being exercised; `key` is only the label shown on the pressed
-   * button. A refused duplicate reports itself instead of silently doing nothing — a button that
-   * appears to do nothing is how an operator ends up clicking it a third time.
+   * `cls` is the DISTINCT authority being exercised; `id` separates independent actions WITHIN a class
+   * — this is load-bearing for the emergency controls and is the fix for a specific defect. The
+   * working-order cancellation and the emergency flatten both passed `"emergency"` with NO id, so they
+   * shared one slot. A cancellation that never answered meant `runOnce`'s `finally` never ran, the slot
+   * was never released, and because the registry lives in a `useRef` with no reset path EVERY later
+   * flatten was refused for the life of the mounted component — and refused with a GREEN note.
+   *
+   * `key` is only the label shown on the pressed button.
+   *
+   * Outcomes are classified into THREE states, not two:
+   *   - success          → green note
+   *   - refused / failed → red error, with the STRUCTURED refusal reason preferred over the generic
+   *                        HTTP sentence (a 409 sweep refusal carries `blocked_reason`, not `error`)
+   *   - unknown          → its own warning state, because the operation may have taken effect
+   *
+   * A refused duplicate is now a WARNING, not a note: it means the operator's press did nothing, which
+   * is never good news.
    *
    * The backend re-authorises every one of these calls. This guard is a double-submit guard and
    * nothing more: a UI restriction is not a security boundary.
@@ -153,22 +228,45 @@ export function BoxExecutionControl({
     key: string,
     fn: () => Promise<unknown>,
     okNote?: string,
+    id?: string,
   ) {
-    const outcome = await runOnce(requests.current, cls, async () => {
-      setBusy(key);
-      setError(null);
-      setNote(null);
-      try {
-        await fn();
-        if (okNote) setNote(okNote);
-        onChanged();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "The request failed.");
-      } finally {
-        setBusy(null);
-      }
-    });
-    if (!outcome.sent) setNote(outcome.reason);
+    const outcome = await runOnce(
+      requests.current,
+      cls,
+      async () => {
+        setBusy(key);
+        setError(null);
+        setNote(null);
+        setUnknown(null);
+        try {
+          await fn();
+          if (okNote) setNote(okNote);
+          onChanged();
+        } catch (err) {
+          if (isUnknownOutcome(err)) {
+            // THE OUTCOME IS NOT KNOWN. Refresh so the UI reconciles against server state rather than
+            // leaving the operator to infer it, and say plainly that a retry is not a safe assumption.
+            onChanged();
+            setUnknown(
+              `${err instanceof Error ? err.message : "The outcome is unknown."} ` +
+                "The panel has been refreshed from the server; read the current state before retrying.",
+            );
+          } else {
+            setError(describeRequestFailure(err));
+          }
+        } finally {
+          setBusy(null);
+        }
+      },
+      id,
+    );
+    if (!outcome.sent) {
+      // A press that did nothing. Shown as a warning, never as success.
+      setUnknown(
+        `${outcome.reason} Nothing additional was sent, so no duplicate action was taken. ` +
+          "If it does not answer, refresh to see the current state.",
+      );
+    }
   }
 
   async function selectMode(selection: BoxExecutionSelection) {
@@ -483,36 +581,69 @@ export function BoxExecutionControl({
             </span>
           </div>
 
+          {/*
+            * PROTECTIVE CANCELLATION IS AVAILABLE INDEPENDENTLY OF EMERGENCY-FLATTEN ARMING.
+            *
+            * THE DEFECT THIS FIXES. This button used to live inside
+            * `{control.emergency_flatten_enabled && (...)}`, so with emergency flatten disarmed the
+            * cheaper and strictly non-loss-realising of the two protective actions was unreachable,
+            * while the more dangerous one was the thing that unlocked it.
+            *
+            * The backend never imposed that precondition. `POST /api/box/live/cancel-working` requires
+            * only a full-admin session and `exposureReductionBlockReason() === null`;
+            * `box_emergency_flatten` is consulted ONLY by `flattenAttributedBoxExposure`. The route's
+            * own docblock records that an earlier coupling to `box_live_order_enabled` was itself a
+            * defect, because it made the panic button answer HTTP 200 `ok:true` `orders:[]`.
+            *
+            * So this row is now unconditional within the live-arming block, and only the FLATTEN button
+            * below still requires arming. Entry being disabled, the scanner being stopped, stale
+            * dashboard prices and emergency flatten being disarmed are each deliberately absent from
+            * its `disabled` expression: none of them is a reason to withhold cancelling a working order,
+            * which removes an order rather than placing one.
+            */}
+          <div className="box-exec-arm-row">
+            <button
+              type="button"
+              className="btn btn--sm"
+              disabled={!isFullAdmin || busy === "cancel_working"}
+              onClick={() =>
+                void run(
+                  "emergency",
+                  "cancel_working",
+                  async () => {
+                    const result = await cancelWorkingBoxOrders();
+                    if (!result.attempted || !result.ok) {
+                      // A 207/409 is an operational result, not a network failure. Refresh first
+                      // so the operator sees the remaining working/residual exposure before the
+                      // error message asks them to intervene.
+                      onChanged();
+                      throw new Error(
+                        result.blocked_reason ??
+                          `Cancellation completed with ${result.failures.length} unresolved failure(s): ` +
+                            `${result.failures.join("; ")}. Exposure may remain — inspect Positions, and ` +
+                            "cancel at the broker terminal if this does not clear.",
+                      );
+                    }
+                  },
+                  "Working Box orders cancelled. This did NOT flatten filled or residual exposure — " +
+                    "inspect Positions and Operational State before any further action.",
+                  // DISTINCT single-flight id, so a stalled cancellation cannot hold the emergency
+                  // flatten hostage. Sharing the un-keyed "emergency" slot is what made a black-holed
+                  // cancel disable the panic button for the life of the mounted component.
+                  "cancel_working",
+                )
+              }
+              title="Cancel every attributed working Box order. This does not flatten filled or residual exposure."
+            >
+              {busy === "cancel_working" ? "Cancelling…" : "Cancel working Box orders"}
+            </button>
+            <span className="box-exec-arm-state">
+              Removes working orders only. Available whether or not emergency flatten is armed.
+            </span>
+          </div>
+
           {control.emergency_flatten_enabled && (
             <div className="box-exec-arm-row">
-              <button
-                type="button"
-                className="btn btn--sm"
-                disabled={!isFullAdmin || busy === "cancel_working"}
-                onClick={() =>
-                  void run(
-                    "emergency",
-                    "cancel_working",
-                    async () => {
-                      const result = await cancelWorkingBoxOrders();
-                      if (!result.attempted || !result.ok) {
-                        // A 207/409 is an operational result, not a network failure. Refresh first
-                        // so the operator sees the remaining working/residual exposure before the
-                        // error message asks them to intervene.
-                        onChanged();
-                        throw new Error(
-                          result.blocked_reason ??
-                            `Cancellation completed with ${result.failures.length} unresolved failure(s).`,
-                        );
-                      }
-                    },
-                    "Working Box orders cancelled. Inspect Positions and Operational State before any further action.",
-                  )
-                }
-                title="Cancel every attributed working Box order. This does not flatten filled or residual exposure."
-              >
-                {busy === "cancel_working" ? "Cancelling…" : "Cancel working Box orders"}
-              </button>
               <button
                 type="button"
                 className="btn btn--danger btn--sm"
@@ -527,25 +658,35 @@ export function BoxExecutionControl({
                     "flatten_now",
                     async () => {
                       const result = await flattenAttributedBoxExposure();
-                      if (result.settlement.failures.length > 0 || !result.settlement.reconciled) {
-                        // The backend has already latched entry off and attempted reduction. Refresh
-                        // the authoritative state even though the settlement was not clean.
-                        onChanged();
-                        throw new Error(
-                          `Emergency flatten started, but settlement needs attention: ${[
-                            ...result.settlement.failures,
-                            ...(result.settlement.reconciled ? [] : ["post-cancel reconciliation did not complete"]),
-                          ].join("; ")}`,
-                        );
-                      }
+                      /*
+                       * JUDGE THE WHOLE RESULT, NOT ONLY THE SETTLEMENT HALVES.
+                       *
+                       * This used to inspect only `settlement.failures` and `settlement.reconciled` —
+                       * the CANCELLATION and RECONCILIATION halves — and never looked at the
+                       * per-position outcomes at all. So an operator who pressed the panic button while
+                       * the exchange was closed, the feed was unhealthy, a position was in RECOVERY or
+                       * PostgreSQL was down got a GREEN success toast as long as those two halves
+                       * happened to be clean, while every position failed to close.
+                       *
+                       * `ok` is now derived by the backend from every item plus settlement, so this
+                       * reads it directly and renders the per-item reasons and the remaining exposure.
+                       */
+                      if (!result.ok) throw new Error(describeFlattenFailure(result));
                     },
-                    "Emergency flatten requested. Entry was disabled and attributed exposure reduction was attempted; confirm flat/reconciled status before re-arming.",
+                    "Emergency flatten reported no remaining attributed exposure on the backend's fill " +
+                      "evidence. That is NOT an independent broker position re-read — confirm flat at " +
+                      "the broker terminal before re-arming.",
+                    // Distinct from the cancellation slot, for the same reason.
+                    "flatten_now",
                   );
                 }}
                 title="Flatten only exposure attributed to durable Box intents. A confirmation is required because it can realise a loss."
               >
-                {busy === "flatten_now" ? "Flattening…" : "Emergency flatten attributed exposure"}
+                {busy === "flatten_now" ? "Flattening…" : "EMERGENCY FLATTEN attributed exposure"}
               </button>
+              <span className="box-exec-arm-state">
+                Reduces FILLED exposure. Can realise a loss.
+              </span>
             </div>
           )}
 
@@ -702,8 +843,22 @@ export function BoxExecutionControl({
         budget {exec.four_leg_burst_pacing_budget_ms}ms).
       </p>
 
+      {/*
+        * THREE OUTCOME STATES, not two.
+        *
+        * The panel previously had only `error` and `note`, and both were wrong for the third case. A
+        * request abandoned at its deadline, or one whose transport failed, may ALREADY have taken effect
+        * — aborting closes this end of the socket and does not cancel the server operation. Rendering
+        * that red invites a blind retry, which for a flatten can double-close a position. Rendering a
+        * refused duplicate GREEN, which is what happened before, made a dead panic button look like a
+        * working one.
+        *
+        * Order matters: an unknown outcome outranks a plain note, because it is the one the operator
+        * must not ignore.
+        */}
       {error && <p className="box-exec-msg box-exec-msg--error">{error}</p>}
-      {note && !error && <p className="box-exec-msg box-exec-msg--ok">{note}</p>}
+      {unknown && !error && <p className="box-exec-msg box-exec-msg--warn">{unknown}</p>}
+      {note && !error && !unknown && <p className="box-exec-msg box-exec-msg--ok">{note}</p>}
     </section>
   );
 }

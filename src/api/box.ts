@@ -343,6 +343,15 @@ export async function cancelWorkingBoxOrders(): Promise<{
   cancelled: unknown[];
   failures: string[];
   blocked_reason?: string | null;
+  /**
+   * Stable identity for the server-side operation, shared by every request that joined it.
+   *
+   * Browser abort does not cancel the server operation, so a request abandoned at its deadline and then
+   * retried JOINS the original instead of starting a second sweep. `deduplicated: true` says the reply
+   * describes work this request did not start.
+   */
+  operation_id?: string;
+  deduplicated?: boolean;
   status: BoxStatus;
 }> {
   return request(
@@ -352,16 +361,52 @@ export async function cancelWorkingBoxOrders(): Promise<{
   );
 }
 
+/** One position or residual group in a flatten result. Mirrors box-flatten-item.schema.json. */
+export interface BoxFlattenItem {
+  kind: "position" | "residual";
+  id: string;
+  label: string | null;
+  /**
+   * `flat_on_fill_evidence` is derived from the fills the backend observed and applied. It is the
+   * strongest signal available at the end of a flatten and is NOT an independent broker position
+   * re-read — `settlement.reconciled` is what speaks to durable/broker agreement.
+   */
+  disposition: "flat_on_fill_evidence" | "partially_reduced" | "not_reduced" | "unresolved";
+  reason: string | null;
+  /** NULL MEANS UNKNOWN. Never render it as zero. */
+  remaining_quantity: number | null;
+  remaining_by_role: Partial<Record<"k1_ce" | "k2_ce" | "k2_pe" | "k1_pe", number>> | null;
+}
+
 /**
  * Flatten only broker exposure attributed to durable Box intents.
  *
  * The backend latches entry off, cancels working orders and reconciles before it plans reductions;
  * it never treats arbitrary account holdings as Box exposure.
+ *
+ * `ok` and the HTTP status are DERIVED from what was achieved. The route previously answered a
+ * hardcoded `ok: true` with HTTP 200 over an untyped `results` array, so per-position failures were
+ * invisible and the UI showed a green toast whenever the cancellation and reconciliation halves
+ * happened to be clean. Now: 200 only on positive evidence that nothing remains, 409 when nothing was
+ * reduced and every reason is known, 207 for anything mixed or unproven.
  */
 export async function flattenAttributedBoxExposure(): Promise<{
+  ok: boolean;
+  requested: number;
   attempted: number;
-  results: unknown[];
+  items: BoxFlattenItem[];
+  /** Legacy alias of `items`, kept so an older client still receives an array. */
+  results: BoxFlattenItem[];
   settlement: { cancelled: number; failures: string[]; blocked: string | null; reconciled: boolean };
+  outcome: "flat_on_fill_evidence" | "partially_reduced" | "unresolved" | "not_reduced" | "nothing_to_flatten";
+  /** False when ANY item's remaining quantity is unknown. */
+  remaining_exposure_known: boolean;
+  /** Total still outstanding, or NULL when it cannot be totalled. Null is not zero. */
+  remaining_quantity: number | null;
+  blockers: string[];
+  next_action: string;
+  operation_id?: string;
+  deduplicated?: boolean;
   status: BoxStatus;
 }> {
   return request(
