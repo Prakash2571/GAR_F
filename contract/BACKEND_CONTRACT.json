@@ -1,6 +1,6 @@
 {
   "backend_repo": "Prakash2571/GAR_B",
-  "backend_sha": "a8858585426264ce7a518673bde8c5af3cd20f05",
-  "contract_version": "1.22.0",
-  "schemas_sha256": "f1d0db95b0edfed2d0590e26558bc3589c031753a0c41716bbae485d7aa243c5"
+  "backend_sha": "41203d60c0d45e1db4d72f6fe24426f147978897",
+  "contract_version": "1.23.0",
+  "schemas_sha256": "c9832099eb86f5d8966872c616511740724db75fa5633c84e2e963aa5c47753c"
 }

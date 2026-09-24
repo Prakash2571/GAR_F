@@ -415,6 +415,14 @@ type _BoxConfigFields = Assert<
       | "max_strikes" | "max_candidates_per_underlying" | "prefilter_gross_threshold"
       | "convergence_floor" | "convergence_pct" | "min_exit_net_pnl" | "profit_capture_pct"
       | "expiry_safety_minutes" | "max_subscribed_tokens" | "lots" | "universe"
+      // Lot-relative economics + the publication rule (contract 1.23.0). These are CLOSED,
+      // consumer-facing scalars, so they belong under the MUTUAL assertion: a backend rename or
+      // retype must break compilation rather than silently stop the dashboard reporting which
+      // threshold regime is in force — the one fact the flat figures cannot express.
+      | "lot_relative_thresholds" | "min_expected_net_profit_per_unit" | "min_gross_edge_per_unit"
+      | "safety_buffer_per_unit" | "expected_entry_slippage_per_unit"
+      | "expected_exit_slippage_per_unit" | "min_exit_net_pnl_per_unit"
+      | "one_opportunity_per_underlying"
     >,
     Pick<
       BoxConfigView,
@@ -426,6 +434,10 @@ type _BoxConfigFields = Assert<
       | "max_strikes" | "max_candidates_per_underlying" | "prefilter_gross_threshold"
       | "convergence_floor" | "convergence_pct" | "min_exit_net_pnl" | "profit_capture_pct"
       | "expiry_safety_minutes" | "max_subscribed_tokens" | "lots" | "universe"
+      | "lot_relative_thresholds" | "min_expected_net_profit_per_unit" | "min_gross_edge_per_unit"
+      | "safety_buffer_per_unit" | "expected_entry_slippage_per_unit"
+      | "expected_exit_slippage_per_unit" | "min_exit_net_pnl_per_unit"
+      | "one_opportunity_per_underlying"
     >
   >
 >;

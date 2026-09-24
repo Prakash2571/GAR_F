@@ -201,6 +201,34 @@ export interface BoxConfigView {
   max_subscribed_tokens: number;
   lots: number;
   universe: string;
+  /*
+   * LOT-RELATIVE ENTRY ECONOMICS (backend contract 1.23.0).
+   *
+   * A box's edge is `grossEdgePerUnit × lotSize`, so it scales with the lot while the flat rupee
+   * figures above do not. Across F&O lot sizes (~35 to 40,000+) one flat gate is therefore a
+   * ~1000x different per-unit hurdle depending on the instrument. Each rate below is resolved by
+   * the backend per candidate as `max(flat, rate × lotSize)`; `0` means the rate is inactive and
+   * the flat figure stands alone.
+   *
+   * `lot_relative_thresholds` is the one an operator actually needs on screen: the flat figures
+   * alone cannot express which regime is in force, and the two screen a wide universe completely
+   * differently.
+   */
+  lot_relative_thresholds: boolean;
+  min_expected_net_profit_per_unit: number;
+  min_gross_edge_per_unit: number;
+  safety_buffer_per_unit: number;
+  expected_entry_slippage_per_unit: number;
+  expected_exit_slippage_per_unit: number;
+  min_exit_net_pnl_per_unit: number;
+  /**
+   * Whether the opportunity board is collapsed to the best candidate per (underlying, direction).
+   *
+   * A PUBLICATION rule, not an entry control — the per-underlying entry guarantee is
+   * `one_active_box_per_underlying` on GET /api/box/execution-control. Worth surfacing because it
+   * explains why a name appears once rather than once per strike pair.
+   */
+  one_opportunity_per_underlying: boolean;
   leg_execution_mode?: "parallel" | "sequential";
   leg_timeout_ms?: number;
   exit_use_realisable_net?: boolean;
