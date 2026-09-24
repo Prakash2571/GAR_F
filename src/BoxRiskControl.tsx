@@ -280,7 +280,19 @@ export function BoxRiskControl({
             {rupees(risk.realised_pnl_today)}
           </strong>
           . Reaching the limit trips the circuit breaker, which disables entry and is sticky for the
-          life of the process.
+          life of the process.{" "}
+          {/*
+            * THE OMISSION THIS CLOSES. Everything above was accurate, but nothing said WHICH P&L the
+            * breaker measures. It compares REALISED P&L only, and tripping sets `entryEnabled = false`
+            * and nothing else — open positions are untouched. So an operator could reasonably read
+            * "daily loss limit ₹5,000" as a cap on how much they can lose today, when unrealised
+            * mark-to-market drawdown can exceed it without tripping anything and no position is closed
+            * when it does trip. Saying so is the difference between a control they understand and one
+            * they over-trust.
+            */}
+          It measures <strong>realised</strong> P&amp;L only: it stops the engine OPENING new boxes and
+          does not close anything. Unrealised mark-to-market drawdown on an open box can exceed this
+          figure without tripping it, so it is not a maximum loss and not a stop-loss.
         </p>
       </div>
     </section>

@@ -8,4 +8,15 @@
 
 export * from "./api/types.ts";
 export * from "./api/box.ts";
-export { API_ORIGIN, onUnauthorized, UnauthorizedError } from "./api/http.ts";
+export {
+  API_ORIGIN,
+  ApiError,
+  describeRequestFailure,
+  isUnknownOutcome,
+  MissingCsrfTokenError,
+  NetworkError,
+  onUnauthorized,
+  refusalReason,
+  RequestTimeoutError,
+  UnauthorizedError,
+} from "./api/http.ts";
