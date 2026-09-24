@@ -199,6 +199,10 @@ export function describeBrokerLoginFailure(broker: BrokerId, reason: string | nu
     case "state_mismatch":
     case "state_missing":
       return `The ${name} sign-in could not be verified, so it was refused. Click Connect to start a fresh sign-in.`;
+    case "login_in_progress":
+      // Deliberately advises WAITING rather than retrying: the first attempt is still running, and
+      // starting a fresh sign-in here is how an operator ends up with two in flight and neither clear.
+      return `This ${name} sign-in is already being completed, so the duplicate was ignored. Wait a moment and check the ${name} card below — only start a new sign-in if it does not connect.`;
     case "not_ready":
       return `${name} sign-in was refused because the server is still starting up. Wait a moment, then click Connect again.`;
     case "not_configured":

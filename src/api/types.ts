@@ -2021,6 +2021,14 @@ export type BrokerLoginFailureReason =
   | "login_expired"
   | "state_mismatch"
   | "state_missing"
+  /**
+   * A token exchange for this sign-in was already running, so a second callback was refused.
+   *
+   * Almost always a replay — the Back button, a broker retrying its redirect, or a duplicate tab — and
+   * NOT a reason to start over: the first attempt is still completing. Distinguished from
+   * `no_pending_login` because the advice is the opposite one ("wait", not "start again").
+   */
+  | "login_in_progress"
   | "not_ready"
   | "not_configured"
   | "broker_denied"
