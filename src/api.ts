@@ -19,4 +19,5 @@ export {
   refusalReason,
   RequestTimeoutError,
   UnauthorizedError,
+  UnreadableResponseError,
 } from "./api/http.ts";

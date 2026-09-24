@@ -408,7 +408,83 @@ export class NetworkError extends Error {
  * timeout and a transport failure are not.
  */
 export function isUnknownOutcome(error: unknown): boolean {
-  return error instanceof RequestTimeoutError || error instanceof NetworkError;
+  if (error instanceof RequestTimeoutError || error instanceof NetworkError) return true;
+  // A reply that arrived but could not be read through. See UnreadableResponseError.
+  if (error instanceof UnreadableResponseError) return error.mutating;
+  // A server failure whose status does not prove the operation was refused BEFORE it acted.
+  if (error instanceof ApiError) return error.outcomeUnknown;
+  return false;
+}
+
+/**
+ * HTTP statuses that do NOT prove the server refused before acting.
+ *
+ * The distinction this encodes: a 409 or a 422 is the application itself saying "I looked at this and
+ * declined" — nothing happened, and telling the operator so is correct. A 500 is the opposite: the
+ * handler was entered and then something broke, and whether the broker order went out before it broke
+ * is exactly what the status cannot say. A 502/504 is worse still, because the reply may have been
+ * produced by a proxy that never learned what the application did.
+ *
+ * 408 is included for the same reason as a client-side timeout: the server gave up waiting, it did not
+ * report that nothing was started.
+ */
+function statusProvesNothingHappened(status: number): boolean {
+  if (status === 408) return false;
+  return status < 500;
+}
+
+/**
+ * Stable error codes that DO prove a mutation was refused before reaching the handler, even though
+ * their status is a 5xx.
+ *
+ * Without this, every mutation attempted during a database outage would be presented as "the outcome is
+ * unknown, refresh before retrying" — alarming, and wrong: these are refusals emitted by the access
+ * middleware *before* any handler runs, so provably nothing was sent to a broker. The list is
+ * deliberately tiny and matches the backend's own `ApiErrorBody.code` values; anything not named here
+ * is treated as unproven.
+ */
+const PROVEN_PRE_ACTION_CODES = new Set(["auth_unavailable", "access_unavailable", "not_ready"]);
+
+function bodyProvesPreActionRefusal(body: unknown): boolean {
+  if (body === null || typeof body !== "object") return false;
+  const code = (body as { code?: unknown }).code;
+  return typeof code === "string" && PROVEN_PRE_ACTION_CODES.has(code);
+}
+
+/**
+ * A reply whose STATUS was received but whose BODY could not be read through to a usable value.
+ *
+ * WHY THIS IS NOT AN ORDINARY ERROR. The response headers — including a 2xx — are proof the server
+ * accepted and processed the request. A body that then truncates, fails to decode, or arrives as
+ * something other than JSON tells us nothing about whether the operation completed; for a mutation the
+ * honest answer is "it may well have". This was previously swallowed twice over: the body-read
+ * rejection was discarded by a `.catch(() => "")` and the result surfaced as a generic
+ * `Error("…unreadable reply")`, which `isUnknownOutcome` classified as a clean failure. A truncated
+ * success response therefore reached the operator as a red failure message with no state reconciliation
+ * — the single most misleading outcome the panel can produce.
+ *
+ * For a READ, nothing acted, so it is a plain failure and `isUnknownOutcome` stays false.
+ */
+export class UnreadableResponseError extends Error {
+  readonly status: number;
+  readonly mutating: boolean;
+  readonly cause: unknown;
+
+  constructor(what: string, status: number, mutating: boolean, cause: unknown) {
+    super(
+      `${what}: the server answered HTTP ${status} but its reply could not be read` +
+        (cause instanceof Error && cause.message !== "" ? ` (${cause.message})` : "") +
+        ". " +
+        (mutating
+          ? "THE OUTCOME IS UNKNOWN — the server had already accepted the request, so the operation " +
+            "may have completed. Refresh to see the current state before retrying."
+          : "Refresh to retry."),
+    );
+    this.name = "UnreadableResponseError";
+    this.status = status;
+    this.mutating = mutating;
+    this.cause = cause;
+  }
 }
 
 /* ----------------------------------- request ---------------------------------- */
@@ -474,13 +550,42 @@ export interface RequestOptions {
  * HTML page, a gateway timeout) still reports its status instead of surfacing an opaque
  * `Unexpected token '<'` parse error.
  */
-async function readJson<T>(res: Response, what: string): Promise<T> {
-  const text = await res.text().catch(() => "");
+async function readJson<T>(
+  res: Response,
+  what: string,
+  ctx: {
+    /** True for POST/PUT/PATCH/DELETE: a failure here may have left the server changed. */
+    readonly mutating: boolean;
+    /** Rethrows as a timeout/caller-abort when OUR deadline or the caller killed the body read. */
+    readonly onBodyReadFailure: (cause: unknown) => never;
+  },
+): Promise<T> {
+  /*
+   * THE BODY READ IS NOT ALLOWED TO FAIL SILENTLY.
+   *
+   * This used to be `res.text().catch(() => "")`, which turned every body-level failure — a connection
+   * dropped mid-body, a truncated chunked response, a decode error, our own deadline firing — into an
+   * empty string, and an empty string into a generic "unreadable reply" error. The information that the
+   * server had ALREADY accepted the request was thrown away with it.
+   */
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (cause) {
+    // Always throws — it decides WHICH error class the failure deserves (timeout, caller abort, or an
+    // unreadable reply). The rethrow below is unreachable and exists only so control-flow analysis can
+    // see that `text` is assigned on every path that continues.
+    ctx.onBodyReadFailure(cause);
+    throw cause;
+  }
+
   let body: (T & { error?: string }) | null = null;
+  let parseFailed = false;
   try {
     body = text ? (JSON.parse(text) as T & { error?: string }) : null;
   } catch {
     // Not JSON — fall through to the status-based message below.
+    parseFailed = true;
   }
   // The PARSED body travels with the error, not just the message. Some endpoints answer a non-2xx
   // with a STRUCTURED, actionable payload rather than only a sentence — the operator-configuration
@@ -488,8 +593,34 @@ async function readJson<T>(res: Response, what: string): Promise<T> {
   // version is needed to resynchronise and `problems` names the offending field. Without the body a
   // caller would have to parse prose to find them, and one that forgot would render "request failed"
   // for a refusal that had a precise reason attached. `body` is `null` when the reply was not JSON.
-  if (!res.ok) throw new ApiError(body?.error ?? `${what} (HTTP ${res.status}).`, res.status, body);
-  if (body === null) throw new Error(`${what}: the server sent an unreadable reply.`);
+  if (!res.ok) {
+    /*
+     * IS THIS FAILURE PROOF THAT NOTHING HAPPENED? Usually yes, sometimes not, and the difference has to
+     * be carried rather than assumed. A 409 refusal is proof; a 500 after the handler was entered, or a
+     * 504 from a proxy that never learned the outcome, is not. Only mutations can be ambiguous.
+     */
+    const outcomeUnknown =
+      ctx.mutating && !statusProvesNothingHappened(res.status) && !bodyProvesPreActionRefusal(body);
+    const base = body?.error ?? `${what} (HTTP ${res.status}).`;
+    const message = outcomeUnknown
+      ? `${base} THE OUTCOME IS UNKNOWN — this status does not prove the operation was refused before ` +
+        "it acted. Refresh to see the current state before retrying."
+      : base;
+    throw new ApiError(message, res.status, body, outcomeUnknown);
+  }
+  if (body === null) {
+    /*
+     * A 2xx WHOSE BODY IS EMPTY OR NOT JSON. The server accepted the request — the status says so — and
+     * then the confirmation was unusable. For a mutation that is an unknown outcome, not a failure, so
+     * it must NOT come back as a bare `Error` the way it used to.
+     */
+    throw new UnreadableResponseError(
+      what,
+      res.status,
+      ctx.mutating,
+      parseFailed ? new Error("the reply was not valid JSON") : new Error("the reply was empty"),
+    );
+  }
   return body;
 }
 
@@ -554,12 +685,24 @@ export class ApiError extends Error {
    * unaffected.
    */
   readonly body: unknown;
+  /**
+   * True when this failure does NOT prove the operation was refused before it acted.
+   *
+   * Only ever true for a MUTATION: a failed read changes nothing by definition. Set by `readJson` from
+   * the status and the body's stable code (see `statusProvesNothingHappened` and
+   * `PROVEN_PRE_ACTION_CODES`), and read by `isUnknownOutcome` so callers route a 500/502/504 on a
+   * mutation into the "outcome unknown, reconcile before retrying" branch instead of presenting it as a
+   * clean refusal. Defaults to false, so an `ApiError` constructed by hand — including the 409 refusals
+   * the tests pin — keeps the old, provable-refusal meaning.
+   */
+  readonly outcomeUnknown: boolean;
 
-  constructor(message: string, status: number, body: unknown = null) {
+  constructor(message: string, status: number, body: unknown = null, outcomeUnknown = false) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.body = body;
+    this.outcomeUnknown = outcomeUnknown;
   }
 }
 
@@ -633,36 +776,71 @@ export async function request<T>(
     else callerSignal.addEventListener("abort", onCallerAbort, { once: true });
   }
 
-  let res: Response;
+  /*
+   * ────────────────────────────────────────────────────────────────────────────────────────────────
+   * THE DEADLINE SPANS THE WHOLE REPLY, HEADERS AND BODY.
+   *
+   * `fetch` resolves as soon as the response HEADERS arrive; the body is still streaming. The cleanup
+   * used to sit in a `finally` on the fetch alone, so the timer was cleared and the caller's abort
+   * bridge torn down at exactly that moment — and then `readJson` read the body with no deadline over
+   * it and no route to the abort signal. A server that flushed headers and stalled the body left the
+   * returned promise pending FOREVER: nothing could time it out, and an unmounting component could not
+   * cancel it either.
+   *
+   * That was not merely a hung request. `runOnce`'s `finally` never ran, so the single-flight slot was
+   * never released and `setBusy(null)` never fired — the control stayed disabled for the life of the
+   * mounted component. It is the same wedge that motivated the deadline in the first place, surviving
+   * one layer further down. Status polling was affected identically.
+   *
+   * So the cleanup now wraps BOTH awaits. Aborting the controller rejects an in-flight `res.text()`
+   * exactly as it rejects an in-flight `fetch`, which is what makes one deadline enough for both.
+   * ────────────────────────────────────────────────────────────────────────────────────────────────
+   */
   try {
-    res = await fetch(apiUrl(path), {
-      method,
-      headers,
-      credentials: "include",
-      ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
-      signal: controller.signal,
+    let res: Response;
+    try {
+      res = await fetch(apiUrl(path), {
+        method,
+        headers,
+        credentials: "include",
+        ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (abortedByDeadline) throw new RequestTimeoutError(what, timeoutMs, mutating);
+      // The CALLER aborted. Propagate untouched: a deliberate cancellation is not an error to report.
+      if (callerSignal?.aborted === true) throw error;
+      // Anything else `fetch` rejects with is a transport failure whose outcome is unknown for a mutation.
+      throw new NetworkError(what, mutating, error);
+    }
+
+    // A 401 means the session is gone. Notify the app ONCE from here, then throw so the
+    // caller still sees the failure. Every /api/box/* call funnels through this wrapper, so
+    // this is the single place session-expiry is detected. The login call opts out
+    // (suppressUnauthorized): a wrong passcode is not an expired session.
+    if (res.status === 401 && !options.suppressUnauthorized) {
+      notifyUnauthorized();
+      throw new UnauthorizedError(what);
+    }
+
+    return await readJson<T>(res, what, {
+      mutating,
+      onBodyReadFailure: (cause): never => {
+        // OUR deadline cut the body off. The server had already accepted the request, so for a
+        // mutation this is the canonical unknown outcome — reported exactly like a headers-stage
+        // timeout, because from the operator's position it is the same event.
+        if (abortedByDeadline) throw new RequestTimeoutError(what, timeoutMs, mutating);
+        // The caller cancelled (a component unmounted). Not a failure to report.
+        if (callerSignal?.aborted === true) throw cause;
+        // The connection died partway through the reply. The status was already 2xx/4xx/5xx, so this
+        // is NOT a plain network failure — it is a reply we could not read to the end.
+        throw new UnreadableResponseError(what, res.status, mutating, cause);
+      },
     });
-  } catch (error) {
-    if (abortedByDeadline) throw new RequestTimeoutError(what, timeoutMs, mutating);
-    // The CALLER aborted. Propagate untouched: a deliberate cancellation is not an error to report.
-    if (callerSignal?.aborted === true) throw error;
-    // Anything else `fetch` rejects with is a transport failure whose outcome is unknown for a mutation.
-    throw new NetworkError(what, mutating, error);
   } finally {
     if (timer !== null) clearTimeout(timer);
     callerSignal?.removeEventListener("abort", onCallerAbort);
   }
-
-  // A 401 means the session is gone. Notify the app ONCE from here, then throw so the
-  // caller still sees the failure. Every /api/box/* call funnels through this wrapper, so
-  // this is the single place session-expiry is detected. The login call opts out
-  // (suppressUnauthorized): a wrong passcode is not an expired session.
-  if (res.status === 401 && !options.suppressUnauthorized) {
-    notifyUnauthorized();
-    throw new UnauthorizedError(what);
-  }
-
-  return readJson<T>(res, what);
 }
 
 /** Thrown on any HTTP 401 so callers can branch on session expiry if they need to. */
