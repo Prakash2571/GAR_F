@@ -81,7 +81,7 @@ function importGraph(entry) {
  * The modules that talk to the trading backend. `api.ts` is the barrel that re-exports
  * `api/box.ts`, so both are named — importing either pulls in the whole Box surface.
  */
-const TRADING_API_MODULES = ["api/box.ts", "api.ts"];
+const TRADING_API_MODULES = ["api/box.ts", "api.ts", "api/synth.ts"];
 
 /** The protected workspace components. None of these may be reachable from the public page. */
 const WORKSPACE_MODULES = [
@@ -93,6 +93,8 @@ const WORKSPACE_MODULES = [
   "BoxOperationalState.tsx",
   "BoxOrderStreamStatus.tsx",
   "lib/boxStream.ts",
+  "pages/SyntheticPage.tsx",
+  "components/synth/Synthetic.tsx",
 ];
 
 test("the landing route's import graph resolves (the walker is not vacuous)", () => {
@@ -139,24 +141,30 @@ test("the WORKSPACE does reach the trading API (so the assertions above mean som
   assert.ok(graph.has("lib/boxStream.ts"), "the workspace owns the SSE stream");
 });
 
-test("only the protected route is wrapped in the auth guard", () => {
+test("only the protected workspaces are wrapped in the auth guard", () => {
   // Comments stripped: the file's own header documents the route table using the literal
   // `<ProtectedRoute>`, which would otherwise be matched instead of the real JSX.
   const routes = readFileSync(join(SRC, "app", "routes.tsx"), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|\s)\/\/.*$/gm, "$1");
 
-  // The guard wraps BoxPage, and BoxPage is the ONLY thing inside it.
-  const guarded = routes.match(/<ProtectedRoute>([\s\S]*?)<\/ProtectedRoute>/);
-  assert.ok(guarded, "the workspace must be rendered inside <ProtectedRoute>");
-  assert.match(guarded[1], /^\s*<BoxPage\s*\/>\s*$/, "only the workspace is behind the guard");
-
-  // Exactly one guard, so a second one cannot appear around the public page unnoticed.
-  assert.equal(
-    [...routes.matchAll(/<ProtectedRoute>/g)].length,
-    1,
-    "there is exactly one auth guard in the route table",
+  // Each guard wraps exactly ONE workspace page, and the set of guarded pages is exactly the
+  // two workspaces: a guard cannot appear around the public page, and a workspace cannot be
+  // mounted outside a guard, unnoticed.
+  const guarded = [...routes.matchAll(/<ProtectedRoute>([\s\S]*?)<\/ProtectedRoute>/g)].map((m) => m[1].trim());
+  assert.deepEqual(
+    guarded.sort(),
+    ["<BoxPage />", "<SyntheticPage />"],
+    "the Box and Synthetic workspaces, and nothing else, are behind the guard",
   );
+  assert.equal([...routes.matchAll(/<ProtectedRoute>/g)].length, 2, "exactly one guard per workspace");
+  for (const page of ["BoxPage", "SyntheticPage"]) {
+    assert.equal(
+      [...routes.matchAll(new RegExp(`<${page}\\b`, "g"))].length,
+      1,
+      `${page} is rendered once, inside its guard`,
+    );
+  }
 
   // The landing page is returned UNWRAPPED.
   assert.match(
@@ -164,6 +172,12 @@ test("only the protected route is wrapped in the auth guard", () => {
     /return <LandingPage \/>;/,
     "the landing page must be returned directly — it is the public surface, never behind the guard",
   );
+});
+
+test("the synthetic workspace reaches its API and the reconnecting stream (so the landing checks mean something)", () => {
+  const graph = importGraph("pages/SyntheticPage.tsx");
+  assert.ok(graph.has("api/synth.ts"));
+  assert.ok(graph.has("lib/boxStream.ts"));
 });
 
 test("ProtectedRoute renders its children ONLY in the authenticated state", () => {

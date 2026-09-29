@@ -18,9 +18,11 @@
 export const ROUTE_PATHS = {
   landing: "/",
   box: "/box",
+  /** The synthetic-futures arbitrage workspace (served by the gts-synth Go service). */
+  synth: "/synth",
 } as const;
 
-export type RouteName = "landing" | "box" | "unknown";
+export type RouteName = "landing" | "box" | "synth" | "unknown";
 
 /**
  * Normalise a pathname so route matching is not defeated by a trailing slash.
@@ -42,6 +44,7 @@ export function normalizePath(pathname: string): string {
 export function resolveRoute(pathname: string): RouteName {
   const path = normalizePath(pathname);
   if (path === ROUTE_PATHS.box) return "box";
+  if (path === ROUTE_PATHS.synth) return "synth";
   if (path === ROUTE_PATHS.landing) return "landing";
   return "unknown";
 }
@@ -53,7 +56,8 @@ export function resolveRoute(pathname: string): RouteName {
  * stay public — it is the surface an anonymous visitor is meant to see.
  */
 export function isProtectedPath(pathname: string): boolean {
-  return resolveRoute(pathname) === "box";
+  const route = resolveRoute(pathname);
+  return route === "box" || route === "synth";
 }
 
 /** Read one query parameter from a search string. Never throws. */

@@ -3,9 +3,10 @@
  *
  *   /      LandingPage    public
  *   /box   BoxPage        protected by <ProtectedRoute>
+ *   /synth SyntheticPage  protected by <ProtectedRoute>
  *   *      → /            unknown paths redirect to the public page
  *
- * The authentication wrapper is applied to /box ONLY. The landing page must stay public: it is
+ * The authentication wrapper is applied to the two workspaces ONLY. The landing page must stay public: it is
  * the surface an anonymous visitor is supposed to see, and putting a gate in front of it would
  * both break the product and make the passcode prompt the first thing the world saw of the
  * project.
@@ -21,6 +22,7 @@ import { navigate, useLocation } from "./router.ts";
 import { ROUTE_PATHS, resolveRoute } from "../lib/routing.ts";
 import LandingPage from "../pages/LandingPage.tsx";
 import BoxPage from "../pages/BoxPage.tsx";
+import SyntheticPage from "../pages/SyntheticPage.tsx";
 import ProtectedRoute from "../auth/ProtectedRoute.tsx";
 
 export default function Routes() {
@@ -38,6 +40,14 @@ export default function Routes() {
     return (
       <ProtectedRoute>
         <BoxPage />
+      </ProtectedRoute>
+    );
+  }
+
+  if (route === "synth") {
+    return (
+      <ProtectedRoute>
+        <SyntheticPage />
       </ProtectedRoute>
     );
   }

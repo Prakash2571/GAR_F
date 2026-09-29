@@ -41,6 +41,19 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // The synthetic service (gts-synth, Go) on its own port, listed BEFORE "/api" so it
+      // wins — exactly what nginx's `location ^~ /api/synth/` does in production. Same
+      // origin, same cookie, same CSRF header.
+      "/api/synth": {
+        target: "http://127.0.0.1:3101",
+        changeOrigin: false,
+        ws: false,
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.setHeader("Accept-Encoding", "identity");
+          });
+        },
+      },
       "/api": {
         target: "http://127.0.0.1:3001",
         changeOrigin: false,

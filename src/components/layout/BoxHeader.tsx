@@ -26,6 +26,8 @@ import ThemeToggle from "../../ThemeToggle.tsx";
 import BoxSoundToggle from "../../BoxSoundToggle.tsx";
 import { BoxHelp } from "../../BoxHelp.tsx";
 import BoxAlertsBell from "../box/BoxAlertsBell.tsx";
+import { navigate } from "../../app/router.ts";
+import { ROUTE_PATHS } from "../../lib/routing.ts";
 import type { BoxConfigView, BoxStatus } from "../../api.ts";
 import type { ModeLabel } from "../../lib/honestLabels.ts";
 
@@ -158,6 +160,14 @@ export default function BoxHeader({
             lead paragraph must not promise "paper" under live. */}
         <BoxHelp mode={status?.execution_mode} cfg={cfg} />
         <BoxSoundToggle enabled={soundEnabled} onToggle={onToggleSound} onTest={onTestSound} />
+        {/* The synthetic-futures arbitrage workspace (paper trading, its own Go service). */}
+        <Button
+          variant="quiet"
+          onClick={() => navigate(ROUTE_PATHS.synth)}
+          title="Futures vs synthetic futures arbitrage (paper trading)"
+        >
+          <span>Synthetic</span>
+        </Button>
         <ThemeToggle />
         <Button
           variant="quiet"

@@ -4920,3 +4920,186 @@ table {
   justify-content: flex-end;
   gap: var(--s-2);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────────────
+   SYNTHETIC WORKSPACE (/synth): futures vs K + CE − PE, paper trading.
+   Reuses the workspace, strip, tabs, table, card and cfg-* primitives; only the few
+   things unique to this page live here.
+   ───────────────────────────────────────────────────────────────────────────────────── */
+
+.synth-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s-3);
+}
+
+.synth-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.synth-control-k {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.synth-controls-note {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  opacity: 0.7;
+}
+
+.synth-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+
+.synth-search {
+  max-width: 12rem;
+}
+
+.synth-badge {
+  margin-left: var(--s-1);
+  padding: 0 var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--positive-quiet);
+  color: var(--positive);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+}
+
+.synth-tag {
+  display: inline-block;
+  margin-left: var(--s-2);
+  padding: 0 var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.synth-tag--exit {
+  border-color: var(--positive);
+  color: var(--positive);
+}
+
+.synth-tag--warn {
+  border-color: var(--negative);
+  color: var(--negative);
+}
+
+.synth-dir {
+  display: inline-block;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-semibold);
+}
+
+.synth-dir--conversion {
+  background: var(--info-quiet);
+  color: var(--info);
+}
+
+.synth-dir--reversal {
+  background: var(--accent-quiet);
+  color: var(--accent-text);
+}
+
+.synth-row {
+  cursor: pointer;
+}
+
+.synth-detail > td {
+  padding: var(--s-3) var(--s-4);
+  background: var(--accent-quiet);
+}
+
+.synth-legs {
+  font-size: var(--fs-xs);
+}
+
+.synth-detail-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+}
+
+.synth-chain-panel {
+  margin-bottom: var(--s-4);
+}
+
+.synth-atm td {
+  font-weight: var(--fw-semibold);
+}
+
+.synth-check {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+}
+
+.synth-check--ok {
+  color: var(--positive);
+}
+
+.synth-check--bad {
+  color: var(--negative);
+}
+
+.synth-fills {
+  margin: var(--s-2) 0;
+  font-size: var(--fs-sm);
+}
+
+.synth-fills summary,
+.synth-day summary {
+  cursor: pointer;
+  padding: var(--s-2) 0;
+}
+
+.synth-day {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--s-2);
+}
+
+.synth-held {
+  margin-top: var(--s-2);
+  font-size: var(--fs-sm);
+}
+
+.synth-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+.synth-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin-top: var(--s-3);
+}
+
+.synth-list-input {
+  width: 100%;
+  min-width: 18rem;
+  font-family: var(--font-mono);
+}
