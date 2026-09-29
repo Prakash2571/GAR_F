@@ -24,23 +24,23 @@ function statusText(o: SynthOpportunity): { text: string; cls: string; title?: s
   switch (o.status) {
     case "ELIGIBLE":
       return o.entry_blocked
-        ? { text: `ELIGIBLE · ${label(ENTRY_BLOCK_LABEL, o.entry_blocked)}`, cls: "box-status--eligible" }
-        : { text: "ELIGIBLE · entering", cls: "box-status--eligible" };
+        ? { text: `ELIGIBLE · ${label(ENTRY_BLOCK_LABEL, o.entry_blocked)}`, cls: "synth-status--eligible" }
+        : { text: "ELIGIBLE · entering", cls: "synth-status--eligible" };
     case "OPEN":
-      return { text: "OPEN", cls: "box-status--open" };
+      return { text: "OPEN", cls: "synth-status--open" };
     case "INDICATIVE":
-      return { text: "INDICATIVE", cls: "box-status--indicative", title: "Market shut: last-session prices, never traded" };
+      return { text: "INDICATIVE", cls: "synth-status--indicative", title: "Market shut: last-session prices, never traded" };
     case "WATCHING":
-      return { text: "watching", cls: "box-status--watching", title: label(REJECT_LABEL, o.reject) };
+      return { text: "watching", cls: "synth-status--watching", title: label(REJECT_LABEL, o.reject) };
     default:
-      return { text: label(REJECT_LABEL, o.reject) || "rejected", cls: "box-status--rejected" };
+      return { text: label(REJECT_LABEL, o.reject) || "rejected", cls: "synth-status--rejected" };
   }
 }
 
 function ChainView({ chain }: { chain: SynthChain }) {
   return (
-    <div className="box-table-wrap">
-      <table className="box-table synth-chain">
+    <div className="synth-table-wrap">
+      <table className="synth-table synth-chain">
         <thead>
           <tr>
             <th className="num">CE bid</th>
@@ -70,7 +70,7 @@ function ChainView({ chain }: { chain: SynthChain }) {
           })}
         </tbody>
       </table>
-      <p className="box-dim">
+      <p className="synth-dim">
         Future {chain.future.tradingsymbol}: bid {fmt(chain.future.bid)} / ask {fmt(chain.future.ask)} · lot {chain.lot_size}
       </p>
     </div>
@@ -99,7 +99,7 @@ export default function SynthOpportunities({
   };
 
   return (
-    <section className="box-section">
+    <section className="synth-section">
       <div className="synth-filters">
         {(["all", "CONVERSION", "REVERSAL"] as const).map((d) => (
           <Button
@@ -129,7 +129,7 @@ export default function SynthOpportunities({
           Gross &gt; 0
         </Button>
         <input
-          className="cfg-input synth-search"
+          className="synth-input synth-search"
           placeholder="Filter symbol"
           value={filter.search}
           onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value }))}
@@ -138,7 +138,7 @@ export default function SynthOpportunities({
 
       {chain && (
         <div className="synth-chain-panel">
-          <h3 className="box-section-title box-section-title--sub">
+          <h3 className="synth-section-title">
             {chain.u} chain
             <Button size="sm" variant="quiet" onClick={() => setChain(null)}>
               Close
@@ -149,7 +149,7 @@ export default function SynthOpportunities({
           ) : chain.data ? (
             <ChainView chain={chain.data} />
           ) : (
-            <p className="box-empty">
+            <p className="synth-empty">
               <span className="spinner" /> Loading…
             </p>
           )}
@@ -157,18 +157,18 @@ export default function SynthOpportunities({
       )}
 
       {!running && rows.length === 0 ? (
-        <p className="box-empty">
+        <p className="synth-empty">
           The scanner is stopped. Press <strong>RUN</strong> to compare each underlying's nearest future with its synthetic
           (K + CE − PE) at ATM ±{strikeLevel}.
         </p>
       ) : shown.length === 0 ? (
-        <p className="box-empty">
+        <p className="synth-empty">
           <span className="spinner" />
           {rows.length === 0 ? " Building the universe and waiting for books…" : " No rows match the filters."}
         </p>
       ) : (
-        <div className="box-table-wrap">
-          <table className="box-table">
+        <div className="synth-table-wrap">
+          <table className="synth-table">
             <thead>
               <tr>
                 <th>Underlying</th>
@@ -198,35 +198,35 @@ export default function SynthOpportunities({
                   <Fragment key={o.key}>
                     <tr className="synth-row" onClick={() => setExpanded(isOpen ? null : o.key)} aria-expanded={isOpen}>
                       <td>
-                        <span className="box-sym">{o.underlying}</span>
+                        <span className="synth-sym">{o.underlying}</span>
                         {o.is_index && <span className="synth-tag">INDEX</span>}
                       </td>
                       <td>
                         <span className={`synth-dir synth-dir--${o.direction.toLowerCase()}`}>{o.direction}</span>
                       </td>
-                      <td className="box-dim">
+                      <td className="synth-dim">
                         {formatExpiry(o.expiry)} · {o.days_to_expiry.toFixed(1)}d
                       </td>
                       <td className="num">
-                        {o.strike} <span className="box-dim">{offsetLabel(o.atm_offset)}</span>
+                        {o.strike} <span className="synth-dim">{offsetLabel(o.atm_offset)}</span>
                       </td>
                       <td className="num">{fmt(o.future_price)}</td>
                       <td className="num">{fmt(o.synthetic_price)}</td>
                       <td className={`num ${pnlClass(o.mispricing_per_unit)}`}>{fmt(o.mispricing_per_unit)}</td>
-                      <td className="num box-dim">{fmt(o.carry_per_unit)}</td>
+                      <td className="num synth-dim">{fmt(o.carry_per_unit)}</td>
                       <td className="num">{o.quantity}</td>
                       <td className={`num ${pnlClass(o.gross_edge)}`}>{fmtMoney(o.gross_edge)}</td>
-                      <td className="num box-dim">{fmtMoney(o.entry_charges)}</td>
-                      <td className="num box-dim">{fmtMoney(o.estimated_exit_charges)}</td>
+                      <td className="num synth-dim">{fmtMoney(o.entry_charges)}</td>
+                      <td className="num synth-dim">{fmtMoney(o.estimated_exit_charges)}</td>
                       <td className={`num ${pnlClass(o.expected_net_profit)}`}>
                         <strong>{fmtMoney(o.expected_net_profit)}</strong>
                       </td>
-                      <td className="box-dim" title={o.worst_age_ms !== null ? `Oldest leg book ${ageText(o.worst_age_ms)}` : undefined}>
+                      <td className="synth-dim" title={o.worst_age_ms !== null ? `Oldest leg book ${ageText(o.worst_age_ms)}` : undefined}>
                         {o.price_source === "last_close" ? "last close" : o.liquidity_ok ? "✓ full lot" : "thin"} ·{" "}
                         {ageText(o.worst_age_ms)}
                       </td>
                       <td>
-                        <span className={`box-status ${st.cls}`} title={st.title}>
+                        <span className={`synth-status ${st.cls}`} title={st.title}>
                           {st.text}
                         </span>
                       </td>
@@ -234,7 +234,7 @@ export default function SynthOpportunities({
                     {isOpen && (
                       <tr className="synth-detail">
                         <td colSpan={15}>
-                          <table className="box-table synth-legs">
+                          <table className="synth-table synth-legs">
                             <thead>
                               <tr>
                                 <th>Leg</th>
@@ -252,24 +252,24 @@ export default function SynthOpportunities({
                                 <tr key={l.role}>
                                   <td title={l.tradingsymbol}>{legName(l)}</td>
                                   <td>
-                                    <span className={`box-leg box-leg--${l.side === "BUY" ? "buy" : "sell"}`}>{l.side} LIMIT</span>
+                                    <span className={`synth-side synth-side--${l.side === "BUY" ? "buy" : "sell"}`}>{l.side} LIMIT</span>
                                   </td>
                                   <td className="num">{fmt(l.price)}</td>
                                   <td className="num">
-                                    {l.bid ? fmt(l.bid) : "-"} <span className="box-dim">({l.bid_qty})</span>
+                                    {l.bid ? fmt(l.bid) : "-"} <span className="synth-dim">({l.bid_qty})</span>
                                   </td>
                                   <td className="num">
-                                    {l.ask ? fmt(l.ask) : "-"} <span className="box-dim">({l.ask_qty})</span>
+                                    {l.ask ? fmt(l.ask) : "-"} <span className="synth-dim">({l.ask_qty})</span>
                                   </td>
                                   <td className="num">{l.qty_at_touch}</td>
                                   <td className="num">{ageText(l.age_ms)}</td>
-                                  <td className="box-dim">{l.executable ? "✓" : label(REJECT_LABEL, l.reject)}</td>
+                                  <td className="synth-dim">{l.executable ? "✓" : label(REJECT_LABEL, l.reject)}</td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
                           <div className="synth-detail-foot">
-                            <span className="box-dim">
+                            <span className="synth-dim">
                               Mid basis {fmt(o.mid_basis)} (context only) · gate {fmtMoney(o.min_expected_net_profit)} · safety{" "}
                               {fmtMoney(o.safety_buffer)} · slippage {fmtMoney(o.expected_slippage)}
                             </span>

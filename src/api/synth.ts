@@ -1,19 +1,104 @@
 /**
- * The synthetic-futures arbitrage API (gts-synth, the Go service behind /api/synth).
+ * The synthetic-futures arbitrage API: the gts-synth Go service behind /api/synth.
  *
- * Same origin and same access gate as the rest of the app: every call goes through the one
- * transport (`request()` in http.ts), so it carries the session cookie, the CSRF header on
- * mutations, the whole-reply deadline, and the 401 teardown. The SSE stream is opened with
- * credentials and no token in the URL.
+ * gts-synth is self-contained. It has its OWN access gate (passcode → HttpOnly session cookie
+ * scoped to /api/synth → CSRF token), its own Zerodha/Dhan logins and its own tables. So this
+ * module keeps its own session state:
  *
- * The backend is the authority. It decides eligibility, fills, P&L and what a setting may be.
- * This page only renders what it says and sends the operator's changes back to it.
+ *   • the synth CSRF token lives only in memory here (never in storage), seeded by verify or by
+ *     an authenticated status call, and sent on every synth mutation via `csrfToken`;
+ *   • a 401 from gts-synth ends only the SYNTH session (`onSynthUnauthorized`), never the rest of
+ *     the app: every call is `suppressUnauthorized`;
+ *   • every request still goes through the one transport (`request()`), so it keeps the
+ *     whole-reply deadline, same-origin URL building and error types.
  *
- * These types are hand-written. The Go service is deliberately NOT part of the vendored Node
- * contract in contract/: that mechanism pins one backend repo and SHA.
+ * The backend is the authority on everything (eligibility, fills, P&L, what a setting may be).
+ * These types are hand-written; the Go service is not part of the vendored contract/.
  */
 
-import { apiUrl, request } from "./http.ts";
+import { ApiError, apiUrl, request, type RequestOptions } from "./http.ts";
+
+/* ------------------------------ synth session ----------------------------- */
+
+let synthCsrf: string | null = null;
+const unauthorizedListeners = new Set<() => void>();
+
+/** Called when gts-synth answers 401: the synth session is gone. Returns an unsubscribe. */
+export function onSynthUnauthorized(fn: () => void): () => void {
+  unauthorizedListeners.add(fn);
+  return () => unauthorizedListeners.delete(fn);
+}
+
+export function notifySynthUnauthorized(): void {
+  synthCsrf = null;
+  for (const fn of [...unauthorizedListeners]) fn();
+}
+
+/** Test seam: whether a synth CSRF token is held (never exposes it). */
+export function hasSynthCsrfToken(): boolean {
+  return synthCsrf !== null;
+}
+
+async function synthRequest<T>(path: string, what: string, options: RequestOptions = {}): Promise<T> {
+  try {
+    return await request<T>(path, what, { ...options, suppressUnauthorized: true, csrfToken: synthCsrf ?? "" });
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) notifySynthUnauthorized();
+    throw err;
+  }
+}
+
+export interface SynthAccessStatus {
+  authenticated: boolean;
+  role?: string;
+  csrf_token?: string;
+  expires_at?: string;
+}
+
+/** Is there a live synth session? Seeds the in-memory CSRF token when there is. */
+export async function synthAccessStatus(): Promise<SynthAccessStatus> {
+  const s = await request<SynthAccessStatus>("/api/synth/access/status", "Failed to check the synthetic session", {
+    suppressUnauthorized: true,
+  });
+  synthCsrf = s.authenticated && s.csrf_token ? s.csrf_token : s.authenticated ? synthCsrf : null;
+  return s;
+}
+
+export class SynthPasscodeRejectedError extends Error {}
+
+/**
+ * Unlock the synthetic workspace. The only public synth mutation: it MINTS the CSRF token, so
+ * it carries none (`csrfExempt`), and its 401 means "wrong passcode", not "session expired".
+ */
+export async function synthVerify(passcode: string): Promise<SynthAccessStatus> {
+  try {
+    const s = await request<SynthAccessStatus>("/api/synth/access/verify", "Failed to unlock the synthetic workspace", {
+      method: "POST",
+      body: { passcode },
+      csrfExempt: true,
+      suppressUnauthorized: true,
+    });
+    synthCsrf = s.csrf_token ?? null;
+    return s;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) throw new SynthPasscodeRejectedError("That passcode is not correct.");
+    throw err;
+  }
+}
+
+/** End the synth session (best effort: a dead session has nothing to protect). */
+export async function synthLogout(): Promise<void> {
+  try {
+    await request("/api/synth/access/logout", "Failed to lock the synthetic workspace", {
+      method: "POST",
+      csrfToken: synthCsrf ?? "",
+      csrfBestEffort: true,
+      suppressUnauthorized: true,
+    });
+  } finally {
+    synthCsrf = null;
+  }
+}
 
 export type SynthDirection = "CONVERSION" | "REVERSAL";
 export type SynthRole = "fut" | "ce" | "pe";
@@ -231,15 +316,26 @@ export interface SynthBrokerSession {
   broker: SynthBrokerId;
   connected: boolean;
   reason?: string;
+  identity?: { user_id?: string; user_name?: string };
+  source?: "login" | "manual";
   login_date?: string;
   expires_at?: string;
+  acquired_at?: string;
+}
+
+/** A broker as the Broker panel shows it. */
+export interface SynthBrokerView extends SynthBrokerSession {
+  /** The broker app credentials for the login redirect are configured on the server. */
+  login_configured: boolean;
+  /** A token can be pasted instead. */
+  manual_token: boolean;
 }
 
 export interface SynthStatus {
   running: boolean;
   market_open: boolean;
   calendar_covered: boolean;
-  broker_mode: "follow_active" | SynthBrokerId;
+  broker_mode: SynthBrokerId;
   broker: SynthBrokerId | "";
   authenticated: boolean;
   auth_reason?: string;
@@ -357,39 +453,39 @@ export interface SynthDeleteResult {
 const BASE = "/api/synth";
 
 export function fetchSynthStatus(): Promise<SynthStatus> {
-  return request<SynthStatus>(`${BASE}/status`, "Failed to load the synthetic scanner status");
+  return synthRequest<SynthStatus>(`${BASE}/status`, "Failed to load the synthetic scanner status");
 }
 
 export function fetchSynthOpportunities(): Promise<{ status: SynthStatus; opportunities: SynthOpportunity[] }> {
-  return request(`${BASE}/opportunities`, "Failed to load synthetic opportunities");
+  return synthRequest(`${BASE}/opportunities`, "Failed to load synthetic opportunities");
 }
 
 export async function fetchSynthOpen(): Promise<SynthOpenPosition[]> {
-  const body = await request<{ open: SynthOpenPosition[] }>(`${BASE}/trades/open`, "Failed to load open synthetic trades");
+  const body = await synthRequest<{ open: SynthOpenPosition[] }>(`${BASE}/trades/open`, "Failed to load open synthetic trades");
   return body.open ?? [];
 }
 
 export function fetchSynthHistory(scope: "today" | "all", limit = 500): Promise<SynthHistory> {
   const qs = new URLSearchParams({ scope, limit: String(limit) });
-  return request<SynthHistory>(`${BASE}/trades/history?${qs.toString()}`, "Failed to load closed synthetic trades");
+  return synthRequest<SynthHistory>(`${BASE}/trades/history?${qs.toString()}`, "Failed to load closed synthetic trades");
 }
 
 export async function startSynth(): Promise<SynthStatus> {
-  const body = await request<{ status: SynthStatus }>(`${BASE}/start`, "Failed to start the synthetic scanner", {
+  const body = await synthRequest<{ status: SynthStatus }>(`${BASE}/start`, "Failed to start the synthetic scanner", {
     method: "POST",
   });
   return body.status;
 }
 
 export async function stopSynth(): Promise<SynthStatus> {
-  const body = await request<{ status: SynthStatus }>(`${BASE}/stop`, "Failed to stop the synthetic scanner", {
+  const body = await synthRequest<{ status: SynthStatus }>(`${BASE}/stop`, "Failed to stop the synthetic scanner", {
     method: "POST",
   });
   return body.status;
 }
 
 export function fetchSynthSettings(): Promise<SynthSettings> {
-  return request<SynthSettings>(`${BASE}/settings`, "Failed to load synthetic settings");
+  return synthRequest<SynthSettings>(`${BASE}/settings`, "Failed to load synthetic settings");
 }
 
 /** Apply changes atomically if `version` is still current (409 `stale_version` otherwise). */
@@ -397,7 +493,7 @@ export function patchSynthSettings(
   version: number,
   changes: Record<string, SynthSettingValue>,
 ): Promise<{ settings: SynthSettings; status: SynthStatus }> {
-  return request(`${BASE}/settings`, "Failed to save synthetic settings", {
+  return synthRequest(`${BASE}/settings`, "Failed to save synthetic settings", {
     method: "PATCH",
     body: { version, changes },
   });
@@ -406,7 +502,7 @@ export function patchSynthSettings(
 export function closeSynthTrade(
   id: string,
 ): Promise<{ trade: SynthTrade; open: SynthOpenPosition[]; status: SynthStatus }> {
-  return request(`${BASE}/trades/${encodeURIComponent(id)}/close`, "Failed to close the synthetic position", {
+  return synthRequest(`${BASE}/trades/${encodeURIComponent(id)}/close`, "Failed to close the synthetic position", {
     method: "POST",
   });
 }
@@ -416,7 +512,7 @@ export function closeAllSynthTrades(): Promise<{
   open: SynthOpenPosition[];
   status: SynthStatus;
 }> {
-  return request(`${BASE}/trades/close-all`, "Failed to close the synthetic positions", { method: "POST" });
+  return synthRequest(`${BASE}/trades/close-all`, "Failed to close the synthetic positions", { method: "POST" });
 }
 
 /**
@@ -428,17 +524,49 @@ export function deleteSynthTrade(
   expectedStatus: "open" | "closed",
   reason?: string,
 ): Promise<SynthDeleteResult> {
-  return request(`${BASE}/trades/${encodeURIComponent(id)}`, "Failed to delete the synthetic trade", {
+  return synthRequest(`${BASE}/trades/${encodeURIComponent(id)}`, "Failed to delete the synthetic trade", {
     method: "DELETE",
     body: reason ? { reason, expected_status: expectedStatus } : { expected_status: expectedStatus },
   });
 }
 
 export function fetchSynthChain(underlying: string): Promise<SynthChain> {
-  return request(`${BASE}/chain/${encodeURIComponent(underlying)}`, "Failed to load the chain");
+  return synthRequest(`${BASE}/chain/${encodeURIComponent(underlying)}`, "Failed to load the chain");
 }
 
 /** SSE URL: relative, no token (the cookie rides on it). */
 export function synthStreamUrl(): string {
   return apiUrl(`${BASE}/stream`);
+}
+
+/* ---------------------------------- brokers --------------------------------- */
+
+export async function fetchSynthBrokers(): Promise<SynthBrokerView[]> {
+  const body = await synthRequest<{ brokers: SynthBrokerView[] }>(`${BASE}/broker/status`, "Failed to load broker sessions");
+  return body.brokers ?? [];
+}
+
+/** Start a broker login; the page then sends the browser to `login_url`. */
+export function startSynthBrokerLogin(broker: SynthBrokerId): Promise<{ login_url: string; expires_at: string }> {
+  return synthRequest(`${BASE}/broker/${broker}/login/start`, `Failed to start the ${broker} login`, { method: "POST" });
+}
+
+/** Store a pasted access token (the server validates it with the broker first). */
+export async function saveSynthBrokerToken(
+  broker: SynthBrokerId,
+  accessToken: string,
+  clientId?: string,
+): Promise<SynthBrokerView[]> {
+  const body = await synthRequest<{ brokers: SynthBrokerView[] }>(`${BASE}/broker/${broker}/token`, `Failed to save the ${broker} token`, {
+    method: "POST",
+    body: clientId ? { access_token: accessToken, client_id: clientId } : { access_token: accessToken },
+  });
+  return body.brokers ?? [];
+}
+
+export async function logoutSynthBroker(broker: SynthBrokerId): Promise<SynthBrokerView[]> {
+  const body = await synthRequest<{ brokers: SynthBrokerView[] }>(`${BASE}/broker/${broker}/logout`, `Failed to disconnect ${broker}`, {
+    method: "POST",
+  });
+  return body.brokers ?? [];
 }

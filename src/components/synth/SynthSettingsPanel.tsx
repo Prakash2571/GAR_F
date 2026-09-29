@@ -11,7 +11,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import Button from "../ui/Button.tsx";
 import type { SynthSetting, SynthSettingValue, SynthSettings } from "../../api/synth.ts";
 import {
-  BROKER_MODE_LABEL,
+  BROKER_LABEL,
   GROUP_LABEL,
   draftOf,
   formatSettingValue,
@@ -57,7 +57,7 @@ function SettingRow({
         type="button"
         role="switch"
         aria-checked={on}
-        className={`cfg-toggle${on ? " is-on" : ""}`}
+        className={`synth-toggle${on ? " is-on" : ""}`}
         disabled={disabled}
         onClick={() => onRequestChange(s, !on)}
       />
@@ -66,14 +66,14 @@ function SettingRow({
     control = (
       <select
         id={`synth-${s.key}`}
-        className="cfg-select"
+        className="synth-select"
         value={String(s.value)}
         disabled={disabled}
         onChange={(e) => onRequestChange(s, e.target.value)}
       >
         {(s.options ?? []).map((o) => (
           <option key={o} value={o}>
-            {BROKER_MODE_LABEL[o] ?? o}
+            {BROKER_LABEL[o] ?? o}
           </option>
         ))}
       </select>
@@ -85,7 +85,7 @@ function SettingRow({
         {s.kind === "list" ? (
           <textarea
             id={`synth-${s.key}`}
-            className="cfg-input synth-list-input"
+            className="synth-input synth-list-input"
             rows={2}
             value={draft}
             disabled={disabled}
@@ -94,10 +94,10 @@ function SettingRow({
           />
         ) : (
           <>
-            {s.unit === "₹" && <span className="cfg-input-prefix">₹</span>}
+            {s.unit === "₹" && <span className="synth-affix">₹</span>}
             <input
               id={`synth-${s.key}`}
-              className="cfg-input"
+              className="synth-input"
               type="number"
               inputMode="decimal"
               min={s.min}
@@ -111,7 +111,7 @@ function SettingRow({
                 if (e.key === "Escape") setDraft(draftOf(s));
               }}
             />
-            {s.unit && s.unit !== "₹" && <span className="cfg-input-suffix">{s.unit}</span>}
+            {s.unit && s.unit !== "₹" && <span className="synth-affix">{s.unit}</span>}
           </>
         )}
         <Button size="sm" variant={s.risk ? "danger" : "secondary"} disabled={disabled || !dirty} onClick={apply}>
@@ -122,24 +122,24 @@ function SettingRow({
   }
 
   return (
-    <div className={`cfg-row${s.risk ? " cfg-row--dangerous" : ""}`}>
-      <div className="cfg-row-head">
-        <label className="cfg-row-label" htmlFor={`synth-${s.key}`}>
+    <div className={`synth-setting${s.risk ? " synth-setting--risk" : ""}`}>
+      <div className="synth-setting-head">
+        <label className="synth-setting-label" htmlFor={`synth-${s.key}`}>
           {s.label}
         </label>
         {s.risk && (
-          <span className="cfg-row-flag" title="Changing this can increase exposure or activity: it is confirmed first">
+          <span className="synth-setting-flag" title="Changing this can increase exposure or activity: it is confirmed first">
             RISK
           </span>
         )}
       </div>
-      {s.help && <p className="cfg-row-desc">{s.help}</p>}
-      <div className="cfg-row-control">{control}</div>
+      {s.help && <p className="synth-setting-help">{s.help}</p>}
+      <div className="synth-setting-control">{control}</div>
       {err && <p className="synth-check synth-check--bad">{err}</p>}
-      <dl className="cfg-row-meta">
+      <dl className="synth-setting-meta">
         <div>
           <dt>Current</dt>
-          <dd className="cfg-row-effective">{formatSettingValue(s, s.value)}</dd>
+          <dd className="synth-setting-current">{formatSettingValue(s, s.value)}</dd>
         </div>
         <div>
           <dt>Default</dt>
@@ -172,8 +172,8 @@ export default function SynthSettingsPanel({
   const [group, setGroup] = useState<string>("broker");
   if (!settings) {
     return (
-      <section className="box-section">
-        <p className="box-empty">
+      <section className="synth-section">
+        <p className="synth-empty">
           <span className="spinner" /> Loading settings…
         </p>
       </section>
@@ -182,32 +182,32 @@ export default function SynthSettingsPanel({
   const grouped = groupSettings(settings.settings, settings.groups);
   const current = grouped.find((g) => g.group === group) ?? grouped[0];
   return (
-    <section className="box-section cfg">
-      <header className="cfg-head">
-        <h2 className="cfg-title">Synthetic settings</h2>
-        <span className="box-dim">
+    <section className="synth-section">
+      <header className="synth-settings-head">
+        <h2 className="synth-settings-title">Synthetic settings</h2>
+        <span className="synth-dim">
           Version {settings.version} · saved in PostgreSQL · validated by the server
         </span>
         <Button size="sm" variant="quiet" onClick={onReload}>
           Reload
         </Button>
       </header>
-      <div className="cfg-tabs" role="tablist" aria-label="Setting groups">
+      <div className="synth-tabs synth-tabs--sub" role="tablist" aria-label="Setting groups">
         {grouped.map((g) => (
           <button
             key={g.group}
             type="button"
             role="tab"
             aria-selected={current?.group === g.group}
-            className="box-view-tab cfg-tab"
+            className="synth-tab"
             onClick={() => setGroup(g.group)}
           >
-            <span className="box-view-tab-label">{GROUP_LABEL[g.group] ?? g.group}</span>
-            <span className="pill-count">{g.settings.length}</span>
+            <span className="synth-tab-label">{GROUP_LABEL[g.group] ?? g.group}</span>
+            <span className="synth-tab-count">{g.settings.length}</span>
           </button>
         ))}
       </div>
-      <div className="cfg-body" role="tabpanel">
+      <div className="synth-settings-body" role="tabpanel">
         {current?.settings.map((s) => (
           <SettingRow key={s.key} s={s} disabled={busy} onRequestChange={onRequestChange} />
         ))}

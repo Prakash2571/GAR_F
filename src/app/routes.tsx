@@ -3,10 +3,11 @@
  *
  *   /      LandingPage    public
  *   /box   BoxPage        protected by <ProtectedRoute>
- *   /synth SyntheticPage  protected by <ProtectedRoute>
+ *   /synth SyntheticPage  behind its OWN gate (SynthAccessGate: the synthetic service's
+ *                         passcode, session and CSRF), not the site guard
  *   *      → /            unknown paths redirect to the public page
  *
- * The authentication wrapper is applied to the two workspaces ONLY. The landing page must stay public: it is
+ * The authentication wrapper is applied to /box ONLY. The landing page must stay public: it is
  * the surface an anonymous visitor is supposed to see, and putting a gate in front of it would
  * both break the product and make the passcode prompt the first thing the world saw of the
  * project.
@@ -44,13 +45,8 @@ export default function Routes() {
     );
   }
 
-  if (route === "synth") {
-    return (
-      <ProtectedRoute>
-        <SyntheticPage />
-      </ProtectedRoute>
-    );
-  }
+  // The synthetic workspace is a separate, self-contained service with its own gate.
+  if (route === "synth") return <SyntheticPage />;
 
   // The landing page is also what an unknown path shows for the one frame before the redirect
   // effect runs — correct, since that is where the redirect is going.

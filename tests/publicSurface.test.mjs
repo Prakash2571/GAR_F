@@ -95,6 +95,7 @@ const WORKSPACE_MODULES = [
   "lib/boxStream.ts",
   "pages/SyntheticPage.tsx",
   "components/synth/Synthetic.tsx",
+  "lib/synthStream.ts",
 ];
 
 test("the landing route's import graph resolves (the walker is not vacuous)", () => {
@@ -141,30 +142,24 @@ test("the WORKSPACE does reach the trading API (so the assertions above mean som
   assert.ok(graph.has("lib/boxStream.ts"), "the workspace owns the SSE stream");
 });
 
-test("only the protected workspaces are wrapped in the auth guard", () => {
+test("only the protected route is wrapped in the auth guard", () => {
   // Comments stripped: the file's own header documents the route table using the literal
   // `<ProtectedRoute>`, which would otherwise be matched instead of the real JSX.
   const routes = readFileSync(join(SRC, "app", "routes.tsx"), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|\s)\/\/.*$/gm, "$1");
 
-  // Each guard wraps exactly ONE workspace page, and the set of guarded pages is exactly the
-  // two workspaces: a guard cannot appear around the public page, and a workspace cannot be
-  // mounted outside a guard, unnoticed.
-  const guarded = [...routes.matchAll(/<ProtectedRoute>([\s\S]*?)<\/ProtectedRoute>/g)].map((m) => m[1].trim());
-  assert.deepEqual(
-    guarded.sort(),
-    ["<BoxPage />", "<SyntheticPage />"],
-    "the Box and Synthetic workspaces, and nothing else, are behind the guard",
+  // The guard wraps BoxPage, and BoxPage is the ONLY thing inside it.
+  const guarded = routes.match(/<ProtectedRoute>([\s\S]*?)<\/ProtectedRoute>/);
+  assert.ok(guarded, "the workspace must be rendered inside <ProtectedRoute>");
+  assert.match(guarded[1], /^\s*<BoxPage\s*\/>\s*$/, "only the workspace is behind the guard");
+
+  // Exactly one guard, so a second one cannot appear around the public page unnoticed.
+  assert.equal(
+    [...routes.matchAll(/<ProtectedRoute>/g)].length,
+    1,
+    "there is exactly one auth guard in the route table",
   );
-  assert.equal([...routes.matchAll(/<ProtectedRoute>/g)].length, 2, "exactly one guard per workspace");
-  for (const page of ["BoxPage", "SyntheticPage"]) {
-    assert.equal(
-      [...routes.matchAll(new RegExp(`<${page}\\b`, "g"))].length,
-      1,
-      `${page} is rendered once, inside its guard`,
-    );
-  }
 
   // The landing page is returned UNWRAPPED.
   assert.match(
@@ -172,12 +167,6 @@ test("only the protected workspaces are wrapped in the auth guard", () => {
     /return <LandingPage \/>;/,
     "the landing page must be returned directly — it is the public surface, never behind the guard",
   );
-});
-
-test("the synthetic workspace reaches its API and the reconnecting stream (so the landing checks mean something)", () => {
-  const graph = importGraph("pages/SyntheticPage.tsx");
-  assert.ok(graph.has("api/synth.ts"));
-  assert.ok(graph.has("lib/boxStream.ts"));
 });
 
 test("ProtectedRoute renders its children ONLY in the authenticated state", () => {
@@ -199,4 +188,30 @@ test("ProtectedRoute renders its children ONLY in the authenticated state", () =
   // The non-authenticated branch must not render a workspace skeleton, which would imply to an
   // unauthenticated visitor that the workspace is loading.
   assert.match(src, /gts-route-wait/, "the waiting surface is the neutral one");
+});
+
+test("the synthetic workspace renders ONLY behind its own gate", () => {
+  const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/.*$/gm, "$1");
+  const page = strip(readFileSync(join(SRC, "pages", "SyntheticPage.tsx"), "utf8"));
+  assert.match(
+    page,
+    /<SynthAccessGate\s+render=\{\(lock\)\s*=>\s*<Synthetic onLock=\{lock\} \/>\}\s*\/>/,
+    "the workspace is only rendered by the synth gate's render callback",
+  );
+  const routes = strip(readFileSync(join(SRC, "app", "routes.tsx"), "utf8"));
+  assert.equal([...routes.matchAll(/<SyntheticPage\b/g)].length, 1, "mounted once");
+  const gate = strip(readFileSync(join(SRC, "components", "synth", "SynthAccessGate.tsx"), "utf8"));
+  assert.match(gate, /if \(state === "unlocked"\) return <>\{render\(lock\)\}<\/>;/, "only the unlocked state renders it");
+});
+
+test("the synthetic workspace is independent of Box: it imports no Box module", () => {
+  const graph = importGraph("pages/SyntheticPage.tsx");
+  assert.ok(graph.has("api/synth.ts") && graph.has("lib/synthStream.ts"), "the walker reached the synth modules");
+  for (const mod of graph) {
+    assert.equal(
+      /(^|\/)(Box[^/]*\.tsx|api\/box\.ts|api\.ts|lib\/boxStream\.ts)$|^components\/box\//.test(mod),
+      false,
+      `the synthetic workspace must not import ${mod}`,
+    );
+  }
 });

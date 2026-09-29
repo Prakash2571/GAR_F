@@ -18,7 +18,10 @@
 export const ROUTE_PATHS = {
   landing: "/",
   box: "/box",
-  /** The synthetic-futures arbitrage workspace (served by the gts-synth Go service). */
+  /**
+   * The synthetic-futures arbitrage workspace (the gts-synth Go service). It is gated by that
+   * service's own passcode, so it is NOT a site-protected path.
+   */
   synth: "/synth",
 } as const;
 
@@ -56,8 +59,7 @@ export function resolveRoute(pathname: string): RouteName {
  * stay public — it is the surface an anonymous visitor is meant to see.
  */
 export function isProtectedPath(pathname: string): boolean {
-  const route = resolveRoute(pathname);
-  return route === "box" || route === "synth";
+  return resolveRoute(pathname) === "box";
 }
 
 /** Read one query parameter from a search string. Never throws. */

@@ -1,18 +1,11 @@
 /**
- * /synth: the synthetic-futures arbitrage workspace. Protected by <ProtectedRoute> exactly
- * like /box; its API is the gts-synth Go service behind the same session.
+ * /synth: the synthetic-futures arbitrage workspace (gts-synth). It sits behind the
+ * service's OWN gate (SynthAccessGate): a separate passcode, session and CSRF token.
  */
 
-import { useCallback } from "react";
 import Synthetic from "../components/synth/Synthetic.tsx";
-import { useAccess } from "../auth/AccessGate.tsx";
-import { navigate } from "../app/router.ts";
-import { ROUTE_PATHS } from "../lib/routing.ts";
+import SynthAccessGate from "../components/synth/SynthAccessGate.tsx";
 
 export default function SyntheticPage() {
-  const { lock } = useAccess();
-  const onLock = useCallback(() => {
-    void lock().finally(() => navigate(ROUTE_PATHS.landing, { replace: true }));
-  }, [lock]);
-  return <Synthetic onLock={onLock} />;
+  return <SynthAccessGate render={(lock) => <Synthetic onLock={lock} />} />;
 }

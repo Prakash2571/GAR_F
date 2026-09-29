@@ -1,31 +1,31 @@
 /**
- * The Synthetic workspace: futures vs synthetic futures (K + CE − PE), paper trading.
+ * The Synthetic workspace: futures vs synthetic futures (K + CE − PE), paper trading, on
+ * Zerodha or Dhan, served by the self-contained gts-synth service.
  *
- * The Go service (gts-synth) is the authority on everything this page shows: eligibility, fills,
- * P&L, what a setting may be. This component renders its snapshot and sends the operator's
- * controls back to it. Almost every knob is a runtime setting, changed here, saved on the server.
+ * The service is the authority on everything this page shows: broker sessions, eligibility,
+ * fills, P&L, what a setting may be. This component renders its snapshot and sends the
+ * operator's controls back. Almost every knob is a runtime setting changed here and saved on
+ * the server.
  *
  * Nothing on this page can place a real order: the service has no order-placement code, and the
  * header says PAPER from `status.live_orders === false`, not from an assumption.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LockKeyIcon, SquaresFourIcon } from "@phosphor-icons/react";
+import { LockKeyIcon } from "@phosphor-icons/react";
 import GTSWordmark from "../brand/GTSWordmark.tsx";
 import StatusBadge from "../ui/StatusBadge.tsx";
 import Button from "../ui/Button.tsx";
 import Modal from "../ui/Modal.tsx";
 import ThemeToggle from "../../ThemeToggle.tsx";
-import { navigate } from "../../app/router.ts";
-import { ROUTE_PATHS } from "../../lib/routing.ts";
-import { ReconnectingBoxStream } from "../../lib/boxStream.ts";
-import { accessStatus } from "../../api/access.ts";
+import { SynthStream } from "../../lib/synthStream.ts";
 import { ApiError, describeRequestFailure } from "../../api/http.ts";
 import { fmtMoney } from "../../format.ts";
 import {
   closeAllSynthTrades,
   closeSynthTrade,
   deleteSynthTrade,
+  fetchSynthBrokers,
   fetchSynthHistory,
   fetchSynthOpen,
   fetchSynthOpportunities,
@@ -33,7 +33,10 @@ import {
   patchSynthSettings,
   startSynth,
   stopSynth,
+  synthAccessStatus,
   synthStreamUrl,
+  type SynthBrokerId,
+  type SynthBrokerView,
   type SynthOpenPosition,
   type SynthOpportunity,
   type SynthSetting,
@@ -43,12 +46,13 @@ import {
   type SynthStatus,
   type SynthTrade,
 } from "../../api/synth.ts";
-import { BROKER_MODE_LABEL, formatSettingValue, mergeClosed, pnlClass } from "../../lib/synthView.ts";
+import { BROKER_LABEL, formatSettingValue, mergeClosed, parseBrokerLoginResult, pnlClass } from "../../lib/synthView.ts";
 import SynthOpportunities from "./SynthOpportunities.tsx";
 import { SynthClosedHistory, SynthDayPnlStrip, SynthOpenCards } from "./SynthPositions.tsx";
 import SynthSettingsPanel from "./SynthSettingsPanel.tsx";
+import SynthBrokerPanel from "./SynthBrokerPanel.tsx";
 
-type View = "opportunities" | "open" | "history" | "settings";
+type View = "opportunities" | "open" | "history" | "brokers" | "settings";
 
 interface PendingChange {
   setting: SynthSetting;
@@ -57,9 +61,9 @@ interface PendingChange {
 
 function Stat({ k, v, title }: { k: string; v: string; title?: string }) {
   return (
-    <div className="box-stat" title={title}>
-      <span className="box-stat-k">{k}</span>
-      <span className="box-stat-v">{v}</span>
+    <div className="synth-stat" title={title}>
+      <span className="synth-stat-k">{k}</span>
+      <span className="synth-stat-v">{v}</span>
     </div>
   );
 }
@@ -72,6 +76,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [settings, setSettings] = useState<SynthSettings | null>(null);
+  const [brokers, setBrokers] = useState<SynthBrokerView[]>([]);
   const [view, setView] = useState<View>("opportunities");
   const [live, setLive] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -101,6 +106,14 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
     }
   }, []);
 
+  const loadBrokers = useCallback(async () => {
+    try {
+      setBrokers(await fetchSynthBrokers());
+    } catch (err) {
+      setError(describeRequestFailure(err));
+    }
+  }, []);
+
   const loadHistory = useCallback(async (scope: "today" | "all") => {
     setHistoryLoading(true);
     setHistoryError(null);
@@ -117,6 +130,14 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
   /* ------------------------------ load + stream ----------------------------- */
 
   useEffect(() => {
+    // Back from a broker login: announce the result once, then strip it from the URL.
+    const { result, cleaned } = parseBrokerLoginResult(window.location.search);
+    if (result) {
+      if (result.ok) setNotice(result.message);
+      else setError(result.message);
+      setView("brokers");
+      window.history.replaceState({}, "", `${window.location.pathname}${cleaned}${window.location.hash}`);
+    }
     fetchSynthOpportunities()
       .then((r) => {
         setStatus(r.status);
@@ -124,16 +145,16 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       })
       .catch((err) => setError(describeRequestFailure(err)));
     fetchSynthOpen()
-      .then((o) => setOpen(o))
+      .then(setOpen)
       .catch(() => {
         /* the stream carries them too */
       });
     void loadSettings();
+    void loadBrokers();
     void loadHistory("today");
-  }, [loadSettings, loadHistory]);
+  }, [loadSettings, loadBrokers, loadHistory]);
 
-  // Another tab (or operator) changed the settings: reload them, so this page never edits a
-  // stale version (the server would refuse with 409 anyway).
+  // Another tab changed the settings: reload them so this page never edits a stale version.
   const serverVersion = status?.settings_version;
   useEffect(() => {
     if (serverVersion !== undefined && settings && serverVersion !== settings.version) void loadSettings();
@@ -148,19 +169,18 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       setOpps(snap.opportunities);
       setOpen(snap.open_trades.filter((p) => !deletedIds.current.has(p.id)));
     }, 400);
-    const stream = new ReconnectingBoxStream({
+    const stream = new SynthStream({
       url: synthStreamUrl(),
       events: ["snapshot", "entry", "exit", "trade_deleted", "session_ended"],
       onOpen: () => setLive(true),
       onDisconnect: () => setLive(false),
-      probeUnauthorized: async () => {
-        try {
-          return !(await accessStatus()).authenticated;
-        } catch {
-          return true;
-        }
+      probeSessionEnded: async () => !(await synthAccessStatus()).authenticated,
+      // The gate listens for the synth 401 and shows the passcode form; a probe that found
+      // the session gone confirms it the same way.
+      onSessionEnded: () => {
+        setLive(false);
+        onLock();
       },
-      onUnauthorized: () => setLive(false),
       onEvent: (type, data) => {
         try {
           if (type === "snapshot") {
@@ -187,7 +207,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       window.clearInterval(flush);
       stream.stop();
     };
-  }, []);
+  }, [onLock]);
 
   /* --------------------------------- actions -------------------------------- */
 
@@ -196,8 +216,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
     setError(null);
     setNotice(null);
     try {
-      const v = await fn();
-      setNotice(ok(v));
+      setNotice(ok(await fn()));
     } catch (err) {
       setError(describeRequestFailure(err));
     } finally {
@@ -242,7 +261,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
     [settings, loadSettings],
   );
 
-  /** Risk settings are confirmed first; the server accepts either way, so this is for the operator. */
+  /** Risk settings are confirmed first; the server validates either way. */
   const requestChange = useCallback(
     (setting: SynthSetting, value: SynthSettingValue) => {
       if (setting.risk) setPendingChange({ setting, value });
@@ -287,10 +306,10 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       },
       (r) => {
         const done = r.results.filter((x) => x.closed).length;
-        const failed = r.results.filter((x) => !x.closed);
-        return failed.length === 0
+        const held = r.results.filter((x) => !x.closed);
+        return held.length === 0
           ? `Closed ${done} position(s) at the touch.`
-          : `Closed ${done}; ${failed.length} held: ${failed.map((f) => `${f.underlying} (${f.error})`).join("; ")}`;
+          : `Closed ${done}; ${held.length} held: ${held.map((f) => `${f.underlying} (${f.error})`).join("; ")}`;
       },
     );
   }
@@ -327,16 +346,23 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
     }
   }
 
+  const onBrokersChanged = (list: SynthBrokerView[] | null, ok: string | null, err: string | null) => {
+    if (list) setBrokers(list);
+    setNotice(ok);
+    setError(err);
+  };
+
   /* ---------------------------------- view ---------------------------------- */
 
   const marketOpen = status?.market_open ?? true;
   const strikeLevel = status?.strike_level ?? 3;
-  const brokerMode = String(byKey.get("broker")?.value ?? status?.broker_mode ?? "follow_active");
+  const brokerSetting = String(byKey.get("broker")?.value ?? status?.broker_mode ?? "zerodha") as SynthBrokerId;
   const autoEntry = byKey.get("auto_entry")?.value === true;
   const autoExit = byKey.get("auto_exit")?.value === true;
   const lots = Number(byKey.get("lots_per_trade")?.value ?? 1);
   const exitEligible = open.filter((p) => p.exit_eligible).length;
   const closedNet = history.reduce((s, t) => s + (t.net_pnl ?? 0), 0);
+  const connectedCount = brokers.filter((b) => b.connected).length;
   const stateTone = !status ? "neutral" : !running ? "neutral" : !marketOpen ? "warning" : live && status.feed_healthy ? "live" : "warning";
   const stateText = !status
     ? "Loading…"
@@ -350,17 +376,21 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
             ? "Scanning"
             : "Feed stale";
 
+  const tabs: [View, string, number, number][] = [
+    ["opportunities", "Opportunities", status?.opportunity_count ?? opps.length, status?.eligible_count ?? 0],
+    ["open", "Open trades", open.length, exitEligible],
+    ["history", "Closed trades", history.length, 0],
+    ["brokers", "Brokers", connectedCount, 0],
+    ["settings", "Settings", settings?.settings.length ?? 0, 0],
+  ];
+
   return (
-    <div className="gts-workspace synth-page">
-      <header className="gts-workbar">
-        <div className="gts-workbar-identity">
-          <GTSWordmark
-            variant="product"
-            markSize={20}
-            subtitle={<span className="gts-workbar-sub">Synthetic · K + CE − PE · paper</span>}
-          />
+    <div className="synth-page">
+      <header className="synth-header">
+        <div className="synth-header-id">
+          <GTSWordmark variant="product" markSize={20} subtitle={<span className="synth-dim">Synthetic · K + CE − PE · paper</span>} />
         </div>
-        <div className="gts-workbar-state">
+        <div className="synth-header-state">
           <StatusBadge
             tone={status?.live_orders ? "negative" : "info"}
             title="Fills are simulated at the observed touch. The synthetic service has no order-placement code."
@@ -375,23 +405,17 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
               tone={status.authenticated ? "positive" : "negative"}
               title={status.authenticated ? "Broker session is usable" : `Broker not connected (${status.auth_reason ?? "unknown"})`}
             >
-              {(status.broker || "no broker").toUpperCase()}
+              {(BROKER_LABEL[status.broker] ?? "no broker").toUpperCase()}
               {status.authenticated ? "" : " · not connected"}
             </StatusBadge>
           )}
         </div>
-        <div className="gts-workbar-session">
-          <Button variant="quiet" onClick={() => navigate(ROUTE_PATHS.box)} title="Go to the Box workspace">
-            <SquaresFourIcon size={16} weight="regular" aria-hidden="true" />
-            <span>Box</span>
-          </Button>
+        <div className="synth-header-actions">
           <ThemeToggle />
-          <Button variant="quiet" onClick={onLock} aria-label="Lock workspace" title="End this session">
+          <Button variant="quiet" onClick={onLock} aria-label="Lock the synthetic workspace" title="End this session">
             <LockKeyIcon size={16} weight="regular" aria-hidden="true" />
             <span>Lock</span>
           </Button>
-        </div>
-        <div className="gts-workbar-command">
           <Button
             variant={running ? "danger" : "primary"}
             onClick={toggleRun}
@@ -408,8 +432,11 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       {status?.last_error && <div className="banner banner--warn">{status.last_error}</div>}
       {status && !status.authenticated && (
         <div className="banner banner--warn">
-          <strong>No usable {status.broker || "broker"} session.</strong> Connect the broker from the Box page (the
-          synthetic service reads the same session), or pick the other broker below.
+          <strong>No usable {BROKER_LABEL[status.broker] ?? "broker"} session.</strong> Connect it in the{" "}
+          <button type="button" className="synth-link" onClick={() => setView("brokers")}>
+            Brokers
+          </button>{" "}
+          tab, or switch the scanner to the other broker.
         </div>
       )}
       {status && !status.store_ready && (
@@ -439,9 +466,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
         </div>
       )}
       {status && !status.calendar_covered && (
-        <div className="banner banner--warn">
-          The NSE holiday calendar does not cover this year, so no new entries are taken.
-        </div>
+        <div className="banner banner--warn">The NSE holiday calendar does not cover this year, so no new entries are taken.</div>
       )}
 
       <section className="synth-controls" aria-label="Quick controls">
@@ -463,27 +488,26 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
         <label className="synth-control">
           <span className="synth-control-k">Broker</span>
           <select
-            className="cfg-select"
-            value={brokerMode}
+            className="synth-select"
+            value={brokerSetting}
             disabled={busy || !settings}
             onChange={(e) => quick("broker", e.target.value)}
           >
-            {["follow_active", "zerodha", "dhan"].map((b) => (
-              <option key={b} value={b}>
-                {BROKER_MODE_LABEL[b]}
-                {b !== "follow_active" && status?.brokers?.[b as "zerodha" | "dhan"]
-                  ? status.brokers[b as "zerodha" | "dhan"]!.connected
-                    ? " ✓"
-                    : " (not connected)"
-                  : ""}
-              </option>
-            ))}
+            {(["zerodha", "dhan"] as const).map((b) => {
+              const s = brokers.find((x) => x.broker === b);
+              return (
+                <option key={b} value={b}>
+                  {BROKER_LABEL[b]}
+                  {s ? (s.connected ? " ✓" : " (not connected)") : ""}
+                </option>
+              );
+            })}
           </select>
         </label>
         <label className="synth-control">
           <span className="synth-control-k">Lots</span>
           <select
-            className="cfg-select"
+            className="synth-select"
             value={lots}
             disabled={busy || !settings}
             onChange={(e) => quick("lots_per_trade", Number(e.target.value))}
@@ -501,7 +525,8 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
             type="button"
             role="switch"
             aria-checked={autoEntry}
-            className={`cfg-toggle${autoEntry ? " is-on" : ""}`}
+            aria-label="Automatic paper entries"
+            className={`synth-toggle${autoEntry ? " is-on" : ""}`}
             disabled={busy || !settings}
             onClick={() => quick("auto_entry", !autoEntry)}
           />
@@ -512,7 +537,8 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
             type="button"
             role="switch"
             aria-checked={autoExit}
-            className={`cfg-toggle${autoExit ? " is-on" : ""}`}
+            aria-label="Automatic rule exits"
+            className={`synth-toggle${autoExit ? " is-on" : ""}`}
             disabled={busy || !settings}
             onClick={() => quick("auto_exit", !autoExit)}
           />
@@ -520,8 +546,8 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
         <span className="synth-controls-note">Every change is saved on the server. More in Settings.</span>
       </section>
 
-      <section className="box-strip">
-        <Stat k="Broker" v={status ? `${status.broker || "-"}${status.broker_mode === "follow_active" ? " (follows Box)" : ""}` : "-"} />
+      <section className="synth-strip">
+        <Stat k="Broker" v={status ? BROKER_LABEL[status.broker] ?? "-" : "-"} />
         <Stat
           k="Underlyings"
           v={status ? `${status.monitored_underlyings} / ${status.paired_underlyings}` : "-"}
@@ -532,41 +558,32 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
         <Stat k="Eligible" v={status ? String(status.eligible_count) : "-"} />
         <Stat k="Net gate" v={fmtMoney(Number(byKey.get("min_expected_net_profit")?.value ?? NaN))} />
         <Stat k="Safety" v={fmtMoney(Number(byKey.get("safety_buffer")?.value ?? NaN))} />
-        <Stat
-          k="Carry"
-          v={byKey.get("include_carry")?.value === true ? `${String(byKey.get("rf_pct")?.value ?? 0)}%` : "off"}
-        />
+        <Stat k="Carry" v={byKey.get("include_carry")?.value === true ? `${String(byKey.get("rf_pct")?.value ?? 0)}%` : "off"} />
       </section>
 
       <SynthDayPnlStrip dayPnl={status?.day_pnl} />
 
-      <nav className="box-views" role="tablist" aria-label="Synthetic view">
-        {(
-          [
-            ["opportunities", "Opportunities", status?.opportunity_count ?? opps.length, status?.eligible_count ?? 0],
-            ["open", "Open trades", open.length, exitEligible],
-            ["history", "Closed trades", history.length, 0],
-            ["settings", "Settings", settings?.settings.length ?? 0, 0],
-          ] as const
-        ).map(([v, text, count, badge]) => (
+      <nav className="synth-tabs" role="tablist" aria-label="Synthetic view">
+        {tabs.map(([v, text, count, badge]) => (
           <button
             key={v}
             type="button"
             role="tab"
             aria-selected={view === v}
-            className="box-view-tab"
+            className="synth-tab"
             onClick={() => {
               setView(v);
               if (v === "history") void loadHistory("today").then(() => loadHistory("all"));
+              if (v === "brokers") void loadBrokers();
             }}
           >
-            <span className="box-view-tab-label">{text}</span>
-            <span className="pill-count">{count}</span>
+            <span>{text}</span>
+            <span className="synth-tab-count">{count}</span>
             {badge > 0 && <span className="synth-badge">{badge}</span>}
           </button>
         ))}
         {view === "history" && history.length > 0 && (
-          <span className="box-views-total">
+          <span className="synth-tabs-total">
             <span className={pnlClass(closedNet)}>Net {fmtMoney(closedNet)}</span>
           </span>
         )}
@@ -597,6 +614,15 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
           }}
         />
       )}
+      {view === "brokers" && (
+        <SynthBrokerPanel
+          brokers={brokers}
+          activeBroker={status?.broker ?? ""}
+          busy={busy}
+          onChanged={onBrokersChanged}
+          onUse={(b) => quick("broker", b)}
+        />
+      )}
       {view === "settings" && (
         <SynthSettingsPanel settings={settings} busy={busy} onRequestChange={requestChange} onReload={() => void loadSettings()} />
       )}
@@ -604,11 +630,10 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       {pendingChange && (
         <Modal title="Confirm a risk setting" onClose={() => setPendingChange(null)}>
           <p>
-            <strong>{pendingChange.setting.label}</strong>:{" "}
-            {formatSettingValue(pendingChange.setting, pendingChange.setting.value)} →{" "}
+            <strong>{pendingChange.setting.label}</strong>: {formatSettingValue(pendingChange.setting, pendingChange.setting.value)} →{" "}
             <strong>{formatSettingValue(pendingChange.setting, pendingChange.value)}</strong>
           </p>
-          <p className="box-dim">{pendingChange.setting.help}</p>
+          <p className="synth-dim">{pendingChange.setting.help}</p>
           <div className="synth-modal-actions">
             <Button variant="quiet" onClick={() => setPendingChange(null)}>
               Cancel
@@ -631,8 +656,8 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       {confirmCloseAll && (
         <Modal title="Close every open paper position?" onClose={() => setConfirmCloseAll(false)}>
           <p>
-            Each position is closed at the current executable touch. A position whose legs do not show the full quantity
-            at the touch is held and reported, never filled at an invented price.
+            Each position is closed at the current executable touch. A position whose legs do not show the full quantity at
+            the touch is held and reported, never filled at an invented price.
           </p>
           <div className="synth-modal-actions">
             <Button variant="quiet" onClick={() => setConfirmCloseAll(false)}>
@@ -653,18 +678,12 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
           dismissible={!deleting}
         >
           <p>
-            It leaves every list, P&amp;L and margin figure
-            {deleteTarget.status === "open" ? " and stops being monitored" : ""}. It is kept on the server as an audit
-            record.
+            It leaves every list, P&amp;L and margin figure{deleteTarget.status === "open" ? " and stops being monitored" : ""}.
+            It is kept on the server as an audit record.
           </p>
           <label className="synth-field">
             <span>Reason (optional)</span>
-            <input
-              className="cfg-input"
-              value={deleteReason}
-              maxLength={500}
-              onChange={(e) => setDeleteReason(e.target.value)}
-            />
+            <input className="synth-input" value={deleteReason} maxLength={500} onChange={(e) => setDeleteReason(e.target.value)} />
           </label>
           {deleteError && <div className="banner banner--error">{deleteError}</div>}
           <div className="synth-modal-actions">

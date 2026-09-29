@@ -99,9 +99,9 @@ test("navigating to the URL already displayed is a no-op", () => {
   assert.equal(isSameUrl("/box", "/"), false);
 });
 
-test('"/synth" is the synthetic workspace and IS protected; lookalikes are not', () => {
+test('"/synth" is the synthetic workspace, gated by its OWN service (not the site guard); lookalikes are unknown', () => {
   assert.equal(resolveRoute("/synth"), "synth");
-  assert.equal(isProtectedPath("/synth"), true);
+  assert.equal(isProtectedPath("/synth"), false, "gts-synth has its own passcode gate");
   assert.equal(resolveRoute("/synth/"), "synth", "a trailing slash does not change the route");
   for (const path of ["/synth2", "/Synth", "/synth/x", "/api/synth", "/synthetic"]) {
     assert.equal(resolveRoute(path), "unknown", `${path} must not resolve`);

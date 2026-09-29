@@ -62,7 +62,7 @@ export function label(map: Record<string, string>, code: string | null | undefin
 /** CSS class for a signed money figure. */
 export function pnlClass(v: number | null | undefined): string {
   if (v === null || v === undefined || v === 0 || Number.isNaN(v)) return "";
-  return v > 0 ? "is-pos" : "is-neg";
+  return v > 0 ? "synth-pos" : "synth-neg";
 }
 
 export function ageText(ms: number | null | undefined): string {
@@ -299,8 +299,63 @@ export function formatSettingValue(s: SynthSetting, v: SynthSettingValue): strin
   return s.unit ? `${v} ${s.unit}` : String(v);
 }
 
-export const BROKER_MODE_LABEL: Record<string, string> = {
-  follow_active: "Follow Box's broker",
+export const BROKER_LABEL: Record<string, string> = {
   zerodha: "Zerodha",
   dhan: "Dhan",
 };
+
+const BROKER_REASON: Record<string, string> = {
+  not_logged_in: "No session yet: log in or paste a token.",
+  expired_trading_day: "The Zerodha token was from an earlier trading day: log in again today.",
+  expired: "The token has expired: log in again.",
+  broker_rejected: "The broker refused the token: log in again.",
+  undecryptable: "The stored token cannot be decrypted with the server's key: log in again.",
+  no_encryption_key: "The server has no token-encryption key configured.",
+  storage_unavailable: "Broker sessions cannot be read right now.",
+};
+
+export function brokerReasonText(code: string): string {
+  return BROKER_REASON[code] ?? code.replace(/_/g, " ");
+}
+
+const LOGIN_REASON: Record<string, string> = {
+  cancelled: "the login was cancelled at the broker",
+  invalid_state: "the login link had expired or was not started from this page",
+  no_pending_login: "no login was started from this page in the last 10 minutes",
+  exchange_failed: "the broker did not issue a token",
+  storage_failed: "the token could not be stored",
+};
+
+export interface BrokerLoginResult {
+  broker: string;
+  ok: boolean;
+  message: string;
+}
+
+/**
+ * The result a broker login callback redirected back with (?broker_login=…&status=…&reason=…),
+ * and the search string with those parameters removed (so a reload cannot re-announce it).
+ */
+export function parseBrokerLoginResult(search: string): { result: BrokerLoginResult | null; cleaned: string } {
+  const q = new URLSearchParams(search);
+  const broker = q.get("broker_login");
+  if (!broker) return { result: null, cleaned: search };
+  const status = q.get("status");
+  const reason = q.get("reason") ?? "";
+  q.delete("broker_login");
+  q.delete("status");
+  q.delete("reason");
+  const rest = q.toString();
+  const label = BROKER_LABEL[broker] ?? broker;
+  const ok = status === "connected";
+  return {
+    result: {
+      broker,
+      ok,
+      message: ok
+        ? `${label} connected.`
+        : `${label} login failed: ${LOGIN_REASON[reason] ?? (reason.replace(/_/g, " ") || "unknown reason")}.`,
+    },
+    cleaned: rest ? `?${rest}` : "",
+  };
+}
