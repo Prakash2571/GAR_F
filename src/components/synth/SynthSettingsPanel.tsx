@@ -11,8 +11,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import Button from "../ui/Button.tsx";
 import type { SynthSetting, SynthSettingValue, SynthSettings } from "../../api/synth.ts";
 import {
-  BROKER_LABEL,
   GROUP_LABEL,
+  OPTION_LABEL,
   draftOf,
   formatSettingValue,
   groupSettings,
@@ -73,7 +73,7 @@ function SettingRow({
       >
         {(s.options ?? []).map((o) => (
           <option key={o} value={o}>
-            {BROKER_LABEL[o] ?? o}
+            {OPTION_LABEL[o] ?? o}
           </option>
         ))}
       </select>

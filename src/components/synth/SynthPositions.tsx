@@ -1,6 +1,8 @@
 /**
- * Paper positions: the day P&L strip, open cards with the backend's exit arithmetic, and the
- * closed-trade history with every fill checked against the book it was priced on.
+ * Positions (every execution mode): the day P&L strip, open cards with the backend's exit
+ * arithmetic, and the closed-trade history. paper_touch fills are checked against the book
+ * they were priced on; every other mode shows each order it sent (entry, unwind, exits),
+ * with what filled, at what price and when. Incomplete and quarantined positions say so.
  */
 
 import { Fragment, useState } from "react";
@@ -9,6 +11,7 @@ import { fmt, fmtMoney, formatExpiry } from "../../format.ts";
 import type { SynthDayPnl, SynthOpenPosition, SynthTrade, SynthTradeLeg } from "../../api/synth.ts";
 import {
   EXIT_REASON_LABEL,
+  MODE_LABEL,
   REJECT_LABEL,
   ageText,
   fillOf,
@@ -18,9 +21,43 @@ import {
   istDay,
   label,
   legName,
+  legQty,
   offsetLabel,
+  outstandingQty,
   pnlClass,
+  positionState,
+  residualText,
+  runSummary,
 } from "../../lib/synthView.ts";
+import { SynthRunTable } from "./SynthExecution.tsx";
+
+function isTouch(t: SynthTrade): boolean {
+  return (t.execution_mode ?? "paper_touch") === "paper_touch";
+}
+
+function ModeTag({ t }: { t: SynthTrade }) {
+  const mode = t.execution_mode ?? "paper_touch";
+  return <span className={`synth-tag${mode === "live" ? " synth-tag--live" : ""}`}>{MODE_LABEL[mode] ?? mode}</span>;
+}
+
+/** Every order an execution-mode trade sent: entry, unwind, and each exit / flatten run. */
+function RunsDetails({ t, open = false }: { t: SynthTrade; open?: boolean }) {
+  const exits = t.exit_runs ?? [];
+  return (
+    <details className="synth-fills" open={open}>
+      <summary>
+        Orders · entry {runSummary(t.entry_run)}
+        {t.unwind_run ? ` · unwind ${runSummary(t.unwind_run)}` : ""}
+        {exits.length > 0 ? ` · ${exits.length} closing run(s)` : ""}
+      </summary>
+      {t.entry_run ? <SynthRunTable run={t.entry_run} title="Entry" /> : <p className="synth-dim">No entry run recorded.</p>}
+      {t.unwind_run ? <SynthRunTable run={t.unwind_run} title="Unwind" /> : null}
+      {exits.map((r, i) => (
+        <SynthRunTable key={`${r.sent_at}:${i}`} run={r} title={r.phase === "residual" ? `Flatten ${i + 1}` : `Exit ${i + 1}`} />
+      ))}
+    </details>
+  );
+}
 
 function money(v: number | null): string {
   return fmtMoney(v);
@@ -171,7 +208,7 @@ export function SynthOpenCards({
   if (positions.length === 0) {
     return (
       <section className="synth-section">
-        <p className="synth-empty">No open paper positions.</p>
+        <p className="synth-empty">No open positions.</p>
       </section>
     );
   }
@@ -186,14 +223,22 @@ export function SynthOpenCards({
         {positions.map((p) => {
           const exitByRole = new Map(p.exit_legs.map((l) => [l.role, l]));
           const closing = closingId === p.id || p.closing;
+          const state = positionState(p);
+          const note = residualText(p);
+          const liveOpen = p.execution_mode === "live";
+          const touch = isTouch(p);
           return (
-            <div key={p.id} className={`synth-card${p.exit_eligible ? " synth-card--exiting" : ""}`}>
+            <div
+              key={p.id}
+              className={`synth-card${p.exit_eligible ? " synth-card--exiting" : ""}${state === "residual" || state === "quarantined" ? " synth-card--alert" : ""}`}
+            >
               <div className="synth-card-head">
                 <div>
                   <span className="synth-sym">{p.underlying}</span>
                   {p.is_index && <span className="synth-tag">INDEX</span>}
                   <span className={`synth-dir synth-dir--${p.direction.toLowerCase()}`}>{p.direction}</span>
                   <span className="synth-tag">{p.broker}</span>
+                  <ModeTag t={p} />
                   <span className="synth-card-strikes">
                     K {p.strike} <span className="synth-dim">{offsetLabel(p.atm_offset)}</span>
                   </span>
@@ -203,28 +248,56 @@ export function SynthOpenCards({
                   </span>
                 </div>
                 <div className="synth-card-actions">
+                  {state === "quarantined" && <span className="synth-tag synth-tag--warn">QUARANTINED</span>}
+                  {state === "residual" && <span className="synth-tag synth-tag--warn">INCOMPLETE</span>}
+                  {p.flatten_halted && <span className="synth-tag synth-tag--warn">FLATTEN HALTED</span>}
                   {p.exit_eligible && <span className="synth-tag synth-tag--exit">EXIT ELIGIBLE</span>}
                   {p.expiry_safety && <span className="synth-tag synth-tag--warn">EXPIRY SAFETY</span>}
                   {!p.linked && <span className="synth-tag synth-tag--warn">NOT LINKED</span>}
-                  <Button size="sm" disabled={closing || busy} onClick={() => onClose(p.id)} title="Close now at the executable touch">
-                    {closing ? "Closing…" : "Close now"}
+                  <Button
+                    size="sm"
+                    disabled={closing || busy || state === "quarantined"}
+                    onClick={() => onClose(p.id)}
+                    title={
+                      state === "quarantined"
+                        ? "Reconcile it against the broker first (Execution tab)"
+                        : touch
+                          ? "Close now at the executable touch"
+                          : `Close now through ${MODE_LABEL[p.execution_mode] ?? p.execution_mode}: the orders are worked and the result streams in`
+                    }
+                  >
+                    {closing ? "Closing…" : state === "residual" ? "Flatten now" : "Close now"}
                   </Button>
-                  <Button size="sm" variant="danger" disabled={closing || busy} onClick={() => onDelete(p)}>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    disabled={closing || busy || liveOpen}
+                    title={liveOpen ? "A live position is real exposure at the broker: close or flatten it instead" : undefined}
+                    onClick={() => onDelete(p)}
+                  >
                     Delete
                   </Button>
                 </div>
               </div>
 
+              {note && <p className="synth-held synth-held--alert">{note}</p>}
+
               <div className="synth-legs-list">
                 {p.legs.map((leg) => {
                   const ex = exitByRole.get(leg.role);
+                  const held = outstandingQty(p, leg);
                   return (
                     <div key={leg.role} className="synth-leg-row">
                       <span className={`synth-side synth-side--${leg.side === "BUY" ? "buy" : "sell"}`}>{leg.side}</span>
                       <span className="synth-leg-name" title={leg.tradingsymbol}>
                         {legName(leg)}
                       </span>
-                      <span className="synth-leg-cell">entry {fmt(leg.entry_price)}</span>
+                      {!touch && (
+                        <span className={`synth-leg-cell${held !== p.quantity ? " synth-check--bad" : ""}`} title="Held now / filled at entry / closed">
+                          held {held} · filled {legQty(p, leg)} · closed {leg.exit_qty ?? 0}
+                        </span>
+                      )}
+                      <span className="synth-leg-cell">entry {legQty(p, leg) > 0 ? fmt(leg.entry_price) : "-"}</span>
                       <span className="synth-leg-cell">LTP {ex?.ltp ? fmt(ex.ltp) : "-"}</span>
                       <span className="synth-leg-cell">
                         close {ex?.side ?? "-"} {ex?.price ? fmt(ex.price) : "-"}
@@ -236,7 +309,7 @@ export function SynthOpenCards({
                 })}
               </div>
 
-              <FillsDetails legs={p.legs} phase="entry" quantity={p.quantity} />
+              {touch ? <FillsDetails legs={p.legs} phase="entry" quantity={p.quantity} /> : <RunsDetails t={p} />}
 
               <div className="synth-card-grid">
                 <Metric k="Margin (basket)" v={marginText(p)} cls="synth-metric--strong" title={p.margin_error ?? undefined} />
@@ -251,8 +324,11 @@ export function SynthOpenCards({
                 <Metric k="Captured" v={p.captured_pct === null ? "-" : `${Math.round(p.captured_pct * 100)}%`} />
                 <Metric k="Converged at ≤" v={money(p.convergence_threshold)} />
                 <Metric k="Profit capture at" v={money(p.profit_capture_target)} />
+                {p.detected_net_profit !== null && p.detected_net_profit !== undefined && !touch && (
+                  <Metric k="Expected net at detection" v={money(p.detected_net_profit)} title="Before execution; 'Expected net (entry)' is re-priced at the actual fills" />
+                )}
               </div>
-              {!p.exit_eligible && <p className="synth-dim synth-held">{heldText(p, money)}</p>}
+              {!note && !p.exit_eligible && <p className="synth-dim synth-held">{heldText(p, money)}</p>}
             </div>
           );
         })}
@@ -284,7 +360,7 @@ export function SynthClosedHistory({
         </p>
       )}
       {trades.length === 0 ? (
-        <p className="synth-empty">{error ? "The closed-trade log could not be loaded." : "No closed paper trades yet."}</p>
+        <p className="synth-empty">{error ? "The closed-trade log could not be loaded." : "No closed trades yet."}</p>
       ) : (
         days.map((d) => (
           <details key={d.day} className="synth-day" open={d.day === today || days.length === 1}>
@@ -300,6 +376,7 @@ export function SynthClosedHistory({
                     <th>Direction</th>
                     <th className="num">Strike</th>
                     <th>Broker</th>
+                    <th>Mode</th>
                     <th>Exit</th>
                     <th className="num">Margin</th>
                     <th className="num">Locked</th>
@@ -312,6 +389,7 @@ export function SynthClosedHistory({
                 </thead>
                 <tbody>
                   {d.trades.map((t) => {
+                    const touch = isTouch(t);
                     const entryOk = fillVerdict(t.legs, "entry", t.quantity);
                     const exitOk = t.exit_reason === "EXPIRED" ? true : fillVerdict(t.legs, "exit", t.quantity);
                     const ok = entryOk === false || exitOk === false ? false : entryOk === null || exitOk === null ? null : true;
@@ -327,6 +405,9 @@ export function SynthClosedHistory({
                           </td>
                           <td className="num">{t.strike}</td>
                           <td className="synth-dim">{t.broker}</td>
+                          <td>
+                            <ModeTag t={t} />
+                          </td>
                           <td className="synth-dim">{label(EXIT_REASON_LABEL, t.exit_reason)}</td>
                           <td className="num synth-dim">{marginText(t)}</td>
                           <td className="num">{fmtMoney(t.entry_edge)}</td>
@@ -335,9 +416,7 @@ export function SynthClosedHistory({
                           <td className={`num ${pnlClass(t.net_pnl)}`}>
                             <strong>{fmtMoney(t.net_pnl)}</strong>
                           </td>
-                          <td>
-                            <BestCheck ok={ok} />
-                          </td>
+                          <td>{touch ? <BestCheck ok={ok} /> : <span className="synth-dim">{runSummary(t.entry_run)}</span>}</td>
                           <td>
                             <Button
                               size="sm"
@@ -353,12 +432,27 @@ export function SynthClosedHistory({
                         </tr>
                         {isOpen && (
                           <tr className="synth-detail">
-                            <td colSpan={12}>
-                              <FillsDetails legs={t.legs} phase="entry" quantity={t.quantity} open />
-                              {t.exit_reason === "EXPIRED" ? (
-                                <p className="synth-dim">{t.exit_note}</p>
+                            <td colSpan={13}>
+                              {touch ? (
+                                <>
+                                  <FillsDetails legs={t.legs} phase="entry" quantity={t.quantity} open />
+                                  {t.exit_reason === "EXPIRED" ? (
+                                    <p className="synth-dim">{t.exit_note}</p>
+                                  ) : (
+                                    <FillsDetails legs={t.legs} phase="exit" quantity={t.quantity} open />
+                                  )}
+                                </>
                               ) : (
-                                <FillsDetails legs={t.legs} phase="exit" quantity={t.quantity} open />
+                                <>
+                                  {t.exit_note && <p className="synth-dim">{t.exit_note}</p>}
+                                  {t.legging_pnl !== null && t.legging_pnl !== undefined && (
+                                    <p className="synth-dim">
+                                      Legging P&amp;L (reversed legs, before charges):{" "}
+                                      <span className={pnlClass(t.legging_pnl)}>{fmtMoney(t.legging_pnl)}</span>
+                                    </p>
+                                  )}
+                                  <RunsDetails t={t} open />
+                                </>
                               )}
                             </td>
                           </tr>

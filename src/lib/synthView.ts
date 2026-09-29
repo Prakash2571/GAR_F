@@ -9,16 +9,32 @@
 import type {
   SynthDepth,
   SynthDirection,
+  SynthExecutionMode,
+  SynthLegOutcome,
+  SynthLiveView,
   SynthOpenPosition,
   SynthOpportunity,
+  SynthRun,
   SynthSetting,
   SynthSettingValue,
   SynthSide,
+  SynthStatus,
   SynthTrade,
   SynthTradeLeg,
 } from "../api/synth.ts";
 
 export const ENTRY_BLOCK_LABEL: Record<string, string> = {
+  live_not_permitted: "live not permitted by the server",
+  live_mode: "not in live mode",
+  live_disarmed: "live disarmed",
+  live_breaker: "circuit breaker open",
+  live_unresolved: "unresolved live orders",
+  live_session: "broker session not usable",
+  live_busy: "a live entry is in flight",
+  live_quarantine: "a live position is quarantined",
+  live_max_open: "live open limit reached",
+  live_lots: "lots above the live limit",
+  live_daily_loss: "daily live loss limit reached",
   paper_off: "auto-entry off",
   no_db: "storage not ready",
   feed_stale: "feed stale",
@@ -52,7 +68,171 @@ export const EXIT_REASON_LABEL: Record<string, string> = {
   EXPIRY_SAFETY: "Expiry safety",
   EXPIRED: "Settled at expiry",
   MANUAL: "Manual close",
+  ENTRY_UNWOUND: "Partial entry unwound",
+  ABORT_AFTER_FILL: "Aborted after fill",
+  RESIDUAL_FLATTENED: "Residual flattened",
+  RECONCILED_FLAT: "Reconciled flat",
+  FLAT: "Flat",
 };
+
+/* ------------------------------ execution modes ----------------------------- */
+
+export const MODE_LABEL: Record<SynthExecutionMode, string> = {
+  paper_touch: "Paper · touch",
+  paper_latency: "Paper · latency",
+  paper_legging: "Paper · legging",
+  paper_legging_live_parity: "Paper · live parity",
+  live: "Live",
+};
+
+export const MODE_HELP: Record<SynthExecutionMode, string> = {
+  paper_touch: "Every leg fills instantly at the touch seen at detection: the strategy's raw edge, no execution effects.",
+  paper_latency:
+    "One atomic fill at the first books each leg publishes after decision + latency, re-priced there; all legs or none.",
+  paper_legging:
+    "Three independent marketable-limit orders: latency, depth walked with a queue haircut, timeouts, partial fills, unwinds.",
+  paper_legging_live_parity:
+    "Legging plus live realism: cancel-vs-fill race, order pacing, measured live latency, shared liquidity.",
+  live: "Real LIMIT orders at the broker, hedge-first and one leg at a time. Needs the server's consent and an ARM.",
+};
+
+export function isPaperMode(m: SynthExecutionMode | string | null | undefined): boolean {
+  return m !== "live";
+}
+
+export interface ModeBadge {
+  text: string;
+  tone: "info" | "warning" | "negative";
+  title: string;
+}
+
+/** The header badge, derived only from what the server reports. */
+export function modeBadge(s: Pick<SynthStatus, "execution_mode" | "live_orders" | "live_armed" | "live_breaker"> | null): ModeBadge {
+  if (!s) return { text: "PAPER", tone: "info", title: "Loading the execution mode…" };
+  if (s.execution_mode === "live") {
+    if (s.live_breaker) {
+      return { text: "LIVE · BREAKER OPEN", tone: "negative", title: `No new live entries: ${s.live_breaker}. Reconcile in the Execution tab.` };
+    }
+    if (s.live_orders) {
+      return { text: "LIVE · ARMED", tone: "negative", title: "New entries send REAL LIMIT orders to the broker." };
+    }
+    return { text: "LIVE · DISARMED", tone: "warning", title: "Live mode, not armed: no new entry order is sent." };
+  }
+  const mode = (s.execution_mode ?? "paper_touch") as SynthExecutionMode;
+  return { text: `PAPER · ${(MODE_LABEL[mode] ?? mode).replace(/^Paper · /, "").toUpperCase()}`, tone: "info", title: MODE_HELP[mode] ?? "" };
+}
+
+export const OUTCOME_LABEL: Record<string, string> = {
+  OPENED: "Opened",
+  REFUSED_BEFORE_SUBMIT: "Refused · nothing sent",
+  NO_FILL: "No fill",
+  PARTIAL_ENTRY_UNWOUND: "Partial → unwound",
+  PARTIAL_ENTRY_RESIDUAL: "Partial → residual",
+  FILLED_THEN_ECONOMICS_ABORT: "Filled → aborted",
+  QUARANTINED_UNKNOWN: "Quarantined · unproven",
+};
+
+export function outcomeTone(outcome: string): "positive" | "warning" | "negative" | "neutral" {
+  switch (outcome) {
+    case "OPENED":
+      return "positive";
+    case "PARTIAL_ENTRY_RESIDUAL":
+    case "QUARANTINED_UNKNOWN":
+      return "negative";
+    case "PARTIAL_ENTRY_UNWOUND":
+    case "FILLED_THEN_ECONOMICS_ABORT":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+export const LEG_STATUS_LABEL: Record<string, string> = {
+  FILLED: "filled",
+  PARTIAL: "partial",
+  TIMED_OUT: "timed out",
+  CANCELLED: "cancelled",
+  REJECTED: "rejected",
+  NOT_SENT: "not sent",
+  FAILED: "failed",
+  UNKNOWN: "UNKNOWN",
+};
+
+/** A leg's filled entry quantity (legacy paper_touch rows carry none: the trade's quantity). */
+export function legQty(t: Pick<SynthTrade, "execution_mode" | "quantity">, l: Pick<SynthTradeLeg, "qty">): number {
+  if ((t.execution_mode ?? "paper_touch") === "paper_touch" && !l.qty) return t.quantity;
+  return l.qty ?? 0;
+}
+
+/** What a leg of an OPEN position still holds. */
+export function outstandingQty(
+  t: Pick<SynthTrade, "execution_mode" | "quantity" | "status">,
+  l: Pick<SynthTradeLeg, "qty" | "exit_qty">,
+): number {
+  if (t.status !== "open") return 0;
+  if ((t.execution_mode ?? "paper_touch") === "paper_touch") return t.quantity;
+  return Math.max(0, (l.qty ?? 0) - (l.exit_qty ?? 0));
+}
+
+export type PositionState = "quarantined" | "pending" | "residual" | "closing" | "open";
+
+export function positionState(p: Pick<SynthOpenPosition, "quarantined" | "entry_pending" | "residual" | "closing">): PositionState {
+  if (p.quarantined) return "quarantined";
+  if (p.entry_pending) return "pending";
+  if (p.residual) return "residual";
+  if (p.closing) return "closing";
+  return "open";
+}
+
+/** One line for a run: how many legs filled, and why it stopped. */
+export function runSummary(run: SynthRun | null | undefined): string {
+  if (!run) return "-";
+  const filled = run.legs.filter((l) => l.status === "FILLED").length;
+  let s = `${filled}/${run.legs.length} legs filled`;
+  if (run.refused) s += ` · refused: ${run.refused}`;
+  if (run.aborted) s += ` · stopped: ${run.aborted}`;
+  if (run.uncertain) s += " · an outcome is UNPROVEN";
+  return s;
+}
+
+/** Milliseconds after detection, "-" when the step did not happen. */
+export function since(detectedAt: number, at: number | null | undefined): string {
+  if (at === null || at === undefined || !detectedAt) return "-";
+  return `+${Math.max(0, at - detectedAt)}ms`;
+}
+
+/** The outcome's steps relative to detection: sent → acknowledged → first fill → resolved. */
+export function legTimeline(l: SynthLegOutcome, run: Pick<SynthRun, "detected_at">): string {
+  const d = run.detected_at;
+  const parts = [`sent ${since(d, l.submit_at)}`, `ack ${since(d, l.ack_at)}`];
+  if (l.first_fill_at) parts.push(`fill ${since(d, l.first_fill_at)}`);
+  if (l.cancel_requested_at) parts.push(`cancel ${since(d, l.cancel_requested_at)}`);
+  parts.push(`done ${since(d, l.resolved_at)}`);
+  return parts.join(" → ");
+}
+
+/** What the position is waiting for when it is not a complete synthetic. */
+export function residualText(
+  p: Pick<SynthOpenPosition, "quarantined" | "quarantine_reason" | "residual" | "residual_reason" | "flatten_halted" | "flatten_attempts" | "flatten_rejects" | "entry_pending" | "execution_mode">,
+): string | null {
+  if (p.quarantined) {
+    return `QUARANTINED: ${p.quarantine_reason ?? "an order outcome is not proven at the broker"}. Nothing automatic happens to it until it is reconciled against the broker (Execution tab).`;
+  }
+  if (p.entry_pending) return "The live entry is being worked: nothing is held until the broker reports fills.";
+  if (!p.residual) return null;
+  const why = p.residual_reason ? ` (${p.residual_reason})` : "";
+  if (p.flatten_halted) {
+    return `INCOMPLETE position${why}. Flattening stopped after ${p.flatten_rejects} broker rejection(s): check the broker, then flatten it here.`;
+  }
+  return `INCOMPLETE position${why}. Its outstanding legs are flattened risk-reducing first on every flatten interval (${p.flatten_attempts} attempt(s) so far).`;
+}
+
+/** Whether the standing gates allow arming (the server re-checks every one). */
+export function armGates(v: SynthLiveView): { ok: boolean; missing: string[] } {
+  const needed = new Set(["consent", "mode", "session", "breaker", "intents", "quarantine"]);
+  const missing = v.gates.filter((g) => needed.has(g.key) && !g.ok).map((g) => g.label);
+  return { ok: missing.length === 0, missing };
+}
 
 export function label(map: Record<string, string>, code: string | null | undefined): string {
   if (!code) return "";
@@ -210,6 +390,12 @@ export function mergeClosed(prev: SynthTrade[], incoming: SynthTrade[], deleted:
     .sort((a, b) => (b.closed_at ?? "").localeCompare(a.closed_at ?? ""));
 }
 
+/** HH:MM:SS in IST of an epoch-ms instant ("-" when unknown). */
+export function istTime(ms: number | null | undefined): string {
+  if (!ms || !Number.isFinite(ms)) return "-";
+  return new Date(ms + 5.5 * 3600_000).toISOString().slice(11, 19);
+}
+
 /** IST calendar day (YYYY-MM-DD) of an ISO time. */
 export function istDay(iso: string | null): string {
   if (!iso) return "unknown";
@@ -241,6 +427,7 @@ export function groupByDay(trades: SynthTrade[]): { day: string; trades: SynthTr
 
 export const GROUP_LABEL: Record<string, string> = {
   broker: "Broker",
+  execution: "Execution",
   scanner: "Scanner",
   entry: "Entry",
   exit: "Exit",
@@ -295,6 +482,7 @@ export function sameValue(a: SynthSettingValue, b: SynthSettingValue): boolean {
 export function formatSettingValue(s: SynthSetting, v: SynthSettingValue): string {
   if (Array.isArray(v)) return v.length === 0 ? "(empty)" : v.join(", ");
   if (typeof v === "boolean") return v ? "on" : "off";
+  if (s.kind === "enum" && typeof v === "string") return OPTION_LABEL[v] ?? v;
   if (s.unit === "₹" && typeof v === "number") return `₹${v.toLocaleString("en-IN")}`;
   return s.unit ? `${v} ${s.unit}` : String(v);
 }
@@ -302,6 +490,14 @@ export function formatSettingValue(s: SynthSetting, v: SynthSettingValue): strin
 export const BROKER_LABEL: Record<string, string> = {
   zerodha: "Zerodha",
   dhan: "Dhan",
+};
+
+/** Display names of enum setting options. */
+export const OPTION_LABEL: Record<string, string> = {
+  ...BROKER_LABEL,
+  ...MODE_LABEL,
+  hedge_sequential: "Hedge-first, one leg at a time",
+  parallel: "All legs at once",
 };
 
 const BROKER_REASON: Record<string, string> = {

@@ -1,14 +1,15 @@
 /**
- * The Synthetic workspace: futures vs synthetic futures (K + CE − PE), paper trading, on
- * Zerodha or Dhan, served by the self-contained gts-synth service.
+ * The Synthetic workspace: futures vs synthetic futures (K + CE − PE) on Zerodha or Dhan,
+ * served by the self-contained gts-synth service, in five execution modes (four paper, one live).
  *
  * The service is the authority on everything this page shows: broker sessions, eligibility,
- * fills, P&L, what a setting may be. This component renders its snapshot and sends the
- * operator's controls back. Almost every knob is a runtime setting changed here and saved on
- * the server.
+ * fills, P&L, what a setting may be, whether live orders are permitted. This component renders
+ * its snapshot and sends the operator's controls back. Almost every knob is a runtime setting
+ * changed here and saved on the server.
  *
- * Nothing on this page can place a real order: the service has no order-placement code, and the
- * header says PAPER from `status.live_orders === false`, not from an assumption.
+ * The header's mode badge is derived ONLY from the server's status (`execution_mode`,
+ * `live_orders`, `live_armed`, `live_breaker`). Live orders need the server's environment
+ * consent, execution_mode = live AND an explicit ARM from the Execution tab.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -22,21 +23,28 @@ import { SynthStream } from "../../lib/synthStream.ts";
 import { ApiError, describeRequestFailure } from "../../api/http.ts";
 import { fmtMoney } from "../../format.ts";
 import {
+  armSynthLive,
   closeAllSynthTrades,
   closeSynthTrade,
   deleteSynthTrade,
+  disarmSynthLive,
   fetchSynthBrokers,
+  fetchSynthExecution,
   fetchSynthHistory,
   fetchSynthOpen,
   fetchSynthOpportunities,
   fetchSynthSettings,
   patchSynthSettings,
+  reconcileSynthLive,
+  resetSynthBreaker,
   startSynth,
   stopSynth,
   synthAccessStatus,
   synthStreamUrl,
   type SynthBrokerId,
   type SynthBrokerView,
+  type SynthExecutionMode,
+  type SynthExecutionView,
   type SynthOpenPosition,
   type SynthOpportunity,
   type SynthSetting,
@@ -46,13 +54,25 @@ import {
   type SynthStatus,
   type SynthTrade,
 } from "../../api/synth.ts";
-import { BROKER_LABEL, formatSettingValue, mergeClosed, parseBrokerLoginResult, pnlClass } from "../../lib/synthView.ts";
+import {
+  BROKER_LABEL,
+  MODE_LABEL,
+  formatSettingValue,
+  isPaperMode,
+  mergeClosed,
+  modeBadge,
+  parseBrokerLoginResult,
+  pnlClass,
+} from "../../lib/synthView.ts";
 import SynthOpportunities from "./SynthOpportunities.tsx";
 import { SynthClosedHistory, SynthDayPnlStrip, SynthOpenCards } from "./SynthPositions.tsx";
 import SynthSettingsPanel from "./SynthSettingsPanel.tsx";
 import SynthBrokerPanel from "./SynthBrokerPanel.tsx";
+import SynthExecution from "./SynthExecution.tsx";
 
-type View = "opportunities" | "open" | "history" | "brokers" | "settings";
+type View = "opportunities" | "open" | "history" | "execution" | "brokers" | "settings";
+
+const EXECUTION_EVENTS = new Set(["attempt", "entry", "exit", "residual", "quarantine"]);
 
 interface PendingChange {
   setting: SynthSetting;
@@ -89,8 +109,12 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
   const [deleting, setDeleting] = useState(false);
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
   const [confirmCloseAll, setConfirmCloseAll] = useState(false);
+  const [execView, setExecView] = useState<SynthExecutionView | null>(null);
+  const [execError, setExecError] = useState<string | null>(null);
   const pendingSnap = useRef<SynthSnapshot | null>(null);
   const deletedIds = useRef<Set<string>>(new Set());
+  const viewRef = useRef<View>("opportunities");
+  viewRef.current = view;
 
   const byKey = useMemo(() => {
     const m = new Map<string, SynthSetting>();
@@ -111,6 +135,15 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       setBrokers(await fetchSynthBrokers());
     } catch (err) {
       setError(describeRequestFailure(err));
+    }
+  }, []);
+
+  const loadExecution = useCallback(async () => {
+    try {
+      setExecView(await fetchSynthExecution(50));
+      setExecError(null);
+    } catch (err) {
+      setExecError(describeRequestFailure(err));
     }
   }, []);
 
@@ -152,7 +185,16 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
     void loadSettings();
     void loadBrokers();
     void loadHistory("today");
-  }, [loadSettings, loadBrokers, loadHistory]);
+    void loadExecution();
+  }, [loadSettings, loadBrokers, loadHistory, loadExecution]);
+
+  // The Execution tab is refreshed while it is on screen (the header reads the snapshot).
+  useEffect(() => {
+    if (view !== "execution") return;
+    void loadExecution();
+    const t = window.setInterval(() => void loadExecution(), 3000);
+    return () => window.clearInterval(t);
+  }, [view, loadExecution]);
 
   // Another tab changed the settings: reload them so this page never edits a stale version.
   const serverVersion = status?.settings_version;
@@ -171,7 +213,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
     }, 400);
     const stream = new SynthStream({
       url: synthStreamUrl(),
-      events: ["snapshot", "entry", "exit", "trade_deleted", "session_ended"],
+      events: ["snapshot", "entry", "exit", "trade_deleted", "attempt", "residual", "quarantine", "session_ended"],
       onOpen: () => setLive(true),
       onDisconnect: () => setLive(false),
       probeSessionEnded: async () => !(await synthAccessStatus()).authenticated,
@@ -182,6 +224,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
         onLock();
       },
       onEvent: (type, data) => {
+        if (EXECUTION_EVENTS.has(type) && viewRef.current === "execution") void loadExecution();
         try {
           if (type === "snapshot") {
             pendingSnap.current = JSON.parse(data) as SynthSnapshot;
@@ -207,7 +250,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       window.clearInterval(flush);
       stream.stop();
     };
-  }, [onLock]);
+  }, [onLock, loadExecution]);
 
   /* --------------------------------- actions -------------------------------- */
 
@@ -236,8 +279,12 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       },
       (s) =>
         s.running
-          ? "Scanner running. Confirmed ELIGIBLE opportunities are paper-traded when auto-entry is on."
-          : "Scanner stopped. No new entries; open paper positions stay monitored under the exit rules.",
+          ? s.execution_mode === "live"
+            ? s.live_orders
+              ? "Scanner running LIVE and armed: confirmed ELIGIBLE opportunities are entered with real orders when auto-entry is on."
+              : "Scanner running in live mode, not armed: no entry order is sent until you arm it in the Execution tab."
+            : `Scanner running. Confirmed ELIGIBLE opportunities are traded in ${MODE_LABEL[s.execution_mode] ?? s.execution_mode} when auto-entry is on.`
+          : "Scanner stopped and live disarmed. No new entries; open positions stay under their exit rules.",
     );
 
   const submitChange = useCallback(
@@ -283,10 +330,16 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       const r = await closeSynthTrade(id);
       setOpen(r.open);
       setStatus(r.status);
-      setHistory((prev) => mergeClosed(prev, [r.trade], deletedIds.current));
-      setNotice(
-        `Closed at the touch: gross ${fmtMoney(r.trade.gross_pnl)}, charges ${fmtMoney(r.trade.total_charges)}, net ${fmtMoney(r.trade.net_pnl)} after charges.`,
-      );
+      if (r.async) {
+        setNotice(
+          `Closing ${r.trade.underlying} through ${MODE_LABEL[r.trade.execution_mode] ?? r.trade.execution_mode}: the closing orders are being worked, risk-reducing first. The result appears here when they finish.`,
+        );
+      } else {
+        setHistory((prev) => mergeClosed(prev, [r.trade], deletedIds.current));
+        setNotice(
+          `Closed at the touch: gross ${fmtMoney(r.trade.gross_pnl)}, charges ${fmtMoney(r.trade.total_charges)}, net ${fmtMoney(r.trade.net_pnl)} after charges.`,
+        );
+      }
     } catch (err) {
       setError(describeRequestFailure(err));
     } finally {
@@ -306,13 +359,58 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       },
       (r) => {
         const done = r.results.filter((x) => x.closed).length;
-        const held = r.results.filter((x) => !x.closed);
-        return held.length === 0
-          ? `Closed ${done} position(s) at the touch.`
-          : `Closed ${done}; ${held.length} held: ${held.map((f) => `${f.underlying} (${f.error})`).join("; ")}`;
+        const started = r.results.filter((x) => x.started).length;
+        const held = r.results.filter((x) => !x.closed && !x.started);
+        const head = `Closed ${done} at the touch${started > 0 ? `; ${started} being closed through their execution mode` : ""}`;
+        return held.length === 0 ? `${head}.` : `${head}; ${held.length} held: ${held.map((f) => `${f.underlying} (${f.error})`).join("; ")}`;
       },
     );
   }
+
+  /* ------------------------------- live controls ------------------------------ */
+
+  async function liveAction<R extends { execution: SynthExecutionView; status: SynthStatus }>(
+    fn: () => Promise<R>,
+    ok: string | ((r: R) => string),
+  ): Promise<boolean> {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    setExecError(null);
+    try {
+      const r = await fn();
+      setExecView(r.execution);
+      setStatus(r.status);
+      setNotice(typeof ok === "string" ? ok : ok(r));
+      return true;
+    } catch (err) {
+      setExecError(describeRequestFailure(err));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const onArm = (phrase: string) =>
+    liveAction(() => armSynthLive(phrase), "LIVE ARMED: confirmed entries now send real LIMIT orders. Disarm stops new entries at once.");
+  const onDisarm = () =>
+    void liveAction(() => disarmSynthLive(), "Live disarmed: no new entry order is sent. Open live positions stay under their exit rules.");
+  const onResetBreaker = (phrase: string) =>
+    liveAction(() => resetSynthBreaker(phrase), "Circuit breaker reset. Live stays disarmed until you arm it again.");
+  const onReconcile = () =>
+    void liveAction(
+      async () => {
+        const r = await reconcileSynthLive();
+        setOpen(r.open.filter((p) => !deletedIds.current.has(p.id)));
+        return r;
+      },
+      (r) => {
+        const left = r.reconcile.unresolved_intents.length;
+        return left === 0
+          ? `Reconciled ${r.reconcile.examined} order(s) with the broker; nothing is unresolved.`
+          : `Reconciled ${r.reconcile.examined} order(s); ${left} still unproven at the broker.`;
+      },
+    );
 
   async function handleDelete() {
     const t = deleteTarget;
@@ -330,7 +428,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       setNotice(
         r.already_deleted
           ? `That trade on ${t.underlying} had already been deleted.`
-          : `Paper trade on ${t.underlying} deleted; P&L and margin were recalculated.`,
+          : `Trade on ${t.underlying} deleted; P&L and margin were recalculated.`,
       );
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
@@ -376,10 +474,15 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
             ? "Scanning"
             : "Feed stale";
 
+  const mode = (status?.execution_mode ?? byKey.get("execution_mode")?.value ?? "paper_touch") as SynthExecutionMode;
+  const badge = modeBadge(status);
+  const execAlerts = (status?.unresolved_intents ?? 0) + (status?.quarantined_count ?? 0) + (status?.live_breaker ? 1 : 0);
+
   const tabs: [View, string, number, number][] = [
     ["opportunities", "Opportunities", status?.opportunity_count ?? opps.length, status?.eligible_count ?? 0],
-    ["open", "Open trades", open.length, exitEligible],
+    ["open", "Open trades", open.length, exitEligible + (status?.residual_count ?? 0)],
     ["history", "Closed trades", history.length, 0],
+    ["execution", "Execution", execView?.attempts.length ?? 0, execAlerts],
     ["brokers", "Brokers", connectedCount, 0],
     ["settings", "Settings", settings?.settings.length ?? 0, 0],
   ];
@@ -388,14 +491,15 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
     <div className="synth-page">
       <header className="synth-header">
         <div className="synth-header-id">
-          <GTSWordmark variant="product" markSize={20} subtitle={<span className="synth-dim">Synthetic · K + CE − PE · paper</span>} />
+          <GTSWordmark
+            variant="product"
+            markSize={20}
+            subtitle={<span className="synth-dim">Synthetic · K + CE − PE · {MODE_LABEL[mode] ?? mode}</span>}
+          />
         </div>
         <div className="synth-header-state">
-          <StatusBadge
-            tone={status?.live_orders ? "negative" : "info"}
-            title="Fills are simulated at the observed touch. The synthetic service has no order-placement code."
-          >
-            {status?.live_orders ? "LIVE" : "PAPER"}
+          <StatusBadge tone={badge.tone} title={badge.title}>
+            {badge.text}
           </StatusBadge>
           <StatusBadge tone={stateTone} announce>
             {stateText}
@@ -430,6 +534,41 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       {error && <div className="banner banner--error">{error}</div>}
       {notice && !error && <div className="banner banner--info">{notice}</div>}
       {status?.last_error && <div className="banner banner--warn">{status.last_error}</div>}
+      {status?.live_breaker && (
+        <div className="banner banner--error">
+          <strong>Live circuit breaker open:</strong> {status.live_breaker}. No new live entry is sent until every order is
+          reconciled and the breaker reset in the{" "}
+          <button type="button" className="synth-link" onClick={() => setView("execution")}>
+            Execution
+          </button>{" "}
+          tab.
+        </div>
+      )}
+      {status && (status.unresolved_intents > 0 || status.quarantined_count > 0) && (
+        <div className="banner banner--error">
+          <strong>Unproven live orders.</strong> {status.unresolved_intents} order(s) unresolved, {status.quarantined_count} position(s)
+          quarantined. Nothing automatic happens to a quarantined position: reconcile it with the broker in the{" "}
+          <button type="button" className="synth-link" onClick={() => setView("execution")}>
+            Execution
+          </button>{" "}
+          tab.
+        </div>
+      )}
+      {status && status.residual_count > 0 && (
+        <div className="banner banner--warn">
+          <strong>{status.residual_count} incomplete position(s).</strong> A partial entry or exit left legs that are not a full
+          synthetic; their outstanding legs are being flattened, risk-reducing first. See{" "}
+          <button type="button" className="synth-link" onClick={() => setView("open")}>
+            Open trades
+          </button>
+          .
+        </div>
+      )}
+      {status?.execution_mode === "live" && status.live_orders && (
+        <div className="banner banner--error">
+          <strong>LIVE and armed.</strong> Confirmed entries send real LIMIT orders to {BROKER_LABEL[status.broker] ?? status.broker}.
+        </div>
+      )}
       {status && !status.authenticated && (
         <div className="banner banner--warn">
           <strong>No usable {BROKER_LABEL[status.broker] ?? "broker"} session.</strong> Connect it in the{" "}
@@ -441,7 +580,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       )}
       {status && !status.store_ready && (
         <div className="banner banner--warn">
-          <strong>Storage not ready.</strong> Saved settings and paper trades are loading from PostgreSQL; entries and
+          <strong>Storage not ready.</strong> Saved settings and trades are loading from PostgreSQL; entries and
           setting changes wait for it.
         </div>
       )}
@@ -505,6 +644,23 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
           </select>
         </label>
         <label className="synth-control">
+          <span className="synth-control-k">Execution</span>
+          <select
+            className="synth-select"
+            value={mode}
+            disabled={busy || !settings}
+            title="How decisions become fills (confirmed first). Live also needs the server's consent and an ARM."
+            onChange={(e) => quick("execution_mode", e.target.value)}
+          >
+            {(byKey.get("execution_mode")?.options ?? ["paper_touch"]).map((m) => (
+              <option key={m} value={m} disabled={m === "live" && execView !== null && !execView.live.permitted}>
+                {MODE_LABEL[m as SynthExecutionMode] ?? m}
+                {m === "live" && execView !== null && !execView.live.permitted ? " (not permitted by the server)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="synth-control">
           <span className="synth-control-k">Lots</span>
           <select
             className="synth-select"
@@ -525,7 +681,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
             type="button"
             role="switch"
             aria-checked={autoEntry}
-            aria-label="Automatic paper entries"
+            aria-label="Automatic entries"
             className={`synth-toggle${autoEntry ? " is-on" : ""}`}
             disabled={busy || !settings}
             onClick={() => quick("auto_entry", !autoEntry)}
@@ -575,6 +731,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
               setView(v);
               if (v === "history") void loadHistory("today").then(() => loadHistory("all"));
               if (v === "brokers") void loadBrokers();
+              if (v === "execution") void loadExecution();
             }}
           >
             <span>{text}</span>
@@ -612,6 +769,20 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
             setDeleteError(null);
             setDeleteTarget(t);
           }}
+        />
+      )}
+      {view === "execution" && (
+        <SynthExecution
+          view={execView}
+          settings={settings}
+          busy={busy}
+          error={execError}
+          onRequestChange={requestChange}
+          onArm={onArm}
+          onDisarm={onDisarm}
+          onResetBreaker={onResetBreaker}
+          onReconcile={onReconcile}
+          onOpenSettings={() => setView("settings")}
         />
       )}
       {view === "brokers" && (
@@ -654,10 +825,12 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       )}
 
       {confirmCloseAll && (
-        <Modal title="Close every open paper position?" onClose={() => setConfirmCloseAll(false)}>
+        <Modal title="Close every open position?" onClose={() => setConfirmCloseAll(false)}>
           <p>
-            Each position is closed at the current executable touch. A position whose legs do not show the full quantity at
-            the touch is held and reported, never filled at an invented price.
+            paper_touch positions close at the current executable touch; a position whose legs do not show the full quantity
+            there is held and reported, never filled at an invented price. Every other position is closed through its own
+            execution mode, risk-reducing first{open.some((p) => p.execution_mode === "live") ? " — live positions with REAL orders" : ""};
+            a quarantined position is skipped until it is reconciled.
           </p>
           <div className="synth-modal-actions">
             <Button variant="quiet" onClick={() => setConfirmCloseAll(false)}>
@@ -672,7 +845,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
 
       {deleteTarget && (
         <Modal
-          title={`Delete paper trade on ${deleteTarget.underlying}?`}
+          title={`Delete ${isPaperMode(deleteTarget.execution_mode) ? "paper" : "live"} trade on ${deleteTarget.underlying}?`}
           subtitle={`${deleteTarget.direction} · K ${deleteTarget.strike} · ${deleteTarget.status}`}
           onClose={() => !deleting && setDeleteTarget(null)}
           dismissible={!deleting}

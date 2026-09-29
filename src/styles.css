@@ -5225,3 +5225,35 @@ table {
 
 .synth-modal-actions { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-4); }
 .synth-field { display: flex; flex-direction: column; gap: var(--s-1); margin-top: var(--s-3); }
+
+/* Execution modes, live control and runs */
+.synth-exec { display: flex; flex-direction: column; gap: var(--s-3); }
+.synth-card--live { border-color: var(--negative); }
+.synth-card--alert { border-color: var(--negative); border-left-width: 3px; }
+.synth-held--alert { color: var(--negative); font-weight: var(--fw-medium); }
+.synth-tag--live { border-color: var(--negative); background: var(--negative-quiet); color: var(--negative); }
+.synth-modes { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: var(--s-2); }
+.synth-mode {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.synth-mode:disabled { cursor: not-allowed; opacity: 0.55; }
+.synth-mode.is-on { border-color: var(--accent-line); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.synth-mode--live.is-on { border-color: var(--negative); box-shadow: inset 0 0 0 1px var(--negative); }
+.synth-mode-name { font-weight: var(--fw-semibold); }
+.synth-mode-help { font-size: var(--fs-xs); opacity: 0.75; }
+.synth-gates { display: flex; flex-direction: column; gap: var(--s-1); margin: 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
+.synth-exec-knobs { grid-template-columns: repeat(auto-fill, minmax(11rem, max-content) minmax(6rem, 1fr)); }
+.synth-run { display: flex; flex-direction: column; gap: var(--s-1); margin: var(--s-2) 0; }
+.synth-run-head { margin: 0; font-size: var(--fs-sm); }
+.synth-run-reason { max-width: 28rem; font-size: var(--fs-xs); white-space: normal; }
+.synth-run-time { font-family: var(--font-mono); font-size: var(--fs-xs); white-space: nowrap; }

@@ -106,6 +106,91 @@ export type SynthSide = "BUY" | "SELL";
 export type SynthRowStatus = "ELIGIBLE" | "OPEN" | "WATCHING" | "REJECTED" | "INDICATIVE";
 export type SynthBrokerId = "zerodha" | "dhan";
 
+/**
+ * How a decision becomes fills. Four paper modes (they never reach a broker's order API) and
+ * live (real LIMIT orders: needs the server's environment consent AND an operator's ARM).
+ */
+export type SynthExecutionMode =
+  | "paper_touch"
+  | "paper_latency"
+  | "paper_legging"
+  | "paper_legging_live_parity"
+  | "live";
+
+export type SynthPhase = "entry" | "exit" | "unwind" | "residual";
+
+export type SynthLegStatus =
+  | "FILLED"
+  | "PARTIAL"
+  | "TIMED_OUT"
+  | "CANCELLED"
+  | "REJECTED"
+  | "NOT_SENT"
+  | "FAILED"
+  | "UNKNOWN";
+
+export interface SynthFill {
+  price: number;
+  qty: number;
+  at: number;
+  version?: number;
+}
+
+/** The terminal record of one order (paper-simulated or live). Times are epoch ms. */
+export interface SynthLegOutcome {
+  role: SynthRole;
+  side: SynthSide;
+  tradingsymbol: string;
+  token: number;
+  client_order_id: string;
+  broker_order_id?: string;
+  qty: number;
+  filled: number;
+  avg_price: number | null;
+  ref_price: number;
+  limit_price: number;
+  status: SynthLegStatus;
+  reason?: string;
+  submit_at: number | null;
+  ack_at: number | null;
+  first_fill_at: number | null;
+  last_fill_at: number | null;
+  resolved_at: number | null;
+  cancel_requested_at?: number | null;
+  /** Quantity filled while a cancel was in flight (the race was lost). */
+  raced_qty?: number;
+  fills: SynthFill[];
+  /** ₹ worse than the reference touch over the filled quantity (negative = better). */
+  slippage: number | null;
+}
+
+/** One execution run: every leg's outcome, in transport order. */
+export interface SynthRun {
+  mode: SynthExecutionMode;
+  phase: SynthPhase;
+  sequential: boolean;
+  detected_at: number;
+  sent_at: number;
+  completed_at: number;
+  legs: SynthLegOutcome[];
+  refused?: string;
+  aborted?: string;
+  /** Live only: a broker outcome is not proven. */
+  uncertain?: boolean;
+  latency_source?: string;
+}
+
+/** One order that filled something: the trade's P&L ledger. */
+export interface SynthExecution {
+  client_order_id: string;
+  phase: SynthPhase;
+  role: SynthRole;
+  side: SynthSide;
+  qty: number;
+  avg_price: number;
+  at: number;
+}
+
 export interface SynthLegEval {
   role: SynthRole;
   side: SynthSide;
@@ -200,6 +285,10 @@ export interface SynthTradeLeg {
   exit_qty_at_touch: number | null;
   exit_age_ms: number | null;
   exit_depth: SynthDepth | null;
+  /** Filled entry quantity (0 on rows older than this field: then the trade's quantity). */
+  qty: number;
+  /** Quantity closed so far. */
+  exit_qty: number;
 }
 
 export interface SynthTrade {
@@ -207,7 +296,7 @@ export interface SynthTrade {
   status: "open" | "closed";
   key: string;
   broker: SynthBrokerId;
-  execution_mode: "paper_touch";
+  execution_mode: SynthExecutionMode;
   order_type: "LIMIT";
   underlying: string;
   is_index: boolean;
@@ -251,6 +340,27 @@ export interface SynthTrade {
   margin_hedge_benefit: number | null;
   margin_at: string | null;
   margin_error: string | null;
+  /* Execution record (every mode but paper_touch; null/empty otherwise). */
+  executions: SynthExecution[] | null;
+  entry_run: SynthRun | null;
+  unwind_run: SynthRun | null;
+  exit_runs: SynthRun[] | null;
+  detected_net_profit: number | null;
+  legging_pnl: number | null;
+  /** An INCOMPLETE position (partial entry/exit): its outstanding legs are being flattened. */
+  residual: boolean;
+  residual_reason: string | null;
+  /** Live: an order outcome is unproven; nothing automatic happens until reconciled. */
+  quarantined: boolean;
+  quarantine_reason: string | null;
+  /** Live: the durable claim written before the first order. */
+  entry_pending: boolean;
+  close_reason: string | null;
+  flatten_attempts: number;
+  flatten_rejects: number;
+  /** Flattening stopped after repeated broker rejections; the operator resumes it. */
+  flatten_halted: boolean;
+  reduction_seq: number;
 }
 
 export interface SynthExitLeg {
@@ -344,9 +454,19 @@ export interface SynthStatus {
   feed_error?: string;
   feed_age_ms: number | null;
   feed_healthy: boolean;
-  execution_mode: "paper_touch";
-  /** Always false: gts-synth has no order-placement code. */
+  execution_mode: SynthExecutionMode;
+  /** True only in live mode AND armed: new entries send real orders. */
   live_orders: boolean;
+  live_armed: boolean;
+  live_breaker: string | null;
+  /** Why a live entry cannot start now (code + text), in live mode. */
+  live_block: string | null;
+  live_block_reason: string | null;
+  live_busy: number;
+  unresolved_intents: number;
+  residual_count: number;
+  quarantined_count: number;
+  in_flight: number;
   paper_trading: boolean;
   paper_blocked_reason: "disabled" | "loading" | null;
   store_ready: boolean;
@@ -438,7 +558,121 @@ export interface SynthCloseAllResult {
   id: string;
   underlying: string;
   closed: boolean;
+  /** The close is being worked by the trade's executor (execution modes). */
+  started: boolean;
   error?: string;
+}
+
+/** A durable live order intent (written before the broker is called). */
+export interface SynthIntent {
+  client_order_id: string;
+  trade_id: string;
+  broker: SynthBrokerId;
+  phase: SynthPhase;
+  role: SynthRole;
+  side: SynthSide;
+  tradingsymbol: string;
+  security_id?: string;
+  token: number;
+  qty: number;
+  limit_price: number;
+  tag: string;
+  state: string;
+  broker_order_id: string;
+  filled: number;
+  avg_price: number;
+  reason: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type SynthOutcome =
+  | "OPENED"
+  | "REFUSED_BEFORE_SUBMIT"
+  | "NO_FILL"
+  | "PARTIAL_ENTRY_UNWOUND"
+  | "PARTIAL_ENTRY_RESIDUAL"
+  | "FILLED_THEN_ECONOMICS_ABORT"
+  | "QUARANTINED_UNKNOWN";
+
+/** One entry attempt in any execution mode, whatever its outcome. */
+export interface SynthAttempt {
+  id: string;
+  at_ms: number;
+  mode: SynthExecutionMode;
+  broker: SynthBrokerId;
+  underlying: string;
+  key: string;
+  direction: SynthDirection;
+  strike: number;
+  outcome: SynthOutcome | string;
+  reason?: string;
+  trade_id?: string;
+  detected_net_profit: number | null;
+  filled_net_profit: number | null;
+  legging_pnl: number | null;
+  entry?: SynthRun;
+  unwind?: SynthRun;
+}
+
+export interface SynthGate {
+  key: string;
+  label: string;
+  ok: boolean;
+  detail?: string;
+}
+
+export interface SynthInFlight {
+  kind: "entry" | "exit" | "residual";
+  underlying: string;
+  trade_id: string;
+  mode: SynthExecutionMode;
+  since_ms: number;
+}
+
+export interface SynthLiveView {
+  broker: SynthBrokerId;
+  /** The server's environment consents to live orders on this broker. */
+  permitted: boolean;
+  permitted_reason?: string;
+  consent: { enabled: boolean; broker: boolean; static_ip_confirmed: boolean; max_margin_rupees: number };
+  armed: boolean;
+  armed_at: number | null;
+  armed_by?: string;
+  breaker: string | null;
+  breaker_at: number | null;
+  unresolved_intents: SynthIntent[];
+  reconciling: boolean;
+  busy: number;
+  open_live_trades: number;
+  quarantined_live_trades: number;
+  day_net: number;
+  ack_samples: number;
+  cancel_samples: number;
+  measured_ack_ms: number | null;
+  measured_cancel_ms: number | null;
+  entry_block: string | null;
+  entry_block_reason: string | null;
+  gates: SynthGate[];
+  arm_phrase: string;
+  reset_phrase: string;
+}
+
+export interface SynthExecutionView {
+  mode: SynthExecutionMode;
+  leg_execution_mode: "hedge_sequential" | "parallel";
+  modes: SynthExecutionMode[];
+  live: SynthLiveView;
+  in_flight: SynthInFlight[];
+  residual_count: number;
+  quarantined_count: number;
+  attempts: SynthAttempt[];
+}
+
+export interface SynthReconcileResult {
+  examined: number;
+  unresolved_intents: SynthIntent[];
+  trades: string[] | null;
 }
 
 export interface SynthDeleteResult {
@@ -499,12 +733,50 @@ export function patchSynthSettings(
   });
 }
 
+/**
+ * Close one position now. paper_touch closes at the touch at once (`async: false`, `trade` is
+ * the CLOSED trade). Every other mode STARTS its executor (`async: true`, HTTP 202, `trade` is
+ * still the open position): the orders take seconds and the outcome arrives on the stream.
+ */
 export function closeSynthTrade(
   id: string,
-): Promise<{ trade: SynthTrade; open: SynthOpenPosition[]; status: SynthStatus }> {
+): Promise<{ async: boolean; trade: SynthTrade; open: SynthOpenPosition[]; status: SynthStatus }> {
   return synthRequest(`${BASE}/trades/${encodeURIComponent(id)}/close`, "Failed to close the synthetic position", {
     method: "POST",
   });
+}
+
+/* --------------------------------- execution -------------------------------- */
+
+export function fetchSynthExecution(attempts = 50): Promise<SynthExecutionView> {
+  return synthRequest(`${BASE}/execution?attempts=${attempts}`, "Failed to load the execution state");
+}
+
+export async function fetchSynthAttempts(limit = 100): Promise<SynthAttempt[]> {
+  const body = await synthRequest<{ attempts: SynthAttempt[] }>(`${BASE}/attempts?limit=${limit}`, "Failed to load entry attempts");
+  return body.attempts ?? [];
+}
+
+type LiveReply = { execution: SynthExecutionView; status: SynthStatus };
+
+/** Arm live entries. The server re-checks every gate and needs the typed phrase. */
+export function armSynthLive(confirm: string): Promise<LiveReply> {
+  return synthRequest(`${BASE}/live/arm`, "Failed to arm live trading", { method: "POST", body: { confirm } });
+}
+
+/** Stop new live entries at once. Always allowed; exits and flattening continue. */
+export function disarmSynthLive(): Promise<LiveReply> {
+  return synthRequest(`${BASE}/live/disarm`, "Failed to disarm live trading", { method: "POST" });
+}
+
+/** Close the circuit breaker once nothing is unresolved. Live stays disarmed. */
+export function resetSynthBreaker(confirm: string): Promise<LiveReply> {
+  return synthRequest(`${BASE}/live/breaker/reset`, "Failed to reset the circuit breaker", { method: "POST", body: { confirm } });
+}
+
+/** Re-read every unresolved live order at the broker and rebuild the affected positions. */
+export function reconcileSynthLive(): Promise<LiveReply & { reconcile: SynthReconcileResult; open: SynthOpenPosition[] }> {
+  return synthRequest(`${BASE}/live/reconcile`, "Failed to reconcile live orders", { method: "POST" });
 }
 
 export function closeAllSynthTrades(): Promise<{
@@ -516,8 +788,9 @@ export function closeAllSynthTrades(): Promise<{
 }
 
 /**
- * Delete a PAPER trade (soft delete, kept as an audit row). `expectedStatus` is what the
- * confirmation showed: a trade that changed state meanwhile is refused (409). Safe to retry.
+ * Delete a trade (soft delete, kept as an audit row). An OPEN live position is refused (409
+ * `live_position`): it is real exposure. `expectedStatus` is what the confirmation showed: a
+ * trade that changed state meanwhile is refused (409). Safe to retry.
  */
 export function deleteSynthTrade(
   id: string,
