@@ -69,6 +69,7 @@ import { SynthClosedHistory, SynthDayPnlStrip, SynthOpenCards } from "./SynthPos
 import SynthSettingsPanel from "./SynthSettingsPanel.tsx";
 import SynthBrokerPanel from "./SynthBrokerPanel.tsx";
 import SynthExecution from "./SynthExecution.tsx";
+import { LatestFrame, liveAgeText, shareEqual } from "../../lib/synthLive.ts";
 
 type View = "opportunities" | "open" | "history" | "execution" | "brokers" | "settings";
 
@@ -111,7 +112,6 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
   const [confirmCloseAll, setConfirmCloseAll] = useState(false);
   const [execView, setExecView] = useState<SynthExecutionView | null>(null);
   const [execError, setExecError] = useState<string | null>(null);
-  const pendingSnap = useRef<SynthSnapshot | null>(null);
   const deletedIds = useRef<Set<string>>(new Set());
   const viewRef = useRef<View>("opportunities");
   viewRef.current = view;
@@ -203,14 +203,14 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
   }, [serverVersion, settings, loadSettings]);
 
   useEffect(() => {
-    const flush = window.setInterval(() => {
-      const snap = pendingSnap.current;
-      if (!snap) return;
-      pendingSnap.current = null;
-      setStatus(snap.status);
-      setOpps(snap.opportunities);
-      setOpen(snap.open_trades.filter((p) => !deletedIds.current.has(p.id)));
-    }, 400);
+    // FAST PATH. Only the newest snapshot is parsed, once per animation frame (several frames
+    // in one display frame cost one parse and one render; a hidden tab parses nothing until
+    // it is shown). Every unchanged part keeps its identity, so memoised rows and cards skip.
+    const frames = new LatestFrame<SynthSnapshot>((snap) => {
+      setStatus((prev) => (prev ? shareEqual(prev, snap.status) : snap.status));
+      setOpps((prev) => shareEqual(prev, snap.opportunities));
+      setOpen((prev) => shareEqual(prev, snap.open_trades.filter((p) => !deletedIds.current.has(p.id))));
+    });
     const stream = new SynthStream({
       url: synthStreamUrl(),
       events: ["snapshot", "entry", "exit", "trade_deleted", "attempt", "residual", "quarantine", "session_ended"],
@@ -227,7 +227,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
         if (EXECUTION_EVENTS.has(type) && viewRef.current === "execution") void loadExecution();
         try {
           if (type === "snapshot") {
-            pendingSnap.current = JSON.parse(data) as SynthSnapshot;
+            frames.push(data);
             setLive(true);
           } else if (type === "exit") {
             const p = JSON.parse(data) as { trade?: SynthTrade };
@@ -247,7 +247,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
     });
     stream.start();
     return () => {
-      window.clearInterval(flush);
+      frames.stop();
       stream.stop();
     };
   }, [onLock, loadExecution]);
@@ -322,13 +322,14 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
     if (s) requestChange(s, value);
   };
 
-  async function handleClose(id: string) {
+  // Stable identities: the memoised cards and history only re-render for their own data.
+  const handleClose = useCallback(async (id: string) => {
     setClosingId(id);
     setError(null);
     setNotice(null);
     try {
       const r = await closeSynthTrade(id);
-      setOpen(r.open);
+      setOpen((prev) => shareEqual(prev, r.open));
       setStatus(r.status);
       if (r.async) {
         setNotice(
@@ -345,7 +346,13 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
     } finally {
       setClosingId(null);
     }
-  }
+  }, []);
+  const onCloseTrade = useCallback((id: string) => void handleClose(id), [handleClose]);
+  const openCloseAll = useCallback(() => setConfirmCloseAll(true), []);
+  const askDelete = useCallback((t: SynthTrade) => {
+    setDeleteError(null);
+    setDeleteTarget(t);
+  }, []);
 
   async function handleCloseAll() {
     setConfirmCloseAll(false);
@@ -593,7 +600,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       {status && marketOpen && (running || status.open_count > 0) && !status.feed_healthy && (
         <div className="banner banner--error">
           <strong>Feed stale.</strong> No tick for{" "}
-          {status.feed_age_ms === null ? "some time" : `${(status.feed_age_ms / 1000).toFixed(1)}s`}
+          {status.feed_age_ms === null ? "some time" : liveAgeText(status.feed_age_ms)}
           {status.feed_error ? ` (${status.feed_error})` : ""}. Entries and automatic exits pause until it recovers.
         </div>
       )}
@@ -752,24 +759,13 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
           positions={open}
           closingId={closingId}
           busy={busy}
-          onClose={(id) => void handleClose(id)}
-          onCloseAll={() => setConfirmCloseAll(true)}
-          onDelete={(t) => {
-            setDeleteError(null);
-            setDeleteTarget(t);
-          }}
+          onClose={onCloseTrade}
+          onCloseAll={openCloseAll}
+          onDelete={askDelete}
         />
       )}
       {view === "history" && (
-        <SynthClosedHistory
-          trades={history}
-          loading={historyLoading}
-          error={historyError}
-          onDelete={(t) => {
-            setDeleteError(null);
-            setDeleteTarget(t);
-          }}
-        />
+        <SynthClosedHistory trades={history} loading={historyLoading} error={historyError} onDelete={askDelete} />
       )}
       {view === "execution" && (
         <SynthExecution

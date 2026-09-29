@@ -1,24 +1,20 @@
 /**
  * The scanner's rows: every strike × direction the backend priced, best first. Filtering and
  * the per-row leg drill-down are view-only; eligibility and entry decisions are the backend's.
+ *
+ * Built for fast updates: the page hands in rows with structural sharing (an unchanged row is
+ * the SAME object as last frame), every row is memoised with stable callbacks, so a snapshot
+ * re-renders only the rows that changed. The row list is deferred, so typing in the filter
+ * stays responsive while the market is busy. Key figures flash when they move.
  */
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, memo, useCallback, useDeferredValue, useMemo, useState } from "react";
 import Button from "../ui/Button.tsx";
-import { fmt, fmtMoney, formatExpiry } from "../../format.ts";
 import { describeRequestFailure } from "../../api/http.ts";
 import { fetchSynthChain, type SynthChain, type SynthOpportunity } from "../../api/synth.ts";
-import {
-  ENTRY_BLOCK_LABEL,
-  REJECT_LABEL,
-  ageText,
-  filterRows,
-  label,
-  legName,
-  offsetLabel,
-  pnlClass,
-  type RowFilter,
-} from "../../lib/synthView.ts";
+import { ENTRY_BLOCK_LABEL, REJECT_LABEL, filterRows, label, legName, offsetLabel, pnlClass, type RowFilter } from "../../lib/synthView.ts";
+import { expiryLabel, liveAgeText, money, num2 } from "../../lib/synthLive.ts";
+import { SynthTick } from "./SynthTick.tsx";
 
 function statusText(o: SynthOpportunity): { text: string; cls: string; title?: string } {
   switch (o.status) {
@@ -57,46 +53,162 @@ function ChainView({ chain }: { chain: SynthChain }) {
             const pe = r.pe.bid > 0 && r.pe.ask > 0 ? (r.pe.bid + r.pe.ask) / 2 : null;
             return (
               <tr key={r.strike} className={r.is_atm ? "synth-atm" : undefined}>
-                <td className="num">{r.ce.bid ? fmt(r.ce.bid) : "-"}</td>
-                <td className="num">{r.ce.ask ? fmt(r.ce.ask) : "-"}</td>
+                <td className="num">{r.ce.bid ? num2(r.ce.bid) : "-"}</td>
+                <td className="num">{r.ce.ask ? num2(r.ce.ask) : "-"}</td>
                 <td className="num">
                   <strong>{r.strike}</strong>
                 </td>
-                <td className="num">{r.pe.bid ? fmt(r.pe.bid) : "-"}</td>
-                <td className="num">{r.pe.ask ? fmt(r.pe.ask) : "-"}</td>
-                <td className="num">{ce !== null && pe !== null ? fmt(r.strike + ce - pe) : "-"}</td>
+                <td className="num">{r.pe.bid ? num2(r.pe.bid) : "-"}</td>
+                <td className="num">{r.pe.ask ? num2(r.pe.ask) : "-"}</td>
+                <td className="num">{ce !== null && pe !== null ? num2(r.strike + ce - pe) : "-"}</td>
               </tr>
             );
           })}
         </tbody>
       </table>
       <p className="synth-dim">
-        Future {chain.future.tradingsymbol}: bid {fmt(chain.future.bid)} / ask {fmt(chain.future.ask)} · lot {chain.lot_size}
+        Future {chain.future.tradingsymbol}: bid {num2(chain.future.bid)} / ask {num2(chain.future.ask)} · lot {chain.lot_size}
       </p>
     </div>
   );
 }
 
-export default function SynthOpportunities({
-  rows,
-  running,
-  strikeLevel,
+/** One strike × direction. Re-renders only when its own row object (or expansion) changes. */
+const OppRow = memo(function OppRow({
+  o,
+  expanded,
+  onToggle,
+  onChain,
 }: {
-  rows: SynthOpportunity[];
-  running: boolean;
-  strikeLevel: number;
+  o: SynthOpportunity;
+  expanded: boolean;
+  onToggle: (key: string) => void;
+  onChain: (underlying: string) => void;
 }) {
+  const st = statusText(o);
+  return (
+    <Fragment>
+      <tr className="synth-row" onClick={() => onToggle(o.key)} aria-expanded={expanded}>
+        <td>
+          <span className="synth-sym">{o.underlying}</span>
+          {o.is_index && <span className="synth-tag">INDEX</span>}
+        </td>
+        <td>
+          <span className={`synth-dir synth-dir--${o.direction.toLowerCase()}`}>{o.direction}</span>
+        </td>
+        <td className="synth-dim">
+          {expiryLabel(o.expiry)} · {o.days_to_expiry.toFixed(1)}d
+        </td>
+        <td className="num">
+          {o.strike} <span className="synth-dim">{offsetLabel(o.atm_offset)}</span>
+        </td>
+        <td className="num">
+          <SynthTick value={o.future_price} text={num2(o.future_price)} />
+        </td>
+        <td className="num">
+          <SynthTick value={o.synthetic_price} text={num2(o.synthetic_price)} />
+        </td>
+        <td className={`num ${pnlClass(o.mispricing_per_unit)}`}>
+          <SynthTick value={o.mispricing_per_unit} text={num2(o.mispricing_per_unit)} />
+        </td>
+        <td className="num synth-dim">{num2(o.carry_per_unit)}</td>
+        <td className="num">{o.quantity}</td>
+        <td className={`num ${pnlClass(o.gross_edge)}`}>
+          <SynthTick value={o.gross_edge} text={money(o.gross_edge)} />
+        </td>
+        <td className="num synth-dim">{money(o.entry_charges)}</td>
+        <td className="num synth-dim">{money(o.estimated_exit_charges)}</td>
+        <td className={`num ${pnlClass(o.expected_net_profit)}`}>
+          <strong>
+            <SynthTick value={o.expected_net_profit} text={money(o.expected_net_profit)} />
+          </strong>
+        </td>
+        <td className="synth-dim" title={o.worst_age_ms !== null ? `Oldest leg book ${liveAgeText(o.worst_age_ms)} old` : undefined}>
+          {o.price_source === "last_close" ? "last close" : o.liquidity_ok ? "✓ full lot" : "thin"} · {liveAgeText(o.worst_age_ms)}
+        </td>
+        <td>
+          <span className={`synth-status ${st.cls}`} title={st.title}>
+            {st.text}
+          </span>
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="synth-detail">
+          <td colSpan={15}>
+            <table className="synth-table synth-legs">
+              <thead>
+                <tr>
+                  <th>Leg</th>
+                  <th>Order</th>
+                  <th className="num">Price used</th>
+                  <th className="num">Bid (qty)</th>
+                  <th className="num">Ask (qty)</th>
+                  <th className="num">Qty at touch</th>
+                  <th className="num">Age</th>
+                  <th>Why</th>
+                </tr>
+              </thead>
+              <tbody>
+                {o.legs.map((l) => (
+                  <tr key={l.role}>
+                    <td title={l.tradingsymbol}>{legName(l)}</td>
+                    <td>
+                      <span className={`synth-side synth-side--${l.side === "BUY" ? "buy" : "sell"}`}>{l.side} LIMIT</span>
+                    </td>
+                    <td className="num">
+                      <SynthTick value={l.price} text={num2(l.price)} />
+                    </td>
+                    <td className="num">
+                      {l.bid ? num2(l.bid) : "-"} <span className="synth-dim">({l.bid_qty})</span>
+                    </td>
+                    <td className="num">
+                      {l.ask ? num2(l.ask) : "-"} <span className="synth-dim">({l.ask_qty})</span>
+                    </td>
+                    <td className="num">{l.qty_at_touch}</td>
+                    <td className="num">{liveAgeText(l.age_ms)}</td>
+                    <td className="synth-dim">{l.executable ? "✓" : label(REJECT_LABEL, l.reject)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="synth-detail-foot">
+              <span className="synth-dim">
+                Mid basis {num2(o.mid_basis)} (context only) · gate {money(o.min_expected_net_profit)} · safety {money(o.safety_buffer)} ·
+                slippage {money(o.expected_slippage)}
+              </span>
+              <Button
+                size="sm"
+                variant="quiet"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChain(o.underlying);
+                }}
+              >
+                View chain
+              </Button>
+            </div>
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+});
+
+function SynthOpportunities({ rows, running, strikeLevel }: { rows: SynthOpportunity[]; running: boolean; strikeLevel: number }) {
   const [filter, setFilter] = useState<RowFilter>({ direction: "all", bestOnly: true, positiveOnly: false, search: "" });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [chain, setChain] = useState<{ u: string; data: SynthChain | null; error: string | null } | null>(null);
-  const shown = useMemo(() => filterRows(rows, filter), [rows, filter]);
+  // Typing in the filter is urgent; re-filtering a fresh snapshot can wait a frame.
+  const deferredRows = useDeferredValue(rows);
+  const shown = useMemo(() => filterRows(deferredRows, filter), [deferredRows, filter]);
 
-  const openChain = (u: string) => {
+  const onToggle = useCallback((key: string) => setExpanded((cur) => (cur === key ? null : key)), []);
+  const onChain = useCallback((u: string) => {
     setChain({ u, data: null, error: null });
     fetchSynthChain(u)
       .then((data) => setChain({ u, data, error: null }))
       .catch((err) => setChain({ u, data: null, error: describeRequestFailure(err) }));
-  };
+  }, []);
 
   return (
     <section className="synth-section">
@@ -191,105 +303,9 @@ export default function SynthOpportunities({
               </tr>
             </thead>
             <tbody>
-              {shown.map((o) => {
-                const st = statusText(o);
-                const isOpen = expanded === o.key;
-                return (
-                  <Fragment key={o.key}>
-                    <tr className="synth-row" onClick={() => setExpanded(isOpen ? null : o.key)} aria-expanded={isOpen}>
-                      <td>
-                        <span className="synth-sym">{o.underlying}</span>
-                        {o.is_index && <span className="synth-tag">INDEX</span>}
-                      </td>
-                      <td>
-                        <span className={`synth-dir synth-dir--${o.direction.toLowerCase()}`}>{o.direction}</span>
-                      </td>
-                      <td className="synth-dim">
-                        {formatExpiry(o.expiry)} · {o.days_to_expiry.toFixed(1)}d
-                      </td>
-                      <td className="num">
-                        {o.strike} <span className="synth-dim">{offsetLabel(o.atm_offset)}</span>
-                      </td>
-                      <td className="num">{fmt(o.future_price)}</td>
-                      <td className="num">{fmt(o.synthetic_price)}</td>
-                      <td className={`num ${pnlClass(o.mispricing_per_unit)}`}>{fmt(o.mispricing_per_unit)}</td>
-                      <td className="num synth-dim">{fmt(o.carry_per_unit)}</td>
-                      <td className="num">{o.quantity}</td>
-                      <td className={`num ${pnlClass(o.gross_edge)}`}>{fmtMoney(o.gross_edge)}</td>
-                      <td className="num synth-dim">{fmtMoney(o.entry_charges)}</td>
-                      <td className="num synth-dim">{fmtMoney(o.estimated_exit_charges)}</td>
-                      <td className={`num ${pnlClass(o.expected_net_profit)}`}>
-                        <strong>{fmtMoney(o.expected_net_profit)}</strong>
-                      </td>
-                      <td className="synth-dim" title={o.worst_age_ms !== null ? `Oldest leg book ${ageText(o.worst_age_ms)}` : undefined}>
-                        {o.price_source === "last_close" ? "last close" : o.liquidity_ok ? "✓ full lot" : "thin"} ·{" "}
-                        {ageText(o.worst_age_ms)}
-                      </td>
-                      <td>
-                        <span className={`synth-status ${st.cls}`} title={st.title}>
-                          {st.text}
-                        </span>
-                      </td>
-                    </tr>
-                    {isOpen && (
-                      <tr className="synth-detail">
-                        <td colSpan={15}>
-                          <table className="synth-table synth-legs">
-                            <thead>
-                              <tr>
-                                <th>Leg</th>
-                                <th>Order</th>
-                                <th className="num">Price used</th>
-                                <th className="num">Bid (qty)</th>
-                                <th className="num">Ask (qty)</th>
-                                <th className="num">Qty at touch</th>
-                                <th className="num">Age</th>
-                                <th>Why</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {o.legs.map((l) => (
-                                <tr key={l.role}>
-                                  <td title={l.tradingsymbol}>{legName(l)}</td>
-                                  <td>
-                                    <span className={`synth-side synth-side--${l.side === "BUY" ? "buy" : "sell"}`}>{l.side} LIMIT</span>
-                                  </td>
-                                  <td className="num">{fmt(l.price)}</td>
-                                  <td className="num">
-                                    {l.bid ? fmt(l.bid) : "-"} <span className="synth-dim">({l.bid_qty})</span>
-                                  </td>
-                                  <td className="num">
-                                    {l.ask ? fmt(l.ask) : "-"} <span className="synth-dim">({l.ask_qty})</span>
-                                  </td>
-                                  <td className="num">{l.qty_at_touch}</td>
-                                  <td className="num">{ageText(l.age_ms)}</td>
-                                  <td className="synth-dim">{l.executable ? "✓" : label(REJECT_LABEL, l.reject)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          <div className="synth-detail-foot">
-                            <span className="synth-dim">
-                              Mid basis {fmt(o.mid_basis)} (context only) · gate {fmtMoney(o.min_expected_net_profit)} · safety{" "}
-                              {fmtMoney(o.safety_buffer)} · slippage {fmtMoney(o.expected_slippage)}
-                            </span>
-                            <Button
-                              size="sm"
-                              variant="quiet"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openChain(o.underlying);
-                              }}
-                            >
-                              View chain
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
+              {shown.map((o) => (
+                <OppRow key={o.key} o={o} expanded={expanded === o.key} onToggle={onToggle} onChain={onChain} />
+              ))}
             </tbody>
           </table>
         </div>
@@ -297,3 +313,5 @@ export default function SynthOpportunities({
     </section>
   );
 }
+
+export default memo(SynthOpportunities);

@@ -5257,3 +5257,14 @@ table {
 .synth-run-head { margin: 0; font-size: var(--fs-sm); }
 .synth-run-reason { max-width: 28rem; font-size: var(--fs-xs); white-space: normal; }
 .synth-run-time { font-family: var(--font-mono); font-size: var(--fs-xs); white-space: nowrap; }
+
+/* Live figures flash once when they move (see SynthTick): up = positive, down = negative. */
+.synth-tick { border-radius: var(--r-sm); }
+.synth-tick--up { animation: synth-tick-up 0.6s ease-out; }
+.synth-tick--down { animation: synth-tick-down 0.6s ease-out; }
+@keyframes synth-tick-up { from { background: var(--positive-quiet); } to { background: transparent; } }
+@keyframes synth-tick-down { from { background: var(--negative-quiet); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  .synth-tick--up,
+  .synth-tick--down { animation: none; }
+}
