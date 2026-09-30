@@ -1,5 +1,7 @@
 # GTS Algo Research — frontend
 
+For the current `/synth` implementation, see the [Synthetic frontend documentation](outputs/README.md), including all five execution modes, the standalone Go integration, and review findings.
+
 **GTS Algo Research is an algorithmic trading research project from Ghatsila, developed by
 the BeOnEdge team.**
 
