@@ -81,7 +81,7 @@ function importGraph(entry) {
  * The modules that talk to the trading backend. `api.ts` is the barrel that re-exports
  * `api/box.ts`, so both are named — importing either pulls in the whole Box surface.
  */
-const TRADING_API_MODULES = ["api/box.ts", "api.ts"];
+const TRADING_API_MODULES = ["api/box.ts", "api.ts", "api/synth.ts"];
 
 /** The protected workspace components. None of these may be reachable from the public page. */
 const WORKSPACE_MODULES = [
@@ -93,6 +93,9 @@ const WORKSPACE_MODULES = [
   "BoxOperationalState.tsx",
   "BoxOrderStreamStatus.tsx",
   "lib/boxStream.ts",
+  "pages/SyntheticPage.tsx",
+  "components/synth/Synthetic.tsx",
+  "lib/synthStream.ts",
 ];
 
 test("the landing route's import graph resolves (the walker is not vacuous)", () => {
@@ -185,4 +188,30 @@ test("ProtectedRoute renders its children ONLY in the authenticated state", () =
   // The non-authenticated branch must not render a workspace skeleton, which would imply to an
   // unauthenticated visitor that the workspace is loading.
   assert.match(src, /gts-route-wait/, "the waiting surface is the neutral one");
+});
+
+test("the synthetic workspace renders ONLY behind its own gate", () => {
+  const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/.*$/gm, "$1");
+  const page = strip(readFileSync(join(SRC, "pages", "SyntheticPage.tsx"), "utf8"));
+  assert.match(
+    page,
+    /<SynthAccessGate\s+render=\{\(lock\)\s*=>\s*<Synthetic onLock=\{lock\} \/>\}\s*\/>/,
+    "the workspace is only rendered by the synth gate's render callback",
+  );
+  const routes = strip(readFileSync(join(SRC, "app", "routes.tsx"), "utf8"));
+  assert.equal([...routes.matchAll(/<SyntheticPage\b/g)].length, 1, "mounted once");
+  const gate = strip(readFileSync(join(SRC, "components", "synth", "SynthAccessGate.tsx"), "utf8"));
+  assert.match(gate, /if \(state === "unlocked"\) return <>\{render\(lock\)\}<\/>;/, "only the unlocked state renders it");
+});
+
+test("the synthetic workspace is independent of Box: it imports no Box module", () => {
+  const graph = importGraph("pages/SyntheticPage.tsx");
+  assert.ok(graph.has("api/synth.ts") && graph.has("lib/synthStream.ts"), "the walker reached the synth modules");
+  for (const mod of graph) {
+    assert.equal(
+      /(^|\/)(Box[^/]*\.tsx|api\/box\.ts|api\.ts|lib\/boxStream\.ts)$|^components\/box\//.test(mod),
+      false,
+      `the synthetic workspace must not import ${mod}`,
+    );
+  }
 });

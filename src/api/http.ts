@@ -541,6 +541,13 @@ export interface RequestOptions {
    * a dead cookie it can no longer clear. Best-effort satisfies both halves of the route.
    */
   csrfBestEffort?: boolean;
+  /**
+   * The CSRF token of a DIFFERENT session than the site's: the synthetic workspace
+   * (gts-synth) runs its own access gate, so its mutations carry ITS token, never the site
+   * token. When set, it replaces the in-memory site token for this request; an empty value on
+   * a mutation throws `MissingCsrfTokenError` like a missing site token does.
+   */
+  csrfToken?: string;
 }
 
 /**
@@ -734,7 +741,7 @@ export async function request<T>(
   };
 
   if (MUTATING.has(method) && !options.csrfExempt) {
-    const csrf = getCsrfToken();
+    const csrf = options.csrfToken !== undefined ? options.csrfToken || null : getCsrfToken();
     if (csrf) {
       headers[CSRF_HEADER] = csrf;
     } else if (!options.csrfBestEffort) {

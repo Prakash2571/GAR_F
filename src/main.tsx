@@ -20,9 +20,10 @@ import "./styles.css";
 // ROUTE-AWARE, because the public page is dark only (see LANDING_THEME). Deciding this here
 // rather than in LandingPage's effect is what prevents a visitor whose stored preference is
 // light from seeing one white frame before the effect corrects it. Anything that is not the
-// workspace is the landing page — an unknown path is redirected to it — so `box` is the only
-// case that reads the stored preference.
-applyTheme(resolveRoute(window.location.pathname) === "box" ? readStoredTheme() : LANDING_THEME);
+// workspace is the landing page — an unknown path is redirected to it — so the two workspaces
+// (`box`, `synth`) are the only cases that read the stored preference.
+const initialRoute = resolveRoute(window.location.pathname);
+applyTheme(initialRoute === "box" || initialRoute === "synth" ? readStoredTheme() : LANDING_THEME);
 
 /**
  * Captured BEFORE the first render, for one reason: the authentication gate can navigate away

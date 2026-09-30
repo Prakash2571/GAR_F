@@ -18,9 +18,14 @@
 export const ROUTE_PATHS = {
   landing: "/",
   box: "/box",
+  /**
+   * The synthetic-futures arbitrage workspace (the gts-synth Go service). It is gated by that
+   * service's own passcode, so it is NOT a site-protected path.
+   */
+  synth: "/synth",
 } as const;
 
-export type RouteName = "landing" | "box" | "unknown";
+export type RouteName = "landing" | "box" | "synth" | "unknown";
 
 /**
  * Normalise a pathname so route matching is not defeated by a trailing slash.
@@ -42,6 +47,7 @@ export function normalizePath(pathname: string): string {
 export function resolveRoute(pathname: string): RouteName {
   const path = normalizePath(pathname);
   if (path === ROUTE_PATHS.box) return "box";
+  if (path === ROUTE_PATHS.synth) return "synth";
   if (path === ROUTE_PATHS.landing) return "landing";
   return "unknown";
 }

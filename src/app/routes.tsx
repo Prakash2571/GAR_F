@@ -3,6 +3,8 @@
  *
  *   /      LandingPage    public
  *   /box   BoxPage        protected by <ProtectedRoute>
+ *   /synth SyntheticPage  behind its OWN gate (SynthAccessGate: the synthetic service's
+ *                         passcode, session and CSRF), not the site guard
  *   *      → /            unknown paths redirect to the public page
  *
  * The authentication wrapper is applied to /box ONLY. The landing page must stay public: it is
@@ -21,6 +23,7 @@ import { navigate, useLocation } from "./router.ts";
 import { ROUTE_PATHS, resolveRoute } from "../lib/routing.ts";
 import LandingPage from "../pages/LandingPage.tsx";
 import BoxPage from "../pages/BoxPage.tsx";
+import SyntheticPage from "../pages/SyntheticPage.tsx";
 import ProtectedRoute from "../auth/ProtectedRoute.tsx";
 
 export default function Routes() {
@@ -41,6 +44,9 @@ export default function Routes() {
       </ProtectedRoute>
     );
   }
+
+  // The synthetic workspace is a separate, self-contained service with its own gate.
+  if (route === "synth") return <SyntheticPage />;
 
   // The landing page is also what an unknown path shows for the one frame before the redirect
   // effect runs — correct, since that is where the redirect is going.

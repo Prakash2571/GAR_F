@@ -1,5 +1,9 @@
 # GTS Algo Research — frontend
 
+For the current `/synth` implementation, see the [Synthetic frontend documentation](outputs/README.md), including all five execution modes, the standalone Go integration, and review findings.
+
+Synth displays the Go service's recovery/storage/entry status and the session's `read`/`full` capability. Read sessions can observe and lock their own workspace; controls require full access, with ARM and reduction evidence checked separately by the backend. Closed live reporting deletion retains owning-account daily risk. See the [current guide](outputs/GAR_FRONTEND_GUIDE.md).
+
 **GTS Algo Research is an algorithmic trading research project from Ghatsila, developed by
 the BeOnEdge team.**
 
@@ -9,6 +13,7 @@ This repository is its **frontend**, and it is two surfaces in one app:
 | --- | --- | --- |
 | `/` | The public GTS Algo Research page. | **Public.** |
 | `/box` | **GTS Box** — the algorithmic execution workspace. | **Protected** by the site passcode. |
+| `/synth` | **Synthetic** — futures vs synthetic futures (K + CE − PE) on Zerodha or Dhan: four paper modes and separately gated live LIMIT execution. Talks to the Go service `gts-synth` at `/api/synth/*` with its own passcode, broker ownership, settings, recovery and settlement-pending states. See [Synth guide](outputs/README.md). | **Gated by gts-synth's own passcode** (not the site guard). |
 
 > ### ⚠️ This is algorithmic trading research and execution software
 >
