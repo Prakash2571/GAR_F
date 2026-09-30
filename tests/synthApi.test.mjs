@@ -17,6 +17,7 @@ import {
   startSynth,
   synthAccessStatus,
   synthVerify,
+  fetchSynthStatus,
 } from "../src/api/synth.ts";
 import { parseBrokerLoginResult } from "../src/lib/synthView.ts";
 import { SynthStream } from "../src/lib/synthStream.ts";
@@ -47,6 +48,28 @@ test("verify seeds the synth CSRF token and mutations send it, not the site toke
   assert.equal(calls[1].url, "/api/synth/start");
   assert.equal(calls[1].init.headers["x-csrf-token"], "SYNTH-TOKEN", "the synth token, never the site token");
   clearCsrfToken();
+});
+
+test("Synth session roles and health fields preserve the server decision", async () => {
+  const health = { service: "gts-synth", live: true, ready: true, state: "degraded", recovery_complete: true, storage_ready: true, entry_permitted: false, entry_block: "live_unresolved" };
+  stubFetch((url) => String(url).endsWith("/access/status")
+    ? json(200, { authenticated: true, role: "read", csrf_token: "READ-CSRF" })
+    : json(200, health));
+  assert.equal((await synthAccessStatus()).role, "read");
+  assert.deepEqual(await fetchSynthStatus(), health);
+});
+
+test("a forbidden read-role control keeps the Synth session and CSRF token", async () => {
+  let ended = 0;
+  const off = onSynthUnauthorized(() => ended++);
+  stubFetch((url) => String(url).endsWith("/access/status")
+    ? json(200, { authenticated: true, role: "read", csrf_token: "READ-CSRF" })
+    : json(403, { code: "forbidden", error: "Full access required for Synth controls." }));
+  await synthAccessStatus();
+  await assert.rejects(startSynth, (err) => err.status === 403);
+  assert.equal(ended, 0);
+  assert.equal(hasSynthCsrfToken(), true);
+  off();
 });
 
 test("a wrong passcode is a rejection, not a session expiry", async () => {

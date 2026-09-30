@@ -396,8 +396,8 @@ export default function SynthExecution({
               {live.quarantined_live_trades > 0 ? ` (${live.quarantined_live_trades} quarantined)` : ""}
             </span>
           </div>
-          <div className={`synth-metric ${pnlClass(live.day_net)}`}>
-            <span className="synth-metric-k">Live net today</span>
+          <div className={`synth-metric ${pnlClass(live.day_net)}`} title="Owning account, IST recognition day; includes hidden closed results and priced open marks. Unknown evidence blocks entries.">
+            <span className="synth-metric-k">Account live risk today</span>
             <span className="synth-metric-v">{fmtMoney(live.day_net)}</span>
           </div>
           <div className="synth-metric" title="Median POST → broker acknowledgement over the last live orders; live parity uses it from 20 samples">

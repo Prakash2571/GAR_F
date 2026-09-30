@@ -7,6 +7,8 @@
  */
 
 import type {
+  SynthAccessRole,
+  SynthHealth,
   SynthDepth,
   SynthDirection,
   SynthExecutionMode,
@@ -35,6 +37,16 @@ export const ENTRY_BLOCK_LABEL: Record<string, string> = {
   live_max_open: "live open limit reached",
   live_lots: "lots above the live limit",
   live_daily_loss: "daily live loss limit reached",
+  live_risk_unavailable: "live risk evidence needs recovery",
+  shutting_down: "service shutting down",
+  recovery_pending: "storage recovery pending",
+  discovery_stopped: "discovery stopped",
+  auto_entry_disabled: "automatic entries off",
+  market_closed: "market closed",
+  calendar_unavailable: "calendar unavailable",
+  feed_unhealthy: "feed unhealthy",
+  session_window: "outside the entry session window",
+  settings_saving: "settings being saved",
   paper_off: "auto-entry off",
   no_db: "storage not ready",
   feed_stale: "feed stale",
@@ -111,6 +123,21 @@ export interface ModeBadge {
   text: string;
   tone: "info" | "warning" | "negative";
   title: string;
+}
+
+/** Controls are a session capability; entry permission never gates reductions. */
+export function synthCanControl(role: SynthAccessRole | undefined, health: Pick<SynthHealth, "state"> | null): boolean {
+  return role === "full" && health?.state !== "shutting_down" && health?.state !== "stopped";
+}
+
+export function recoveryBadge(health: SynthHealth | null): { text: string; tone: "positive" | "warning"; title: string } {
+  if (!health || typeof health.ready !== "boolean" || typeof health.state !== "string") return { text: "RECOVERY UNKNOWN", tone: "warning", title: "Waiting for server recovery status" };
+  const title = health.entry_block ? ENTRY_BLOCK_LABEL[health.entry_block] ?? health.entry_block : "Global entry gates permit evaluation; each opportunity is checked separately";
+  return {
+    text: health.ready ? health.state === "degraded" ? "RECOVERY · DEGRADED" : "RECOVERY READY" : `RECOVERY · ${health.state.toUpperCase().replace(/_/g, " ")}`,
+    tone: health.ready && health.state !== "degraded" ? "positive" : "warning",
+    title,
+  };
 }
 
 /** The header badge, derived only from what the server reports. */
@@ -247,7 +274,7 @@ export function pnlEvidenceLabel(t: Pick<SynthTrade, "pnl_status" | "execution_m
 
 /** Whether the standing gates allow arming (the server re-checks every one). */
 export function armGates(v: SynthLiveView): { ok: boolean; missing: string[] } {
-  const needed = new Set(["consent", "mode", "session", "breaker", "intents", "quarantine"]);
+  const needed = new Set(["consent", "storage", "risk", "mode", "session", "breaker", "intents", "quarantine"]);
   const missing = v.gates.filter((g) => needed.has(g.key) && !g.ok).map((g) => g.label);
   return { ok: missing.length === 0, missing };
 }

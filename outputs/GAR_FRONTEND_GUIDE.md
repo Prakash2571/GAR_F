@@ -1,6 +1,6 @@
 # GAR frontend: detailed working guide
 
-**Implementation revision:** frontend repair baseline `628955c`, backend repair baseline `5f8070a` · 30 September 2026. Necessary Synth contract/status changes are included in this revision; [GitHub publication results](../tasks/2026-09-30-push-synth-repairs/STATUS.md) are recorded separately from production deployment.
+**Implementation revision:** frontend based on `2d4ff91`, backend `e3f1010` · 30 September 2026. Preserves earlier published execution fixes and adds role/recovery-readiness compatibility. [Current publication record](../tasks/2026-09-30-push-synth-risk-lifecycle/STATUS.md) tracks user-authorized GitHub commits/pushes; production deployment remains separate.
 
 This guide follows a user from opening the app through authentication, broker connection, configuration, scanning, execution, monitoring, and history. It explains which React component owns each part, which request it sends, how live state is updated, and which figures are calculated by the frontend.
 
@@ -72,7 +72,7 @@ locked → passcode form → POST /api/synth/access/verify
        → success: clear form, unlocked
        → refusal/failure: remain locked and show submit error
 
-unlocked → render Synthetic with onLock callback
+unlocked → render Synthetic with onLock callback and server session role
          → Synthetic 401 or Lock: locked, workspace unmounted
 ```
 
@@ -81,6 +81,8 @@ The gate renders protected Synthetic components only after authentication. While
 The passcode exists temporarily in React state and is cleared on successful verify. The Go backend sets the HttpOnly session cookie. [api/synth.ts](../src/api/synth.ts) keeps the CSRF token in module memory, seeded from verify/status. Neither value is written to localStorage/sessionStorage by this flow.
 
 The gate subscribes to `onSynthUnauthorized`. A protected Synthetic request returning 401 clears the Synthetic CSRF token and sets the gate locked. Unmounting `Synthetic` closes its stream and clears its execution-tab timer.
+
+Session roles use the actual schema values `read` and `full`. The gate passes the verified role to the workspace and refreshes access status every 60 seconds while unlocked. A failed permissions refresh disables controls until verified again. `read` observes the tabs/stream and can use Lock to end its own access session; every trading/settings/broker control requires `full`, including STOP/disarm/reductions/reconcile. Unknown or absent roles do not grant controls. A 403 leaves the session intact; only 401 ends it. The backend checks role, Origin and CSRF on each protected mutation, so display state cannot authorize a request. Role provisioning is not exposed by this app.
 
 Lock calls `synthLogout`; the UI locks in a finally callback even if logout fails. Backend revocation remains necessary to end the server session: a failed logout can leave it alive despite the local locked screen. Lock also does not stop discovery or disarm backend live entries. STOP/Disarm are explicit separate controls.
 
@@ -214,6 +216,10 @@ The Go `live_orders` field means live mode plus ARM; it is not a complete entry-
 
 Scanning status combines RUN state, market-open status, browser stream connection, and backend feed health: Loading, Stopped, Market closed, Reconnecting, Scanning, or Feed stale. A stopped scanner may still have open trades under management.
 
+The recovery badge renders the server's `ready`/`state`, independently of the mode/ARM and stream badges. `SynthHealth` defines `live`, `ready`, `state`, `recovery_complete`, `storage_ready`, `entry_permitted` and `entry_block`, embedded in `SynthStatus` and snapshots. Recovery readiness requires settings, all-position/all-intent replay persistence and today's durable live-risk load; slow/failed recovery and shutdown keep health 503. Persisted unknown execution/settlement is ready/degraded with live entries blocked. The badge's entry-block explanation does not infer permission from local conditions, and even global entry permission requires each basket's own backend checks.
+
+`synthCanControl` uses only full session capability and shutdown state. Recovery/entry readiness is not used to disable authorized reductions/recovery across the workspace: the backend retains each action's ownership/order/market/settlement guards. Read sessions disable RUN/STOP, quick settings, Execution controls, broker login/token/logout/use, close/flatten/bulk and history deletion. Tabs, details, reloads and own Lock remain available. Shutdown disables every protected control, regardless of role.
+
 Quick controls change server settings for ATM ±1..5, broker, execution mode, selected common lot counts, auto-entry, and auto-exit. They reuse the full registry definition and `requestChange`; risk-flagged settings first show a confirmation. The quick lots selector is a convenience subset; Settings supports the complete allowed range.
 
 The stat strip shows watched/paired underlyings, subscribed/budgeted tokens, open/max positions, eligible count, net gate, safety, and carry rate. These counts are backend counts, not counts after browser filtering.
@@ -262,7 +268,7 @@ The API exports `bindSynthAccount` and `reconcileSynthSettlement` for the existi
 
 Close all first displays a confirmation, then reports separately which records closed, which asynchronous closes started, and which were held/refused. It is not an atomic basket across trades.
 
-Delete is disabled for **open live** cards. For open paper/closed records a confirmation includes expected status and optional reason. On success the UI removes it and applies tombstones; on a status change the backend refuses. A deleted open paper trade stops simulated monitoring; this is different from booking a close.
+Delete is disabled for **open live** cards and all read sessions. For open paper/closed records a full operator's confirmation includes expected status and optional reason. On success the UI removes it and applies tombstones; on a status change the backend refuses. A deleted open paper trade stops simulated monitoring; this is different from booking a close. Deleting a closed live record hides reporting only: the dialog explains that its owning-account daily risk still includes the result.
 
 ## 9. History and day P&L
 
@@ -270,7 +276,7 @@ Delete is disabled for **open live** cards. For open paper/closed records a conf
 
 The day strip renders backend `status.day_pnl`: open LTP mark, open net if closed at touches, realized closed-today net with gross/fees, total net, and recorded open margins. Counts identify unmarked, unpriced, and unknown-margin positions excluded from totals.
 
-This strip includes paper and live records together. “Day” uses the backend's IST close-date grouping and open entry basis; it is not a daily MTM reset for an overnight position. The live risk limit uses a different live-only backend sum.
+This strip includes paper and live records together. “Day” uses the backend's IST close-date grouping and open entry basis; it is not a daily MTM reset for an overnight position. The independent Execution figure “Account live risk today” uses durable live closed results for the selected broker/verified account's IST recognition day plus that account's priced live open marks. Hidden closes remain included; paper/other accounts and history limits cannot reset the gate. Unknown historical owner/day/net or current unpriced/settlement/recovery exposure blocks live entry without inventing zero P&L.
 
 ### 9.2 Closed-history state
 
@@ -290,7 +296,7 @@ Mode choices come from backend execution state/registry: paper_touch, paper_late
 
 Paper leg order can be hedge sequential or parallel. Live always orders sequentially. Readonly consent fields show global/broker enable flags, static-IP attestation, and hard margin ceiling. Timing/risk knobs link to Settings for edits.
 
-ARM is offered when the backend's standing consent/mode/session/breaker/intents/quarantine gates report ready. Lots/open/daily-loss limits are shown too, but are entry limits rather than the client predicate for offering ARM. A dialog requires the exact server-provided phrase **ARM LIVE**, which the backend checks again under full access.
+ARM is offered to full sessions when the backend's standing consent/storage/risk/mode/session/breaker/intents/quarantine gates report ready. Lots/open/daily-loss limits are shown too and remain per-entry controls. A dialog requires the exact server-provided phrase **ARM LIVE**, which the backend checks again under full access. Neither read access nor a recovery-ready badge grants ARM.
 
 Disarm stops new live entries. RESET requires its typed phrase and clear unresolved/quarantined/in-flight state, and leaves live disarmed. Reconcile rereads broker orders and rebuilds affected trades; the UI applies returned execution/status/open state and reports how many orders remain unproven.
 
@@ -313,6 +319,8 @@ Login calls the Go start endpoint and follows the backend-returned `login_url` w
 Paste token keeps the user-entered value briefly in a password input, sends it with optional client ID/API key, clears it after success, and displays returned metadata. The backend validates with a broker profile call before encrypted storage. Existing saved tokens never come back in status responses.
 
 Disconnect posts the broker logout; it clears that broker's token, rather than the workspace access cookie. Use broker changes the runtime broker setting with its risk confirmation. Connecting alone does not select/ARM/RUN.
+
+Every broker control requires full access. A pending login retains the session that initiated it; backend callbacks consume the pending state and recheck that session's role/expiry/revocation before exchange and vault persistence without requiring a cookie on the broker redirect. A logout/downgrade or unavailable session store prevents callback completion. During shutdown callbacks are rejected as new controls. This authorization fix is separate from the existing frontend notice-capture problem below.
 
 Every token upload, OAuth callback, logout and direct vault mutation shares a durable account barrier with live claim/intent creation. Same-account renewal is allowed; different-account replacement/logout under exposure, unresolved orders or settlement pending returns `account_locked`. Legacy owners require audited statement binding and token renewal; the current login is never assigned silently. The UI renders backend errors and retains the existing session/CSRF paths.
 
@@ -390,4 +398,4 @@ The focused suites verify pure transport/CSRF/view/stream/formatting behavior wi
 
 When changing Go view/route shapes, update `src/api/synth.ts` and the callers/tests together. Preserve the distinction between session 401, CSRF/refusal, temporary service failure, and unknown mutation outcome. Keep trade mode/filled quantities sourced from the record, and distinguish browser stream connectivity from broker feed/live permission.
 
-Account/disconnect, execution recovery and settlement evidence are now protected in the Go service, with necessary UI types/labels and focused regressions. Remaining frontend work includes callback capture at bootstrap, ordering delayed REST/snapshot replies and repairing missed history after reconnect; these are outside the six service findings and retained in the review report. The Box contract remains unchanged.
+Account/disconnect, execution recovery, settlement and role capability are protected in Go; the frontend renders server recovery fields and read/full control availability. The continuation's checks are recorded in [task status](../tasks/2026-09-30-synth-risk-lifecycle/STATUS.md). Migration 006 and `SYNTH_SHUTDOWN_TIMEOUT_MS=30000` are backend deployment concerns; the [operator procedure](https://github.com/Prakash2571/GAR_B/blob/synth/outputs/GAR_WORKING_GUIDE.md#126-upgrade-to-durable-risk-roles-and-lifecycle) describes verified shutdown handoff and disarmed restart. Remaining frontend work includes callback notice capture at bootstrap, ordering delayed REST/snapshot replies and repairing missed history after reconnect; these are outside this continuation and retained in the review report. The Box contract remains unchanged.

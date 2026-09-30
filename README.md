@@ -2,6 +2,8 @@
 
 For the current `/synth` implementation, see the [Synthetic frontend documentation](outputs/README.md), including all five execution modes, the standalone Go integration, and review findings.
 
+Synth displays the Go service's recovery/storage/entry status and the session's `read`/`full` capability. Read sessions can observe and lock their own workspace; controls require full access, with ARM and reduction evidence checked separately by the backend. Closed live reporting deletion retains owning-account daily risk. See the [current guide](outputs/GAR_FRONTEND_GUIDE.md).
+
 **GTS Algo Research is an algorithmic trading research project from Ghatsila, developed by
 the BeOnEdge team.**
 

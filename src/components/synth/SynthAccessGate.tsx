@@ -17,12 +17,15 @@ import {
   synthAccessStatus,
   synthLogout,
   synthVerify,
+  type SynthAccessRole,
+  type SynthAccessStatus,
 } from "../../api/synth.ts";
 
 type GateState = "checking" | "locked" | "unlocked";
 
-export default function SynthAccessGate({ render }: { render: (lock: () => void) => ReactNode }) {
+export default function SynthAccessGate({ render }: { render: (lock: () => void, role: SynthAccessRole | undefined) => ReactNode }) {
   const [state, setState] = useState<GateState>("checking");
+  const [session, setSession] = useState<SynthAccessStatus | null>(null);
   const [passcode, setPasscode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +33,11 @@ export default function SynthAccessGate({ render }: { render: (lock: () => void)
   useEffect(() => {
     let cancelled = false;
     synthAccessStatus()
-      .then((s) => !cancelled && setState(s.authenticated ? "unlocked" : "locked"))
+      .then((s) => {
+        if (cancelled) return;
+        setSession(s);
+        setState(s.authenticated ? "unlocked" : "locked");
+      })
       .catch(() => !cancelled && setState("locked"));
     const off = onSynthUnauthorized(() => setState("locked"));
     return () => {
@@ -38,6 +45,23 @@ export default function SynthAccessGate({ render }: { render: (lock: () => void)
       off();
     };
   }, []);
+
+  // A role can be changed or revoked server-side while this page is open. The
+  // backend checks every request; refresh the displayed controls too.
+  useEffect(() => {
+    if (state !== "unlocked") return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void synthAccessStatus().then((s) => {
+        if (cancelled) return;
+        setSession(s);
+        if (!s.authenticated) setState("locked");
+      }).catch(() => {
+        if (!cancelled) setSession(null);
+      });
+    }, 60000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [state]);
 
   const lock = useCallback(() => {
     void synthLogout().finally(() => setState("locked"));
@@ -50,6 +74,7 @@ export default function SynthAccessGate({ render }: { render: (lock: () => void)
     setError(null);
     try {
       const s = await synthVerify(passcode);
+      setSession(s);
       setPasscode("");
       setState(s.authenticated ? "unlocked" : "locked");
     } catch (err) {
@@ -59,7 +84,7 @@ export default function SynthAccessGate({ render }: { render: (lock: () => void)
     }
   }
 
-  if (state === "unlocked") return <>{render(lock)}</>;
+  if (state === "unlocked") return <>{render(lock, session?.role)}</>;
   if (state === "checking") {
     return (
       <div className="synth-gate">

@@ -48,9 +48,11 @@ async function synthRequest<T>(path: string, what: string, options: RequestOptio
   }
 }
 
+export type SynthAccessRole = "full" | "read";
+
 export interface SynthAccessStatus {
   authenticated: boolean;
-  role?: string;
+  role?: SynthAccessRole;
   csrf_token?: string;
   expires_at?: string;
 }
@@ -466,7 +468,19 @@ export interface SynthBrokerView extends SynthBrokerSession {
   manual_token: boolean;
 }
 
-export interface SynthStatus {
+/** Recovery readiness is independent of market/feed/ARM and per-opportunity gates. */
+export interface SynthHealth {
+  service: "gts-synth";
+  live: boolean;
+  ready: boolean;
+  state: "starting" | "recovering" | "unavailable" | "ready" | "degraded" | "shutting_down" | "stopped";
+  recovery_complete: boolean;
+  storage_ready: boolean;
+  entry_permitted: boolean;
+  entry_block: string | null;
+}
+
+export interface SynthStatus extends SynthHealth {
   running: boolean;
   market_open: boolean;
   calendar_covered: boolean;
@@ -677,6 +691,7 @@ export interface SynthLiveView {
   busy: number;
   open_live_trades: number;
   quarantined_live_trades: number;
+  /** Account/IST-day live risk; includes hidden closes and priced owning-account open marks. */
   day_net: number;
   ack_samples: number;
   cancel_samples: number;

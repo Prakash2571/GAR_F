@@ -371,11 +371,13 @@ export const SynthClosedHistory = memo(function SynthClosedHistory({
   trades,
   loading,
   error,
+  canDelete,
   onDelete,
 }: {
   trades: SynthTrade[];
   loading: boolean;
   error: string | null;
+  canDelete: boolean;
   onDelete: (t: SynthTrade) => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -451,6 +453,7 @@ export const SynthClosedHistory = memo(function SynthClosedHistory({
                             <Button
                               size="sm"
                               variant="quiet"
+                              disabled={!canDelete}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onDelete(t);

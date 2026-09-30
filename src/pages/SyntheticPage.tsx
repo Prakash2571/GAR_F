@@ -7,5 +7,5 @@ import Synthetic from "../components/synth/Synthetic.tsx";
 import SynthAccessGate from "../components/synth/SynthAccessGate.tsx";
 
 export default function SyntheticPage() {
-  return <SynthAccessGate render={(lock) => <Synthetic onLock={lock} />} />;
+  return <SynthAccessGate render={(lock, role) => <Synthetic onLock={lock} role={role} />} />;
 }

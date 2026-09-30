@@ -22,6 +22,8 @@ import {
   positionState,
   pnlEvidenceLabel,
   residualText,
+  recoveryBadge,
+  synthCanControl,
   runSummary,
 } from "../src/lib/synthView.ts";
 import { armSynthLive, bindSynthAccount, closeSynthTrade, disarmSynthLive, reconcileSynthLive, reconcileSynthSettlement, synthVerify } from "../src/api/synth.ts";
@@ -117,13 +119,38 @@ test("arming is offered only when the standing gates hold; entry limits do not b
 
 test("every live entry-block code the server emits has a label", () => {
   for (const code of ["live_not_permitted", "live_mode", "live_disarmed", "live_breaker", "live_unresolved", "live_session",
-    "live_busy", "live_quarantine", "live_max_open", "live_lots", "live_daily_loss"]) {
+    "live_busy", "live_quarantine", "live_max_open", "live_lots", "live_daily_loss", "live_risk_unavailable", "shutting_down"]) {
     assert.ok(ENTRY_BLOCK_LABEL[code], code);
   }
   const setting = { kind: "enum", unit: "" };
   assert.equal(formatSettingValue(setting, "paper_legging_live_parity"), "Paper · live parity");
   assert.equal(formatSettingValue(setting, "hedge_sequential"), "Hedge-first, one leg at a time");
   assert.equal(istTime(Date.UTC(2026, 8, 29, 5, 45, 7)), "11:15:07");
+});
+
+test("session controls and server recovery readiness remain independent of entry permission", () => {
+  for (const role of ["read", "operator", undefined]) {
+    assert.equal(synthCanControl(role, { state: "ready" }), false);
+  }
+  for (const state of ["starting", "recovering", "unavailable", "degraded", "ready"]) {
+    assert.equal(synthCanControl("full", { state }), true, "full recovery controls do not require entry permission");
+  }
+  assert.equal(synthCanControl("full", { state: "shutting_down" }), false);
+  assert.equal(synthCanControl("full", { state: "stopped" }), false);
+  assert.match(recoveryBadge(null).text, /UNKNOWN/);
+  assert.match(recoveryBadge({}).text, /UNKNOWN/, "an older server cannot invent readiness or crash the badge");
+  const health = { service: "gts-synth", live: true, ready: false, recovery_complete: false, storage_ready: false, entry_permitted: false, entry_block: "recovery_pending", state: "recovering" };
+  assert.match(recoveryBadge(health).text, /RECOVERING/);
+  const ready = { ...health, ready: true, recovery_complete: true, storage_ready: true, state: "ready", entry_block: "market_closed" };
+  assert.equal(recoveryBadge(ready).text, "RECOVERY READY");
+  assert.match(recoveryBadge(ready).title, /market closed/);
+  assert.equal(recoveryBadge({ ...ready, state: "degraded" }).tone, "warning");
+});
+
+test("arming UI reflects the new server storage and account risk gates", () => {
+  for (const key of ["storage", "risk"]) {
+    assert.deepEqual(armGates({ gates: [{ key, label: key, ok: false }] }), { ok: false, missing: [key] });
+  }
 });
 
 function stubFetch(handler) {

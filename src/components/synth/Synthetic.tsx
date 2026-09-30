@@ -41,6 +41,7 @@ import {
   stopSynth,
   synthAccessStatus,
   synthStreamUrl,
+  type SynthAccessRole,
   type SynthBrokerId,
   type SynthBrokerView,
   type SynthExecutionMode,
@@ -63,6 +64,8 @@ import {
   modeBadge,
   parseBrokerLoginResult,
   pnlClass,
+  recoveryBadge,
+  synthCanControl,
 } from "../../lib/synthView.ts";
 import SynthOpportunities from "./SynthOpportunities.tsx";
 import { SynthClosedHistory, SynthDayPnlStrip, SynthOpenCards } from "./SynthPositions.tsx";
@@ -89,8 +92,10 @@ function Stat({ k, v, title }: { k: string; v: string; title?: string }) {
   );
 }
 
-export default function Synthetic({ onLock }: { onLock: () => void }) {
+export default function Synthetic({ onLock, role }: { onLock: () => void; role?: SynthAccessRole }) {
   const [status, setStatus] = useState<SynthStatus | null>(null);
+  const canControl = synthCanControl(role, status);
+  const recovery = recoveryBadge(status);
   const [opps, setOpps] = useState<SynthOpportunity[]>([]);
   const [open, setOpen] = useState<SynthOpenPosition[]>([]);
   const [history, setHistory] = useState<SynthTrade[]>([]);
@@ -289,7 +294,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
 
   const submitChange = useCallback(
     async (setting: SynthSetting, value: SynthSettingValue) => {
-      if (!settings) return;
+      if (!settings || !canControl) return;
       setBusy(true);
       setError(null);
       setNotice(null);
@@ -305,16 +310,17 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
         setBusy(false);
       }
     },
-    [settings, loadSettings],
+    [settings, loadSettings, canControl],
   );
 
   /** Risk settings are confirmed first; the server validates either way. */
   const requestChange = useCallback(
     (setting: SynthSetting, value: SynthSettingValue) => {
+      if (!canControl) return;
       if (setting.risk) setPendingChange({ setting, value });
       else void submitChange(setting, value);
     },
-    [submitChange],
+    [submitChange, canControl],
   );
 
   const quick = (key: string, value: SynthSettingValue) => {
@@ -508,6 +514,9 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
           <StatusBadge tone={badge.tone} title={badge.title}>
             {badge.text}
           </StatusBadge>
+          <StatusBadge tone={recovery.tone} title={recovery.title}>
+            {recovery.text}
+          </StatusBadge>
           <StatusBadge tone={stateTone} announce>
             {stateText}
           </StatusBadge>
@@ -530,7 +539,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
           <Button
             variant={running ? "danger" : "primary"}
             onClick={toggleRun}
-            disabled={busy || !status}
+            disabled={busy || !status || !canControl}
             title={running ? "Stop discovery (open positions stay monitored)" : "Start scanning"}
           >
             {running ? "STOP" : "RUN"}
@@ -541,6 +550,14 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
       {error && <div className="banner banner--error">{error}</div>}
       {notice && !error && <div className="banner banner--info">{notice}</div>}
       {status?.last_error && <div className="banner banner--warn">{status.last_error}</div>}
+      {!canControl && (
+        <div className="banner banner--info">
+          {role === "read" ? "Read access: you can observe this workspace. Full access is required for controls." : role !== "full" ? "Session permissions are being verified. Controls are unavailable." : "The service is shutting down. Controls are unavailable."}
+        </div>
+      )}
+      {status && !status.ready && (
+        <div className="banner banner--warn">Recovery and storage must be verified before new entries. {recovery.title}.</div>
+      )}
       {status?.live_breaker && (
         <div className="banner banner--error">
           <strong>Live circuit breaker open:</strong> {status.live_breaker}. No new live entry is sent until every order is
@@ -624,7 +641,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
               size="sm"
               variant={strikeLevel === lvl ? "primary" : "secondary"}
               aria-pressed={strikeLevel === lvl}
-              disabled={busy || !settings}
+              disabled={busy || !settings || !canControl}
               onClick={() => strikeLevel !== lvl && quick("strike_level", lvl)}
             >
               {lvl}
@@ -636,7 +653,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
           <select
             className="synth-select"
             value={brokerSetting}
-            disabled={busy || !settings}
+            disabled={busy || !settings || !canControl}
             onChange={(e) => quick("broker", e.target.value)}
           >
             {(["zerodha", "dhan"] as const).map((b) => {
@@ -655,7 +672,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
           <select
             className="synth-select"
             value={mode}
-            disabled={busy || !settings}
+            disabled={busy || !settings || !canControl}
             title="How decisions become fills (confirmed first). Live also needs the server's consent and an ARM."
             onChange={(e) => quick("execution_mode", e.target.value)}
           >
@@ -672,7 +689,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
           <select
             className="synth-select"
             value={lots}
-            disabled={busy || !settings}
+            disabled={busy || !settings || !canControl}
             onChange={(e) => quick("lots_per_trade", Number(e.target.value))}
           >
             {[1, 2, 3, 4, 5, 10].map((n) => (
@@ -690,7 +707,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
             aria-checked={autoEntry}
             aria-label="Automatic entries"
             className={`synth-toggle${autoEntry ? " is-on" : ""}`}
-            disabled={busy || !settings}
+            disabled={busy || !settings || !canControl}
             onClick={() => quick("auto_entry", !autoEntry)}
           />
         </div>
@@ -702,7 +719,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
             aria-checked={autoExit}
             aria-label="Automatic rule exits"
             className={`synth-toggle${autoExit ? " is-on" : ""}`}
-            disabled={busy || !settings}
+            disabled={busy || !settings || !canControl}
             onClick={() => quick("auto_exit", !autoExit)}
           />
         </div>
@@ -711,6 +728,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
 
       <section className="synth-strip">
         <Stat k="Broker" v={status ? BROKER_LABEL[status.broker] ?? "-" : "-"} />
+        <Stat k="Entries" v={status?.entry_permitted === true ? "Permitted" : status?.entry_block ? recovery.title : "Waiting"} title="Server global entry decision; each opportunity still needs its own checks" />
         <Stat
           k="Underlyings"
           v={status ? `${status.monitored_underlyings} / ${status.paired_underlyings}` : "-"}
@@ -758,20 +776,20 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
         <SynthOpenCards
           positions={open}
           closingId={closingId}
-          busy={busy}
+          busy={busy || !canControl}
           onClose={onCloseTrade}
           onCloseAll={openCloseAll}
           onDelete={askDelete}
         />
       )}
       {view === "history" && (
-        <SynthClosedHistory trades={history} loading={historyLoading} error={historyError} onDelete={askDelete} />
+        <SynthClosedHistory trades={history} loading={historyLoading} error={historyError} canDelete={canControl && !busy} onDelete={askDelete} />
       )}
       {view === "execution" && (
         <SynthExecution
           view={execView}
           settings={settings}
-          busy={busy}
+          busy={busy || !canControl}
           error={execError}
           onRequestChange={requestChange}
           onArm={onArm}
@@ -785,13 +803,13 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
         <SynthBrokerPanel
           brokers={brokers}
           activeBroker={status?.broker ?? ""}
-          busy={busy}
+          busy={busy || !canControl}
           onChanged={onBrokersChanged}
           onUse={(b) => quick("broker", b)}
         />
       )}
       {view === "settings" && (
-        <SynthSettingsPanel settings={settings} busy={busy} onRequestChange={requestChange} onReload={() => void loadSettings()} />
+        <SynthSettingsPanel settings={settings} busy={busy || !canControl} onRequestChange={requestChange} onReload={() => void loadSettings()} />
       )}
 
       {pendingChange && (
@@ -807,7 +825,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
             </Button>
             <Button
               variant="danger"
-              disabled={busy}
+              disabled={busy || !canControl}
               onClick={() => {
                 const p = pendingChange;
                 setPendingChange(null);
@@ -832,7 +850,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
             <Button variant="quiet" onClick={() => setConfirmCloseAll(false)}>
               Cancel
             </Button>
-            <Button variant="danger" disabled={busy} onClick={() => void handleCloseAll()}>
+            <Button variant="danger" disabled={busy || !canControl} onClick={() => void handleCloseAll()}>
               Close all
             </Button>
           </div>
@@ -849,6 +867,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
           <p>
             It leaves every list, P&amp;L and margin figure{deleteTarget.status === "open" ? " and stops being monitored" : ""}.
             It is kept on the server as an audit record.
+            {deleteTarget.execution_mode === "live" && " The owning account’s daily live risk still includes this closed result."}
           </p>
           <label className="synth-field">
             <span>Reason (optional)</span>
@@ -859,7 +878,7 @@ export default function Synthetic({ onLock }: { onLock: () => void }) {
             <Button variant="quiet" disabled={deleting} onClick={() => setDeleteTarget(null)}>
               Cancel
             </Button>
-            <Button variant="danger" disabled={deleting} onClick={() => void handleDelete()}>
+            <Button variant="danger" disabled={deleting || !canControl} onClick={() => void handleDelete()}>
               {deleting ? "Deleting…" : "Delete"}
             </Button>
           </div>
