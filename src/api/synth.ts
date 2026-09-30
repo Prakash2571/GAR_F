@@ -134,6 +134,7 @@ export interface SynthFill {
   qty: number;
   at: number;
   version?: number;
+  generation?: number;
 }
 
 /** The terminal record of one order (paper-simulated or live). Times are epoch ms. */
@@ -209,6 +210,17 @@ export interface SynthLegEval {
   fresh: boolean;
   executable: boolean;
   reject: string | null;
+  version?: number;
+  received_at_ms?: number | null;
+  exchange_time?: SynthTimestamp | null;
+  timestamp_issue?: string;
+}
+
+export interface SynthTimestamp {
+  at_ms: number;
+  resolution_ms: number;
+  source: string;
+  semantics: "exchange_snapshot";
 }
 
 export interface SynthOpportunity {
@@ -242,6 +254,9 @@ export interface SynthOpportunity {
   depth_ok: boolean;
   liquidity_ok: boolean;
   worst_age_ms: number | null;
+  coherent?: boolean;
+  dispersion_ms?: number | null;
+  timestamp_source?: string;
   price_source: "touch" | "last_close";
   status: SynthRowStatus;
   reject: string | null;
@@ -296,6 +311,15 @@ export interface SynthTrade {
   status: "open" | "closed";
   key: string;
   broker: SynthBrokerId;
+  account_id?: string;
+  recovery_state?: "ready" | "required" | "";
+  accounting_pending?: boolean;
+  pnl_status?: "settlement_pending" | "confirmed_statement" | "execution_estimate" | "paper_estimate" | "estimated" | "";
+  settlement_pending?: boolean;
+  settlement_kind?: "cash" | "physical" | "";
+  settlement_since_ms?: number | null;
+  settlement_estimate_gross?: number | null;
+  settlement_evidence?: SynthSettlementEvidence | null;
   execution_mode: SynthExecutionMode;
   order_type: "LIMIT";
   underlying: string;
@@ -355,6 +379,7 @@ export interface SynthTrade {
   quarantine_reason: string | null;
   /** Live: the durable claim written before the first order. */
   entry_pending: boolean;
+  entry_no_submit_proven?: boolean;
   close_reason: string | null;
   flatten_attempts: number;
   flatten_rejects: number;
@@ -466,6 +491,8 @@ export interface SynthStatus {
   unresolved_intents: number;
   residual_count: number;
   quarantined_count: number;
+  settlement_pending_count?: number;
+  recovery_required_count?: number;
   in_flight: number;
   paper_trading: boolean;
   paper_blocked_reason: "disabled" | "loading" | null;
@@ -568,6 +595,10 @@ export interface SynthIntent {
   client_order_id: string;
   trade_id: string;
   broker: SynthBrokerId;
+  account_id?: string;
+  evidence_version?: number;
+  priced_qty?: number;
+  priced_avg_price?: number;
   phase: SynthPhase;
   role: SynthRole;
   side: SynthSide;
@@ -666,7 +697,32 @@ export interface SynthExecutionView {
   in_flight: SynthInFlight[];
   residual_count: number;
   quarantined_count: number;
+  settlement_pending_count?: number;
+  recovery_required_count?: number;
   attempts: SynthAttempt[];
+}
+
+export interface SynthAccountEvidence {
+  account_id: string;
+  evidence_id: string;
+  source: string;
+  note: string;
+  confirm: "BIND ACCOUNT";
+}
+
+export interface SynthSettlementEvidence {
+  evidence_id: string;
+  source: string;
+  account_id: string;
+  kind: "cash" | "physical";
+  obligations_resolved: boolean;
+  delivery_resolved: boolean;
+  gross_pnl: number;
+  total_charges: number;
+  legs: { role: SynthRole; tradingsymbol: string; qty: number }[];
+  orders?: { client_order_id: string; broker_order_id: string; state: "COMPLETE" | "CANCELLED" | "REJECTED"; qty: number; filled: number; avg_price: number }[];
+  note: string;
+  confirm: "CONFIRM SETTLEMENT";
 }
 
 export interface SynthReconcileResult {
@@ -777,6 +833,16 @@ export function resetSynthBreaker(confirm: string): Promise<LiveReply> {
 /** Re-read every unresolved live order at the broker and rebuild the affected positions. */
 export function reconcileSynthLive(): Promise<LiveReply & { reconcile: SynthReconcileResult; open: SynthOpenPosition[] }> {
   return synthRequest(`${BASE}/live/reconcile`, "Failed to reconcile live orders", { method: "POST" });
+}
+
+/** Explicit audited ownership attestation for legacy live rows; full role required. */
+export function bindSynthAccount(id: string, evidence: SynthAccountEvidence): Promise<{ ok: boolean; open: SynthOpenPosition[]; status: SynthStatus }> {
+  return synthRequest(`${BASE}/trades/${encodeURIComponent(id)}/account/bind`, "Failed to bind legacy account evidence", { method: "POST", body: evidence });
+}
+
+/** Final statement reconciliation; every cash/delivery obligation must be resolved. */
+export function reconcileSynthSettlement(id: string, evidence: SynthSettlementEvidence): Promise<{ ok: boolean; trade: SynthTrade; open: SynthOpenPosition[]; status: SynthStatus }> {
+  return synthRequest(`${BASE}/trades/${encodeURIComponent(id)}/settlement/reconcile`, "Failed to reconcile settlement evidence", { method: "POST", body: evidence });
 }
 
 export function closeAllSynthTrades(): Promise<{

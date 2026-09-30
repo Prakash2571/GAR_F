@@ -30,6 +30,7 @@ import {
   pnlClass,
   positionState,
   residualText,
+  pnlEvidenceLabel,
   runSummary,
 } from "../../lib/synthView.ts";
 import { expiryLabel, liveAgeText, money, num2, rupees } from "../../lib/synthLive.ts";
@@ -220,6 +221,7 @@ const OpenCard = memo(function OpenCard({
           {p.is_index && <span className="synth-tag">INDEX</span>}
           <span className={`synth-dir synth-dir--${p.direction.toLowerCase()}`}>{p.direction}</span>
           <span className="synth-tag">{p.broker}</span>
+          {liveOpen && <span className="synth-dim">account {p.account_id || "unverified"}</span>}
           <ModeTag t={p} />
           <span className="synth-card-strikes">
             K {p.strike} <span className="synth-dim">{offsetLabel(p.atm_offset)}</span>
@@ -231,6 +233,8 @@ const OpenCard = memo(function OpenCard({
         </div>
         <div className="synth-card-actions">
           {state === "quarantined" && <span className="synth-tag synth-tag--warn">QUARANTINED</span>}
+          {state === "settlement_pending" && <span className="synth-tag synth-tag--warn">SETTLEMENT PENDING</span>}
+          {state === "recovery_required" && <span className="synth-tag synth-tag--warn">RECOVERY REQUIRED</span>}
           {state === "residual" && <span className="synth-tag synth-tag--warn">INCOMPLETE</span>}
           {p.flatten_halted && <span className="synth-tag synth-tag--warn">FLATTEN HALTED</span>}
           {p.exit_eligible && <span className="synth-tag synth-tag--exit">EXIT ELIGIBLE</span>}
@@ -238,10 +242,14 @@ const OpenCard = memo(function OpenCard({
           {!p.linked && <span className="synth-tag synth-tag--warn">NOT LINKED</span>}
           <Button
             size="sm"
-            disabled={closing || busy || state === "quarantined"}
+            disabled={closing || busy || state === "quarantined" || state === "settlement_pending" || state === "recovery_required"}
             onClick={() => onClose(p.id)}
             title={
-              state === "quarantined"
+              state === "settlement_pending"
+                ? "Final settlement statements must be reconciled by an operator"
+                : state === "recovery_required"
+                  ? "Durable execution recovery must finish first"
+                  : state === "quarantined"
                 ? "Reconcile it against the broker first (Execution tab)"
                 : touch
                   ? "Close now at the executable touch"
@@ -279,7 +287,7 @@ const OpenCard = memo(function OpenCard({
                   held {held} · filled {legQty(p, leg)} · closed {leg.exit_qty ?? 0}
                 </span>
               )}
-              <span className="synth-leg-cell">entry {legQty(p, leg) > 0 ? num2(leg.entry_price) : "-"}</span>
+              <span className="synth-leg-cell">entry {legQty(p, leg) > 0 ? leg.entry_price > 0 ? num2(leg.entry_price) : "unknown price" : "-"}</span>
               <span className="synth-leg-cell">
                 LTP <SynthTick value={ex?.ltp ?? null} text={ex?.ltp ? num2(ex.ltp) : "-"} />
               </span>
@@ -430,7 +438,7 @@ export const SynthClosedHistory = memo(function SynthClosedHistory({
                           <td>
                             <ModeTag t={t} />
                           </td>
-                          <td className="synth-dim">{label(EXIT_REASON_LABEL, t.exit_reason)}</td>
+                          <td className="synth-dim">{label(EXIT_REASON_LABEL, t.exit_reason)}<div>{pnlEvidenceLabel(t)}</div></td>
                           <td className="num synth-dim">{marginText(t)}</td>
                           <td className="num">{money(t.entry_edge)}</td>
                           <td className="num synth-dim">{money(t.total_charges)}</td>

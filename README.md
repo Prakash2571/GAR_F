@@ -11,7 +11,7 @@ This repository is its **frontend**, and it is two surfaces in one app:
 | --- | --- | --- |
 | `/` | The public GTS Algo Research page. | **Public.** |
 | `/box` | **GTS Box** — the algorithmic execution workspace. | **Protected** by the site passcode. |
-| `/synth` | **Synthetic** — futures vs synthetic futures (K + CE − PE) arbitrage, **paper trading**, on Zerodha or Dhan. Talks only to the self-contained Go service `gts-synth` (GAR_B `synth/`) at `/api/synth/*`: its own passcode gate, broker logins and settings, all controlled from this page. | **Gated by gts-synth's own passcode** (not the site guard). |
+| `/synth` | **Synthetic** — futures vs synthetic futures (K + CE − PE) on Zerodha or Dhan: four paper modes and separately gated live LIMIT execution. Talks to the Go service `gts-synth` at `/api/synth/*` with its own passcode, broker ownership, settings, recovery and settlement-pending states. See [Synth guide](outputs/README.md). | **Gated by gts-synth's own passcode** (not the site guard). |
 
 > ### ⚠️ This is algorithmic trading research and execution software
 >

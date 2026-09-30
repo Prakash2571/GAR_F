@@ -1,10 +1,10 @@
 # GAR frontend: detailed working guide
 
-**Reviewed source:** frontend `5d63f78`, backend `7639936` · 30 September 2026.
+**Implementation revision:** frontend repair baseline `628955c`, backend repair baseline `5f8070a` · 30 September 2026. Necessary Synth contract/status changes are included in this revision; [GitHub publication results](../tasks/2026-09-30-push-synth-repairs/STATUS.md) are recorded separately from production deployment.
 
 This guide follows a user from opening the app through authentication, broker connection, configuration, scanning, execution, monitoring, and history. It explains which React component owns each part, which request it sends, how live state is updated, and which figures are calculated by the frontend.
 
-The backend's full workings are covered in the [GAR system guide](https://github.com/Prakash2571/GAR_B/blob/synth/outputs/GAR_WORKING_GUIDE.md). Exact request shapes and all 71 runtime settings are in the [API/configuration reference](https://github.com/Prakash2571/GAR_B/blob/synth/outputs/GAR_API_AND_CONFIGURATION.md). Current integration defects and check results are in the [review report](https://github.com/Prakash2571/GAR_B/blob/synth/outputs/GAR_REVIEW_AND_VERIFICATION.md).
+The backend's full workings are covered in the [GAR system guide](https://github.com/Prakash2571/GAR_B/blob/synth/outputs/GAR_WORKING_GUIDE.md). Exact requests and all 72 runtime settings are in the [API/configuration reference](https://github.com/Prakash2571/GAR_B/blob/synth/outputs/GAR_API_AND_CONFIGURATION.md). Repair evidence and remaining integration limitations are in the [review report](https://github.com/Prakash2571/GAR_B/blob/synth/outputs/GAR_REVIEW_AND_VERIFICATION.md).
 
 ## Contents
 
@@ -228,6 +228,8 @@ Filters include direction, first/best row per underlying, gross > 0, and upperca
 
 Each row shows underlying/index marker, direction, expiry/days, K/ATM offset, listed future, executable synthetic, lock/unit, carry/unit, quantity, gross, entry/estimated-exit fees, expected net, depth age, and status/blocker.
 
+Expanded rows show the backend timestamp basis, dispersion and coherence. `quote_max_dispersion_ms=2000` is a runtime setting independent of per-leg age (`15000`) and feed health (`10000`). Kite exchange snapshot timestamps retain whole-second resolution; Dhan/mixed availability uses receipt time for every leg. Last-trade time is not depth time. Incoherent/future/missing/invalid timestamp reasons are labeled without inventing precision. Every leg must advance between counted confirmations; UI recomputation never adds a confirmation.
+
 The status renderer combines ELIGIBLE with `entry_blocked`; an eligible unblocked row says “entering.” That is an interpretation of the row annotation, not a broker acknowledgement. Actual entry/positions/runs remain the evidence.
 
 Clicking a row expands the three legs: order side, exact price used, bid/ask and quantities, touch quantity, age, and reject reason. It also shows mid-basis as context, the net threshold, safety, and slippage allowances.
@@ -240,7 +242,7 @@ The backend default caps nonpriority publication around 150 rows while evaluatin
 
 [SynthOpenCards](../src/components/synth/SynthPositions.tsx) renders backend open-position projections. Each card includes the original broker/mode/direction/strike/expiry, full intended quantity, leg fills, entry economics, current MTM/touch P&L, margin source, and exit thresholds.
 
-The state priority is quarantine, pending entry, residual, closing, open. Explicit labels identify incomplete, quarantined, flatten halted, expiry safety, exit eligible, and not linked.
+State priority is settlement pending, recovery required, quarantine, pending entry, residual, closing, open. Cards show saved broker account (or unverified), unknown entry prices, held/filled/closed quantities and pending/recovery instructions. Pending obligations disable Close/Flatten; over-reduction remains visible as inverse exposure and never displays as flat.
 
 For paper-touch, the card checks recorded book evidence: an entry/exit price counts as at best only when it equals the relevant recorded touch within tolerance, full quantity was there, and the book was uncrossed. Missing evidence stays “not recorded.” This is a display consistency check on a simulated fill, not exchange fill proof.
 
@@ -252,6 +254,11 @@ Close now posts the trade ID; it does not choose a replacement mode:
 - Other modes return 202 and `async:true` while orders are worked. The UI shows an acknowledgement and waits for the resulting open/exit stream state.
 - A residual's button becomes Flatten now and resumes known residual flattening.
 - Quarantine disables Close until reconciliation.
+- Recovery required and settlement pending disable Close/Flatten. The backend independently refuses reductions; pending quantities and ownership remain visible across restart.
+
+Live expiry is **settlement pending**, including partial/residual positions. `settlement_estimate_gross` is separate from realized fields, which remain null until final evidence. History labels `pnl_status`: paper estimate, observed fills with estimated charges, or `confirmed_statement`. `EXPIRED` is a paper expiry estimate; confirmed live settlement uses `SETTLED_CONFIRMED`.
+
+The API exports `bindSynthAccount` and `reconcileSynthSettlement` for the existing authenticated transport. These full-role audited actions require explicit statement references, account/kind/contract quantities, source/note and typed confirmation; physical settlement needs delivery obligations resolved. Optional final statement order evidence uses the shared quantity/identity validation and commits atomically with settlement when REST history is unavailable. The current UI displays pending instructions but has no statement-upload/confirmation form. Operators follow the [existing API/runbook procedure](https://github.com/Prakash2571/GAR_B/blob/synth/outputs/GAR_WORKING_GUIDE.md#125-upgrade-to-durable-execution-and-settlement-authority). No automated broker settlement proof is available; repeated identical confirmation is idempotent and conflicting evidence is refused.
 
 Close all first displays a confirmation, then reports separately which records closed, which asynchronous closes started, and which were held/refused. It is not an atomic basket across trades.
 
@@ -289,6 +296,8 @@ Disarm stops new live entries. RESET requires its typed phrase and clear unresol
 
 The unresolved-order table shows client ID, phase, instrument/side, quantity/limit, tag, intent state, broker ID, observed fills, and reason. A cancel request or a locally timed-out HTTP operation is not displayed as proof the broker order is flat.
 
+The API intent type also includes `priced_qty`/`priced_avg_price`, the last consistent cumulative price evidence retained by the service through unpriced or contradictory updates. These diagnostic fields are separate from the current filled quantity/average and do not authorize a close in the browser.
+
 Calibration shows clean ACK/cancel samples and medians available after 20 samples. It explains the data used by live-parity simulation; samples reset with backend restarts.
 
 In-flight operations list kind, underlying, mode, and age. Attempt rows show detected versus filled net, outcome/reason, legging P&L, and expandable entry/unwind runs. Current paper-touch fast entries do not populate the attempt ring, despite the intended “every mode” terminology.
@@ -305,7 +314,7 @@ Paste token keeps the user-entered value briefly in a password input, sends it w
 
 Disconnect posts the broker logout; it clears that broker's token, rather than the workspace access cookie. Use broker changes the runtime broker setting with its risk confirmation. Connecting alone does not select/ARM/RUN.
 
-The current Disconnect endpoint has no guard preventing invalidation while live exposure/orders exist, so a connected active broker can be removed while reductions still need credentials. Switching the broker setting is guarded separately. This is a backend review finding relevant to the screen.
+Every token upload, OAuth callback, logout and direct vault mutation shares a durable account barrier with live claim/intent creation. Same-account renewal is allowed; different-account replacement/logout under exposure, unresolved orders or settlement pending returns `account_locked`. Legacy owners require audited statement binding and token renewal; the current login is never assigned silently. The UI renders backend errors and retains the existing session/CSRF paths.
 
 ### Known callback integration problem
 
@@ -359,7 +368,7 @@ With dependencies/tooling available, `npm run dev` runs Vite, `npm test` runs No
 
 No `VITE_*` passcode or broker secret is required. A public build-time variable cannot protect access. SYNTH server Origin must match the exact browser scheme/host/port used in development or production.
 
-### 14.2 Checks executed for this documentation
+### 14.2 Historical documentation checks
 
 Existing Node binary used: `/home/prakash/gar-testenv/node-v22.23.2-linux-x64/bin/node`.
 
@@ -373,7 +382,7 @@ Existing Node binary used: `/home/prakash/gar-testenv/node-v22.23.2-linux-x64/bi
 | `.../node contract/verify.mjs` | Exit 0: Box contract version 1.23.0; 52 schemas verified. |
 | `.../node --experimental-strip-types --test tests/*.test.mjs` | Exit 1: 34 of 36 files passed; Box DOM dependency missing, contract-negative-controls child output empty. |
 
-The abbreviated prefix `.../node` above is the exact existing Node path stated immediately before the table. The review report records full commands and diagnostics. No frontend dependency installation, full production build, browser visual check, Go build, database integration, or broker run was performed.
+The table preserves the original documentation-only session's results, not the current repair validation. Its abbreviated prefix is the historical path stated above. The current repair downloaded declared dependencies into approved backend scratch. `npm run build` passed TypeScript, Vite and all 16 asset checks; `node contract/verify.mjs` passed the unchanged Box pin. The installed Node 22.22.1 lacks native TypeScript stripping, so its direct test invocation failed `ERR_NO_TYPESCRIPT`; all four focused Synth files passed with the approved TypeScript scratch loader. Exact final results are recorded in the companion task and backend review report. No real broker or production action occurred.
 
 The focused suites verify pure transport/CSRF/view/stream/formatting behavior with stubs and source checks. They do not mount `main.tsx` through the entire broker-return journey; that is why the reproduced callback collision can exist while the parser unit tests pass.
 
@@ -381,4 +390,4 @@ The focused suites verify pure transport/CSRF/view/stream/formatting behavior wi
 
 When changing Go view/route shapes, update `src/api/synth.ts` and the callers/tests together. Preserve the distinction between session 401, CSRF/refusal, temporary service failure, and unknown mutation outcome. Keep trade mode/filled quantities sourced from the record, and distinguish browser stream connectivity from broker feed/live permission.
 
-For future fixes, tests should exercise the concrete integration trigger: application bootstrap before Synthetic's broker result, delayed initial GET after a newer snapshot, missed exit followed by reconnect, malformed wire data, and credential disconnect while live positions exist. The review report supplies the prioritized next work without changing implementation in this documentation task.
+Account/disconnect, execution recovery and settlement evidence are now protected in the Go service, with necessary UI types/labels and focused regressions. Remaining frontend work includes callback capture at bootstrap, ordering delayed REST/snapshot replies and repairing missed history after reconnect; these are outside the six service findings and retained in the review report. The Box contract remains unchanged.

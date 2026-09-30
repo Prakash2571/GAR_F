@@ -273,8 +273,8 @@ export default function SynthExecution({
         </div>
         <p className="synth-dim">
           Consent comes from the server's environment and cannot be changed from a browser. Arming lasts until STOP, a
-          restart, a mode or broker change, or Disarm. Closing orders — exits, unwinds, flattening — are sent whether or not
-          live is armed.
+          restart, a mode or broker change, or Disarm. Exits, unwinds and flattening remain available while disarmed once
+          the owning account and durable quantities are verified. Expired live obligations require statement reconciliation.
         </p>
         <dl className="synth-kv">
           <dt>SYNTH_LIVE_TRADING_ENABLED</dt>

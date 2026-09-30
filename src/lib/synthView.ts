@@ -60,13 +60,20 @@ export const REJECT_LABEL: Record<string, string> = {
   market_closed: "market closed",
   no_close: "no last-session price",
   crossed_book: "crossed book",
+  incoherent_basket: "leg timestamps too far apart",
+  future_quote_timestamp: "quote timestamp in the future",
+  future_exchange_timestamp: "exchange timestamp in the future",
+  future_receipt_timestamp: "receipt timestamp in the future",
+  invalid_exchange_timestamp: "invalid exchange timestamp",
+  quote_generation_mismatch: "books from different feed connections",
 };
 
 export const EXIT_REASON_LABEL: Record<string, string> = {
   EDGE_CONVERGED: "Edge converged",
   PROFIT_CAPTURE: "Profit capture",
   EXPIRY_SAFETY: "Expiry safety",
-  EXPIRED: "Settled at expiry",
+  EXPIRED: "Paper expiry estimate",
+  SETTLED_CONFIRMED: "Statement settlement confirmed",
   MANUAL: "Manual close",
   ENTRY_UNWOUND: "Partial entry unwound",
   ABORT_AFTER_FILL: "Aborted after fill",
@@ -171,12 +178,14 @@ export function outstandingQty(
 ): number {
   if (t.status !== "open") return 0;
   if ((t.execution_mode ?? "paper_touch") === "paper_touch") return t.quantity;
-  return Math.max(0, (l.qty ?? 0) - (l.exit_qty ?? 0));
+  return Math.abs((l.qty ?? 0) - (l.exit_qty ?? 0));
 }
 
-export type PositionState = "quarantined" | "pending" | "residual" | "closing" | "open";
+export type PositionState = "settlement_pending" | "recovery_required" | "quarantined" | "pending" | "residual" | "closing" | "open";
 
-export function positionState(p: Pick<SynthOpenPosition, "quarantined" | "entry_pending" | "residual" | "closing">): PositionState {
+export function positionState(p: Pick<SynthOpenPosition, "quarantined" | "entry_pending" | "residual" | "closing" | "settlement_pending" | "recovery_state">): PositionState {
+  if (p.settlement_pending) return "settlement_pending";
+  if (p.recovery_state === "required") return "recovery_required";
   if (p.quarantined) return "quarantined";
   if (p.entry_pending) return "pending";
   if (p.residual) return "residual";
@@ -213,8 +222,11 @@ export function legTimeline(l: SynthLegOutcome, run: Pick<SynthRun, "detected_at
 
 /** What the position is waiting for when it is not a complete synthetic. */
 export function residualText(
-  p: Pick<SynthOpenPosition, "quarantined" | "quarantine_reason" | "residual" | "residual_reason" | "flatten_halted" | "flatten_attempts" | "flatten_rejects" | "entry_pending" | "execution_mode">,
+  p: Pick<SynthOpenPosition, "quarantined" | "quarantine_reason" | "residual" | "residual_reason" | "flatten_halted" | "flatten_attempts" | "flatten_rejects" | "entry_pending" | "execution_mode" | "settlement_pending" | "settlement_kind" | "recovery_state" | "accounting_pending">,
 ): string | null {
+  if (p.settlement_pending) return `SETTLEMENT PENDING (${p.settlement_kind || "unknown kind"}): ownership and obligations remain open until an operator reconciles final broker/exchange statements. Estimated values are not confirmed realized P&L.`;
+  if (p.recovery_state === "required") return "RECOVERY REQUIRED: durable execution/account evidence must be reconciled and persisted before any reduction. Known quantities remain owned.";
+  if (p.accounting_pending) return "ACCOUNTING PENDING: filled quantity is known but a price is missing. Reconcile evidence before releasing ownership.";
   if (p.quarantined) {
     return `QUARANTINED: ${p.quarantine_reason ?? "an order outcome is not proven at the broker"}. Nothing automatic happens to it until it is reconciled against the broker (Execution tab).`;
   }
@@ -225,6 +237,12 @@ export function residualText(
     return `INCOMPLETE position${why}. Flattening stopped after ${p.flatten_rejects} broker rejection(s): check the broker, then flatten it here.`;
   }
   return `INCOMPLETE position${why}. Its outstanding legs are flattened risk-reducing first on every flatten interval (${p.flatten_attempts} attempt(s) so far).`;
+}
+
+export function pnlEvidenceLabel(t: Pick<SynthTrade, "pnl_status" | "execution_mode">): string {
+  if (t.pnl_status === "confirmed_statement") return "confirmed by statement";
+  if (t.pnl_status === "settlement_pending") return "settlement pending";
+  return t.execution_mode === "live" ? "observed fills · estimated charges" : "paper estimate";
 }
 
 /** Whether the standing gates allow arming (the server re-checks every one). */
@@ -520,6 +538,8 @@ const LOGIN_REASON: Record<string, string> = {
   no_pending_login: "no login was started from this page in the last 10 minutes",
   exchange_failed: "the broker did not issue a token",
   storage_failed: "the token could not be stored",
+  account_locked: "live obligations retain the owning account; renew that account's token or reconcile its obligations first",
+  account_unverified: "the broker did not verify a matching account identity",
 };
 
 export interface BrokerLoginResult {

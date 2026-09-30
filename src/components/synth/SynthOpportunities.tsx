@@ -123,7 +123,7 @@ const OppRow = memo(function OppRow({
             <SynthTick value={o.expected_net_profit} text={money(o.expected_net_profit)} />
           </strong>
         </td>
-        <td className="synth-dim" title={o.worst_age_ms !== null ? `Oldest leg book ${liveAgeText(o.worst_age_ms)} old` : undefined}>
+        <td className="synth-dim" title={o.worst_age_ms !== null ? `Oldest leg book ${liveAgeText(o.worst_age_ms)} old; timestamp basis ${o.timestamp_source ?? "receipt"}; dispersion ${o.dispersion_ms ?? "unknown"} ms` : undefined}>
           {o.price_source === "last_close" ? "last close" : o.liquidity_ok ? "✓ full lot" : "thin"} · {liveAgeText(o.worst_age_ms)}
         </td>
         <td>
@@ -172,6 +172,7 @@ const OppRow = memo(function OppRow({
               </tbody>
             </table>
             <div className="synth-detail-foot">
+              <span className="synth-dim">Basket time: {o.timestamp_source ?? "receipt"} · dispersion {o.dispersion_ms ?? "unknown"} ms · {o.coherent ? "coherent" : "unconfirmed"}</span>
               <span className="synth-dim">
                 Mid basis {num2(o.mid_basis)} (context only) · gate {money(o.min_expected_net_profit)} · safety {money(o.safety_buffer)} ·
                 slippage {money(o.expected_slippage)}

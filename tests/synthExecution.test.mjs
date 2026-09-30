@@ -20,10 +20,11 @@ import {
   modeBadge,
   outstandingQty,
   positionState,
+  pnlEvidenceLabel,
   residualText,
   runSummary,
 } from "../src/lib/synthView.ts";
-import { armSynthLive, closeSynthTrade, disarmSynthLive, reconcileSynthLive, synthVerify } from "../src/api/synth.ts";
+import { armSynthLive, bindSynthAccount, closeSynthTrade, disarmSynthLive, reconcileSynthLive, reconcileSynthSettlement, synthVerify } from "../src/api/synth.ts";
 
 const status = (over) => ({ execution_mode: "paper_touch", live_orders: false, live_armed: false, live_breaker: null, ...over });
 
@@ -67,6 +68,17 @@ test("incomplete and quarantined positions explain themselves", () => {
   assert.match(residualText({ ...base, quarantined: true, quarantine_reason: "fut outcome unknown" }), /QUARANTINED: fut outcome unknown.*reconciled/);
   assert.match(residualText({ ...base, residual: true, residual_reason: "partial exit", flatten_attempts: 2 }), /INCOMPLETE.*partial exit.*2 attempt/);
   assert.match(residualText({ ...base, residual: true, flatten_halted: true, flatten_rejects: 5 }), /stopped after 5 broker rejection/);
+});
+
+test("settlement and recovery keep owned exposure visible without claiming realized P&L", () => {
+  const pending = { settlement_pending: true, settlement_kind: "physical", quarantined: true, residual: true };
+  assert.equal(positionState(pending), "settlement_pending");
+  assert.match(residualText(pending), /SETTLEMENT PENDING.*ownership.*not confirmed realized/);
+  assert.equal(positionState({ recovery_state: "required" }), "recovery_required");
+  assert.match(residualText({ recovery_state: "required" }), /before any reduction/);
+  assert.equal(pnlEvidenceLabel({ execution_mode: "live", pnl_status: "execution_estimate" }), "observed fills · estimated charges");
+  assert.equal(pnlEvidenceLabel({ execution_mode: "live", pnl_status: "confirmed_statement" }), "confirmed by statement");
+  assert.equal(outstandingQty({ status: "open", execution_mode: "live" }, { qty: 25, exit_qty: 50 }), 25, "over-reduction is exposure, never false flatness");
 });
 
 test("run summaries and timelines are relative to detection", () => {
@@ -124,6 +136,21 @@ function stubFetch(handler) {
 }
 
 const json = (status, body) => ({ ok: status >= 200 && status < 300, status, text: async () => JSON.stringify(body) });
+
+test("audited account and settlement evidence use the existing Synth CSRF transport", async () => {
+  const calls = stubFetch((url) => String(url).endsWith("/access/verify") ? json(200, { authenticated: true, csrf_token: "EVIDENCE-CSRF" }) : json(200, { ok: true, open: [], status: {} }));
+  await synthVerify("test-passcode");
+  const account = { account_id: "A", evidence_id: "statement-1", source: "broker statement", note: "ownership verified", confirm: "BIND ACCOUNT" };
+  await bindSynthAccount("abcdef", account);
+  const settlement = { ...account, kind: "physical", obligations_resolved: true, delivery_resolved: true, gross_pnl: 1000, total_charges: 100, legs: [], confirm: "CONFIRM SETTLEMENT" };
+  await reconcileSynthSettlement("abcdef", settlement);
+  assert.equal(String(calls[1].url), "/api/synth/trades/abcdef/account/bind");
+  assert.equal(String(calls[2].url), "/api/synth/trades/abcdef/settlement/reconcile");
+  assert.deepEqual(JSON.parse(calls[1].init.body), account);
+  assert.deepEqual(JSON.parse(calls[2].init.body), settlement);
+  assert.equal(calls[1].init.headers["x-csrf-token"], "EVIDENCE-CSRF");
+  assert.equal(calls[2].init.headers["x-csrf-token"], "EVIDENCE-CSRF");
+});
 
 test("live controls carry the typed confirmation and the synth CSRF token", async () => {
   const calls = stubFetch((url) =>
