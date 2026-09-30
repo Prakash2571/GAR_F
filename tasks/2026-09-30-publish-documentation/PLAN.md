@@ -18,15 +18,15 @@ Publish the completed React Synthetic documentation to `Prakash2571/GAR_F`, bran
 1. [x] Read workspace/project task records and inspect Git state, history, origin, and publication inventory.
 2. [x] Prepare GitHub cross-repository links and README navigation.
 3. [x] Run documentation/link validation and Git whitespace/scope checks.
-4. [ ] Check the current remote branch, commit the explicit documentation file list, and push `HEAD` to `refs/heads/synth`.
-5. [ ] Verify remote SHA/files and update task status and workspace index.
+4. [x] Check the current remote branch, commit the explicit documentation file list, and push `HEAD` to `refs/heads/synth`.
+5. [x] Verify remote SHA/files and update task status and workspace index.
 
 ## Completion criteria
 
-- [ ] The frontend guide and task records are committed on `synth`.
-- [ ] Backend companion links target the published GAR_B documentation and source files.
-- [ ] Push succeeds and `git ls-remote origin refs/heads/synth` matches local HEAD.
-- [ ] STATUS.md records commands/results, the published commit, and the next action.
+- [x] The frontend guide and task records are committed on `synth`.
+- [x] Backend companion links target the published GAR_B documentation and source files.
+- [x] Push succeeds and `git ls-remote origin refs/heads/synth` matches local HEAD.
+- [x] STATUS.md records commands/results, the published commit, and the next action.
 
 ## Checks
 
