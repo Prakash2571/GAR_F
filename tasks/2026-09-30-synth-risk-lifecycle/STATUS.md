@@ -2,8 +2,8 @@
 
 State: Done
 Updated: 2026-09-30
-Next action: Complete user-authorized GitHub publication in tasks/2026-09-30-push-synth-risk-lifecycle; coordinate any separately authorized deployment with backend migration 006 and working guide section 12.6.
-Blockers: none for this completed implementation. GitHub publication is now authorized; deployment remains separate.
+Next action: Review published frontend compatibility e7cca7c and backend repair 4a34ca4; coordinate any separately authorized deployment with backend migration 006 and working guide section 12.6.
+Blockers: none for this completed implementation; GitHub publication verified. Deployment remains separate.
 WIP override: none
 
 Task: `2026-09-30-synth-risk-lifecycle` · Project: GAR_F-synth · Plan: [PLAN.md](PLAN.md)
@@ -59,3 +59,5 @@ Task: `2026-09-30-synth-risk-lifecycle` · Project: GAR_F-synth · Plan: [PLAN.m
 ## Subsequent publication authorization
 
 The user requested "push to github" after completion. The [publication task](../2026-09-30-push-synth-risk-lifecycle/STATUS.md) authorizes focused commits and normal pushes of the completed compatibility work. Historical no-publication statements above describe the earlier handoff; production deployment remains separate.
+
+Frontend compatibility `e7cca7c6b99f1a064afeb8ebb24cffa7f1e1eacd` and backend repair `4a34ca4b9eca0b3bcacdd08222e3cc7ae16d03bb` were committed/pushed normally. Both push commands and post-push `git ls-remote origin refs/heads/synth` checks exited 0; remote SHAs equal local commits. Both worktrees were clean before the completion metadata update; no production actions.
