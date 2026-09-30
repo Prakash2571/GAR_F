@@ -2,7 +2,7 @@
 
 State: Done
 Updated: 2026-09-30
-Next action: Follow tasks/2026-09-30-push-synth-repairs/STATUS.md for the user-authorized GitHub commit/push and verification; coordinate any separately authorized deployment with backend migration 005 and its upgrade runbook.
+Next action: Review published frontend update e23168e and backend repair 3f11884; coordinate any separately authorized deployment with backend migration 005 and its upgrade runbook.
 Blockers: none for this task; focused tests passed through the approved scratch TypeScript loader. Installed Node lacks native TypeScript stripping, so the native test failure is retained below.
 WIP override: none
 
@@ -45,6 +45,7 @@ Branch `synth`, HEAD `628955cd572f4403581d042e80c324100880c57e`, clean worktree.
 - Worktree remains uncommitted; no production release or external publication performed.
 - Proposed frontend checkpoint message: `2026-09-30-synth-live-contract: synchronize recovery and settlement UI`. Review and stage the intended diff manually; no checkpoint was created automatically.
 - Subsequent user request authorizes committing/pushing this completed work. [Publication status](../2026-09-30-push-synth-repairs/STATUS.md) supersedes the original uncommitted handoff and records actual commits/push results; earlier checks retain their original context.
+- Published frontend update `e23168efdfd18534f03ac38272637b932553488c` and backend repair `3f11884f22aa04ea80fd88440a63c39ee1f25895`; both normal pushes and matching GitHub SHA checks exited 0. Prior uncommitted handoff statements describe the earlier state.
 
 ## Relevant files
 
